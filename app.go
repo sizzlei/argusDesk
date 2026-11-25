@@ -81,6 +81,7 @@ type AppState struct {
 type BoardEvent struct {
 	Snapshot *model.Snapshot `json:"snapshot"`
 	Changes  []model.Change  `json:"changes"`
+	Notes    []board.Note    `json:"notes"` // what is worth telling the user, for the notification centre
 }
 
 // BoardError reports a failed refresh. Auth means the token must be entered again.
@@ -456,12 +457,16 @@ func (a *App) startPolling() {
 			case ctx.Err() != nil:
 				return
 			case err == nil:
-				a.app.Event.Emit(evSnapshot, BoardEvent{Snapshot: snap, Changes: changes})
+				notes := board.Notes(snap, changes, a.notify.skip())
+				if notes == nil {
+					notes = []board.Note{}
+				}
+				a.app.Event.Emit(evSnapshot, BoardEvent{Snapshot: snap, Changes: changes, Notes: notes})
 				a.mu.Lock()
 				wanted := !a.prefs.NotifyOff
 				a.mu.Unlock()
 				if wanted {
-					a.notify.send(board.Notes(snap, changes, a.notify.skip()))
+					a.notify.send(board.Fold(notes))
 				}
 				a.refreshGame(ctx, snap, changes)
 			case errors.Is(err, jira.ErrUnauthorized):

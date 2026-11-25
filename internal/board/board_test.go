@@ -153,6 +153,7 @@ func TestDiff(t *testing.T) {
 // fake is a Jira that answers from memory and counts history lookups.
 type fake struct {
 	issues  []jira.Issue
+	pending []jira.Issue // what waits for this user's approval
 	history int
 }
 
@@ -162,7 +163,12 @@ func (f *fake) Fields(context.Context) ([]jira.Field, error) {
 func (f *fake) ProjectStatuses(context.Context, string) (map[string]string, error) {
 	return map[string]string{"10001": "요청 부서 승인 대기", "10002": "검토 중", "10003": "승인 대기", "10004": "작업 대기", "10005": "완료", "10006": "반려"}, nil
 }
-func (f *fake) Search(context.Context, string, []string) ([]jira.Issue, error) { return f.issues, nil }
+func (f *fake) Search(_ context.Context, jql string, _ []string) ([]jira.Issue, error) {
+	if strings.Contains(jql, "myPending()") {
+		return f.pending, nil
+	}
+	return f.issues, nil
+}
 func (f *fake) StatusEnteredAt(context.Context, string, string) (time.Time, bool, error) {
 	f.history++
 	return now.Add(-4 * time.Hour), true, nil
@@ -254,5 +260,28 @@ func TestDoneJQLAndDones(t *testing.T) {
 	got, err := Dones(context.Background(), cfg, f, since)
 	if err != nil || len(got) != 1 || got[0].AssigneeID != "u1" || got[0].XP != 10 || got[0].At.IsZero() {
 		t.Fatalf("got %+v, err %v", got, err)
+	}
+}
+
+func TestRefreshMarksMyApprovals(t *testing.T) {
+	cfg := example(t)
+	f := &fake{issues: []jira.Issue{issue("A-1", "10003", "승인 대기"), issue("A-2", "10003", "승인 대기")}}
+	e := NewEngine(cfg, f, "u1")
+	if _, _, err := e.Refresh(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	f.pending = []jira.Issue{{Key: "A-2"}}
+	snap, changes, err := e.Refresh(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if box(snap, "A-1").MyApproval || !box(snap, "A-2").MyApproval {
+		t.Fatalf("marks: %v %v", box(snap, "A-1").MyApproval, box(snap, "A-2").MyApproval)
+	}
+	if len(changes) != 1 || changes[0].Kind != "approval" || changes[0].Key != "A-2" {
+		t.Fatalf("changes = %+v", changes)
+	}
+	if q := ApprovalJQL(cfg); !strings.Contains(q, "approvals = myPending()") || !strings.Contains(q, "project in (") {
+		t.Fatalf("jql = %s", q)
 	}
 }

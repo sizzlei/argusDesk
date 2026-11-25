@@ -1,6 +1,7 @@
 import { connect } from './backend';
 import { news } from './game';
 import { renderHud } from './hud';
+import { addNotes, noticeCount, noticesOpen, renderNotices, toggleNotices } from './notices';
 import { closeTickets, openTicket, openTickets, syncTickets } from './panel';
 import { AGE, Scene, TAGS } from './scene';
 import { renderSetup } from './setup';
@@ -47,7 +48,21 @@ async function boot() {
   document.getElementById('zoom-in')!.addEventListener('click', () => scene.zoom(1.25));
   document.getElementById('zoom-out')!.addEventListener('click', () => scene.zoom(0.8));
   document.getElementById('zoom-fit')!.addEventListener('click', () => scene.resetView());
-  const hud = () =>
+  /** Opens a ticket from a notification: its floor comes into view and its window opens. */
+  const visit = (box: Box) => {
+    if (!snap) return;
+    const floor = snap.spaces.findIndex((sp) => sp.id === box.space);
+    if (floor >= 0 && floor !== space) {
+      space = floor;
+      scene.setSpace(floor);
+      legend();
+    }
+    selected = box;
+    openTicket(box, snap, backend, tickets);
+    hud();
+  };
+  const hud = () => {
+    renderNotices(snap, visit, () => hud());
     renderHud(state, snap, space, lastError, backend, {
       refresh: () => void backend.refresh(),
       reloadConfig: () => void backend.reloadConfig().then(apply, fail),
@@ -55,6 +70,14 @@ async function boot() {
       checkUpdate: () => void checkForUpdates(true),
       logout: () => void backend.logout().then(apply, fail),
       windows: openTickets(),
+      notices: {
+        ...noticeCount(snap),
+        open: noticesOpen(),
+        toggle: () => {
+          toggleNotices();
+          hud();
+        },
+      },
       closeWindows: () => closeTickets(tickets),
       vacation: () => void openVacation(backend).catch(fail),
       avatar: () => {
@@ -79,6 +102,7 @@ async function boot() {
         legend();
       },
     });
+  };
   let legendOpen = false;
   document.getElementById('legend-toggle')!.addEventListener('click', () => {
     legendOpen = !legendOpen;
@@ -161,6 +185,7 @@ async function boot() {
     lastError = '';
     scene.update(ev.snapshot, ev.changes);
     syncTickets(ev.snapshot, backend);
+    addNotes(ev.notes, ev.snapshot.fetchedAt);
     hud();
     legend();
   });

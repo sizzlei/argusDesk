@@ -17,6 +17,7 @@ export interface HudHooks {
   vacation(): void;
   avatar(): void;
   windows: number; // open ticket windows
+  notices: { approvals: number; unread: number; open: boolean; toggle(): void };
   closeWindows(): void;
   setSpace(index: number): void;
   game: GameStats | null;
@@ -139,6 +140,19 @@ export function renderHud(state: AppState, snap: Snapshot | null, space: number,
             `경고 ${snap.warnings.length}건`,
           )
         : null,
+      h(
+        'button',
+        {
+          class: `bell${hooks.notices.approvals ? ' urgent' : ''}`,
+          'aria-expanded': String(hooks.notices.open),
+          'aria-controls': 'notices',
+          'aria-label': `알림: 내 승인 대기 ${hooks.notices.approvals}건, 새 알림 ${hooks.notices.unread}건`,
+          title: hooks.notices.approvals ? `내 승인 대기 ${hooks.notices.approvals}건` : '알림',
+          onclick: hooks.notices.toggle,
+        },
+        h('span', { class: 'bell-ico', 'aria-hidden': 'true' }),
+        hooks.notices.approvals + hooks.notices.unread ? h('span', { class: 'n' }, String(hooks.notices.approvals + hooks.notices.unread)) : null,
+      ),
       h('span', { class: 'quiet' }, snap ? `${clock(snap.fetchedAt)} 갱신` : '불러오는 중'),
       h('button', { onclick: hooks.refresh, title: '지금 Jira에서 다시 읽기' }, '새로 고침'),
       h(

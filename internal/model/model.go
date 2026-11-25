@@ -50,6 +50,7 @@ type Box struct {
 	Tag        string     `json:"tag"`      // waybill tag colour name
 	Workflow   string     `json:"workflow"` // "" when the type is not configured
 	Mine       bool       `json:"mine"`
+	MyApproval bool       `json:"myApproval"`          // waiting for the signed-in user to approve
 	EnteredAt  *time.Time `json:"enteredAt,omitempty"` // when it entered its zone
 	StaleFrom  *time.Time `json:"staleFrom,omitempty"` // what the age is counted from
 	StaleRatio float64    `json:"staleRatio"`          // elapsed / limit; 0 = not counted

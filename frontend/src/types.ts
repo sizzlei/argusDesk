@@ -24,6 +24,7 @@ export interface Box {
   tag: string;
   workflow: string;
   mine: boolean;
+  myApproval?: boolean; // waiting for the signed-in user to approve
   enteredAt?: string;
   staleFrom?: string;
   staleRatio: number;
@@ -77,9 +78,18 @@ export interface Change {
   toZone?: string;
 }
 
+/** Something worth telling the user: shown in the notification centre. */
+export interface Note {
+  key: string; // the ticket it is about ("" for a summary)
+  kind: 'approval' | 'new' | 'arrive' | 'mine' | 'assigned' | 'summary';
+  title: string;
+  body: string;
+}
+
 export interface BoardEvent {
   snapshot: Snapshot;
   changes: Change[];
+  notes?: Note[];
 }
 
 export interface BoardError {

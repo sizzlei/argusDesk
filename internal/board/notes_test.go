@@ -66,8 +66,29 @@ func TestNotesFoldsABurst(t *testing.T) {
 	for _, b := range s.Boxes {
 		changes = append(changes, model.Change{Kind: "added", Key: b.Key, ToZone: b.Zone})
 	}
-	got := Notes(s, changes, nil)
+	got := Fold(Notes(s, changes, nil))
 	if len(got) != 1 || !strings.Contains(got[0].Title, "5개") || !strings.Contains(got[0].Body, "외 2건") {
 		t.Fatalf("got %+v", got)
+	}
+}
+
+func TestNotesPutMyApprovalsFirstAndNeverFoldThem(t *testing.T) {
+	s := notesSnap()
+	s.Boxes[1].MyApproval = true // A-2, in the review room
+	changes := []model.Change{
+		{Kind: "added", Key: "A-1", ToZone: "lobby"},
+		{Kind: "approval", Key: "A-2", ToZone: "review"},
+	}
+	got := Notes(s, changes, nil)
+	if len(got) != 2 || got[0].Kind != "approval" || got[0].Key != "A-2" || got[0].Title != "내 승인 요청 · 검토실" {
+		t.Fatalf("got %+v", got)
+	}
+	var burst []model.Change
+	for _, b := range s.Boxes {
+		burst = append(burst, model.Change{Kind: "added", Key: b.Key, ToZone: b.Zone})
+	}
+	folded := Fold(Notes(s, burst, nil))
+	if len(folded) != 2 || folded[0].Kind != "approval" || folded[1].Kind != "summary" {
+		t.Fatalf("folded %+v", folded)
 	}
 }

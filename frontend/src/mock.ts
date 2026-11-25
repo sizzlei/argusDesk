@@ -2,7 +2,7 @@
 // invented; nothing comes from a real Jira.
 
 import type { Backend } from './backend';
-import type { AppState, Away, Badge, BoardEvent, Box, Change, GameStats, Member, PathStep, Snapshot, Tally, Vacation, ZoneView } from './types';
+import type { AppState, Away, Badge, BoardEvent, Box, Change, GameStats, Member, Note, PathStep, Snapshot, Tally, Vacation, ZoneView } from './types';
 
 const HOUR = 3600_000;
 
@@ -112,6 +112,7 @@ function place(b: Box, zone: string, now: number) {
   b.note = undefined;
   if (zone === 'work' && !b.assigneeId && rand(4) > 0) [b.assigneeId, b.assignee] = people[rand(people.length)];
   b.mine = b.assigneeId === 'u1';
+  b.myApproval = zone === 'approval'; // in the prototype, every approval waits for me
 }
 
 function make(zone: string, ageHours: number, now: number): Box {
@@ -218,6 +219,21 @@ function snapshot(boxes: Box[], now: number): Snapshot {
   };
 }
 
+/** The notes the real backend would send for these changes. */
+function notesFor(snap: Snapshot, changes: Change[]): Note[] {
+  const out: Note[] = [];
+  for (const c of changes) {
+    const b = snap.boxes.find((x) => x.key === c.key);
+    if (!b) continue;
+    const zone = snap.spaces.flatMap((s) => s.zones).find((z) => z.id === b.zone)?.name ?? '';
+    const body = `${b.key} ${b.summary}`;
+    if (b.myApproval && c.kind === 'moved') out.unshift({ key: b.key, kind: 'approval', title: `내 승인 요청 · ${zone}`, body });
+    else if (c.kind === 'added') out.push({ key: b.key, kind: 'new', title: `새 상자 · ${zone}`, body });
+    else if (c.kind === 'moved' && b.mine) out.push({ key: b.key, kind: 'mine', title: `내 상자 이동 · ${zone}`, body });
+  }
+  return out;
+}
+
 export function mockBackend(): Backend {
   let now = Date.now();
   const boxes = seed(now);
@@ -252,7 +268,7 @@ export function mockBackend(): Backend {
   /** Tells the screen about a change made from the panel. */
   const publish = (changes: Change[]) => {
     const snap = snapshot(boxes, now);
-    listeners.forEach((cb) => cb({ snapshot: snap, changes }));
+    listeners.forEach((cb) => cb({ snapshot: snap, changes, notes: notesFor(snap, changes) }));
   };
   const move = (b: Box, to: string) => {
     const from = b.zone;
@@ -350,7 +366,7 @@ export function mockBackend(): Backend {
       }
     }
     const snap = snapshot(boxes, now);
-    listeners.forEach((cb) => cb({ snapshot: snap, changes }));
+    listeners.forEach((cb) => cb({ snapshot: snap, changes, notes: notesFor(snap, changes) }));
   }
   setInterval(tick, 3500);
 

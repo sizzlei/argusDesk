@@ -7,19 +7,21 @@ import (
 	"github.com/sizzlei/argusDesk/internal/model"
 )
 
-// Note is one thing worth telling the user about outside the window.
+// Note is one thing worth telling the user about.
 type Note struct {
-	Key   string // the ticket it is about ("" for a summary)
-	Title string
-	Body  string
+	Key   string `json:"key"`  // the ticket it is about ("" for a summary)
+	Kind  string `json:"kind"` // "approval" | "new" | "arrive" | "mine" | "assigned" | "summary"
+	Title string `json:"title"`
+	Body  string `json:"body"`
 }
 
-// maxNotes is how many separate notes one refresh may raise; more than that
-// are folded into a single summary.
+// maxNotes is how many separate notes one refresh may raise outside the
+// window; more than that are folded into a single summary.
 const maxNotes = 3
 
 // Notes turns the changes of one refresh into notifications:
 //
+//   - a box now waits for my approval (always told, and told first)
 //   - a new box arrived
 //   - a box reached a room where someone has to look at it (kind "work")
 //   - one of my boxes moved, or a box was given to me
@@ -39,7 +41,7 @@ func Notes(snap *model.Snapshot, changes []model.Change, skip map[string]bool) [
 			zones[sp.ID+"/"+z.ID] = z
 		}
 	}
-	var out []Note
+	var first, rest []Note
 	for _, c := range changes {
 		b, ok := boxes[c.Key]
 		if !ok || skip[c.Key] {
@@ -48,27 +50,43 @@ func Notes(snap *model.Snapshot, changes []model.Change, skip map[string]bool) [
 		z := zones[b.Space+"/"+b.Zone]
 		body := b.Key + " " + b.Summary
 		switch {
+		case b.MyApproval && (c.Kind == "approval" || c.Kind == "added" || (c.Kind == "moved" && c.FromZone != c.ToZone)):
+			first = append(first, Note{Key: b.Key, Kind: "approval", Title: "내 승인 요청 · " + z.Name, Body: body})
 		case c.Kind == "added":
-			out = append(out, Note{Key: b.Key, Title: "새 상자 · " + z.Name, Body: body})
+			rest = append(rest, Note{Key: b.Key, Kind: "new", Title: "새 상자 · " + z.Name, Body: body})
 		case c.Kind == "moved" && c.FromZone == c.ToZone:
 			if b.Mine { // only the assignee changed
-				out = append(out, Note{Key: b.Key, Title: "나에게 배정됨 · " + z.Name, Body: body})
+				rest = append(rest, Note{Key: b.Key, Kind: "assigned", Title: "나에게 배정됨 · " + z.Name, Body: body})
 			}
 		case c.Kind == "moved" && b.Mine:
-			out = append(out, Note{Key: b.Key, Title: "내 상자 이동 · " + z.Name, Body: body})
+			rest = append(rest, Note{Key: b.Key, Kind: "mine", Title: "내 상자 이동 · " + z.Name, Body: body})
 		case c.Kind == "moved" && z.Kind == config.KindWork:
-			out = append(out, Note{Key: b.Key, Title: z.Name + " 도착", Body: body})
+			rest = append(rest, Note{Key: b.Key, Kind: "arrive", Title: z.Name + " 도착", Body: body})
 		}
 	}
-	if len(out) > maxNotes {
-		body := ""
-		for i, n := range out[:maxNotes] {
-			if i > 0 {
-				body += ", "
-			}
-			body += n.Key
+	return append(first, rest...)
+}
+
+// Fold keeps a burst from flooding the screen: approval requests always go
+// out one by one, and the rest become one summary when there are too many.
+func Fold(notes []Note) []Note {
+	var out, rest []Note
+	for _, n := range notes {
+		if n.Kind == "approval" {
+			out = append(out, n)
+		} else {
+			rest = append(rest, n)
 		}
-		return []Note{{Title: fmt.Sprintf("상자 %d개에 변화가 있습니다", len(out)), Body: fmt.Sprintf("%s 외 %d건", body, len(out)-maxNotes)}}
 	}
-	return out
+	if len(rest) <= maxNotes {
+		return append(out, rest...)
+	}
+	body := ""
+	for i, n := range rest[:maxNotes] {
+		if i > 0 {
+			body += ", "
+		}
+		body += n.Key
+	}
+	return append(out, Note{Kind: "summary", Title: fmt.Sprintf("상자 %d개에 변화가 있습니다", len(rest)), Body: fmt.Sprintf("%s 외 %d건", body, len(rest)-maxNotes)})
 }

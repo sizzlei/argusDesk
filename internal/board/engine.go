@@ -3,6 +3,7 @@ package board
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -126,6 +127,22 @@ func JQL(sp *config.Space) string {
 	return q + " AND (statusCategory != Done OR statusCategoryChangedDate >= startOfDay()) ORDER BY created ASC"
 }
 
+// ApprovalJQL finds the tickets of the configured projects that wait for the
+// signed-in user's approval. It returns "" when no space names a project.
+func ApprovalJQL(cfg *config.Config) string {
+	var keys []string
+	for _, sp := range cfg.Spaces {
+		if sp.Project != "" {
+			keys = append(keys, `"`+sp.Project+`"`)
+		}
+	}
+	if len(keys) == 0 {
+		return ""
+	}
+	sort.Strings(keys)
+	return "project in (" + strings.Join(keys, ", ") + ") AND approvals = myPending()"
+}
+
 // Refresh reads Jira once and returns the new snapshot with what changed.
 func (e *Engine) Refresh(ctx context.Context) (*model.Snapshot, []model.Change, error) {
 	e.mu.Lock()
@@ -183,6 +200,25 @@ func (e *Engine) Refresh(ctx context.Context) (*model.Snapshot, []model.Change, 
 		StatusName: e.statusName, Me: e.me, BrowseURL: e.src.BrowseURL, Now: e.now(),
 	})
 	snap.Warnings = append(append([]string{}, e.notes...), snap.Warnings...)
+	// Which of these wait for this user's approval: one more search, answered
+	// by Jira's own "pending for me" filter. If Jira refuses it the centre
+	// still works, without that mark.
+	if jql := ApprovalJQL(e.cfg); jql != "" {
+		if mine, err := e.src.Search(ctx, jql, []string{"summary"}); err != nil {
+			if errors.Is(err, jira.ErrUnauthorized) {
+				return nil, nil, err
+			}
+			snap.Warnings = append(snap.Warnings, "내 승인 대기 건을 조회하지 못했습니다: "+err.Error())
+		} else {
+			waiting := map[string]bool{}
+			for _, is := range mine {
+				waiting[is.Key] = true
+			}
+			for i := range snap.Boxes {
+				snap.Boxes[i].MyApproval = waiting[snap.Boxes[i].Key]
+			}
+		}
+	}
 	changes := Diff(e.last, snap)
 	e.last = snap
 	return snap, changes, nil

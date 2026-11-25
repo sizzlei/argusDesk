@@ -1371,11 +1371,13 @@ export class Scene {
     sp.badge?.destroy({ children: true });
     sp.badge = null;
     // Old boxes say how old: the colour gives the step, the badge the time.
-    const text = b.note ? '미정' : ageStep(b) >= 2 && b.staleFrom ? shortAge(now - Date.parse(b.staleFrom)) : '';
+    // A box that waits for my approval says so, before anything else.
+    const text = b.myApproval ? '승인 요청' : b.note ? '미정' : ageStep(b) >= 2 && b.staleFrom ? shortAge(now - Date.parse(b.staleFrom)) : '';
     if (text) {
       const t = label(text, 10, 0xffffff, '700');
       const g = new Graphics();
-      g.roundRect(0, 0, t.width + 10, 16, 8).fill(b.note ? QUIET : shade(AGE[ageStep(b)], 0.15));
+      g.roundRect(0, 0, t.width + 10, 16, 8).fill(b.myApproval ? ACCENT : b.note ? QUIET : shade(AGE[ageStep(b)], 0.15));
+      if (b.myApproval) g.poly([t.width / 2 + 1, 16, t.width / 2 + 9, 16, t.width / 2 + 5, 21]).fill(ACCENT); // points at the box
       t.position.set(5, (16 - t.height) / 2);
       const badge = new Container();
       badge.addChild(g, t);
@@ -1531,6 +1533,11 @@ export class Scene {
         s.squash = Math.max(0, s.squash - ms);
         const q = Math.sin((s.squash / SQUASH) * Math.PI);
         s.body.scale.set(1 + 0.16 * q, 1 - 0.2 * q);
+      } else if (!CALM && s.box.myApproval) {
+        // waiting for my approval: it bobs to be noticed
+        s.body.rotation = 0;
+        s.body.scale.set(1);
+        if (!s.hover && s.box.key !== this.selected) s.body.y = -3 - Math.abs(Math.sin(T * 3 + s.phase)) * 5;
       } else if (!CALM && ageStep(s.box) >= 3 && (T + s.phase) % 7 < 0.5) {
         // very old boxes rattle now and then
         s.body.rotation = Math.sin(T * 42) * 0.035;
