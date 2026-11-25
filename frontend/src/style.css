@@ -998,3 +998,87 @@ dialog.confirm .buttons {
   border-radius: 50%;
   background: var(--old);
 }
+
+/* ---- game-style HUD: everything floats over the room ---- */
+
+#app {
+  display: block;
+  position: relative;
+}
+
+#stage {
+  position: absolute;
+  inset: 0;
+}
+
+#hud {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  left: 12px;
+  z-index: 6;
+  align-items: flex-start;
+  gap: 10px;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  pointer-events: none; /* the room stays clickable between the pieces */
+}
+
+#hud > * {
+  padding: 7px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  box-shadow: 0 4px 14px rgb(31 42 68 / 10%);
+  pointer-events: auto;
+}
+
+#hud .title {
+  align-items: center;
+  min-height: 42px;
+}
+
+#hud .zones {
+  flex: 0 1 auto;
+  gap: 6px;
+  margin: 0 auto;
+  padding: 6px;
+}
+
+#hud .zones li {
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--paper);
+}
+
+#hud .tools {
+  padding: 5px 6px 5px 12px;
+}
+
+#floors {
+  top: 66px;
+}
+
+#panel {
+  top: 66px;
+}
+
+#legend-toggle {
+  position: absolute;
+  bottom: 16px;
+  left: 16px;
+  z-index: 5;
+  border-radius: 999px;
+  box-shadow: 0 4px 14px rgb(31 42 68 / 10%);
+}
+
+#legend-toggle[aria-expanded='true'] {
+  border-color: var(--ink);
+  font-weight: 600;
+}
+
+#legend {
+  bottom: 58px;
+}

@@ -15,7 +15,7 @@ const TH = 32; // tile height on screen
 const ZW = 8; // room size in tiles
 const ZH = 7;
 const COL_GAP = 0.5; // partition between rooms of a row
-const ROW_GAP = 2.4; // corridor between rows (holds the conveyor)
+const ROW_GAP = 3.6; // corridor between rows (holds the two lanes of the conveyor)
 const COLS = 3; // rooms per row
 const PAD = 0.7; // floor slab around the rooms
 const WALL_H = 58; // outer wall height on screen
@@ -301,15 +301,45 @@ interface Sprite {
   depth: number;
   hover: boolean;
   leaving: boolean;
-  // movement: a box hops from (fx, fy) to its target instead of sliding
-  fx: number;
-  fy: number;
-  t: number; // 0..1 along the hop; 1 = standing still
-  dur: number; // length of the hop in ms
-  arc: number; // how high the hop goes
+  // movement: a box travels in legs (a hop, a ride on the belt, a hop) instead of sliding
+  legs: Leg[];
+  exit: '' | 'truck' | 'fly'; // how a leaving box goes
+  gone: number; // ms since it started leaving
   squash: number; // ms left of the landing squash
   phase: number; // offsets idle motion so boxes do not move in step
 }
+
+/** One stretch of a box's way: through the air in an arc, or flat along the belt. */
+interface Leg {
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+  z0: number; // depth at each end, for boxes riding the belt
+  z1: number;
+  arc: number; // height of the hop; 0 = flat
+  air: boolean; // in the air: drawn above the walls
+  dur: number;
+  t: number;
+}
+
+interface BeltTile {
+  g: Graphics;
+  gx: number;
+  gy: number;
+  w: number; // length along its direction, in tiles
+  axis: 'x' | 'y';
+  dir: 1 | -1;
+}
+
+/** The conveyor: lane A runs along the first row, turns, and lane B runs back along the second. */
+interface Belt {
+  a: number; // gy of lane A
+  b: number; // gy of lane B
+  end: number; // gx of the turn
+}
+const BELT_SPEED = 7; // tiles a second
+const BELT_UP = 7; // the belt's surface above the floor, on screen
 
 // People who would rather not see motion get the changes without the show.
 const CALM = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -339,7 +369,8 @@ export class Scene {
   private truck: { g: Graphics; x: number; y: number } | null = null;
   private truckRun = -1; // ms into the truck's round trip; -1 = parked
   private people: { g: Graphics; y: number; phase: number }[] = [];
-  private belts: { g: Graphics; gx: number; gy: number; w: number }[] = [];
+  private belts: BeltTile[] = [];
+  private belt: Belt | null = null;
   private held = false; // the user zoomed or moved the view: leave it alone
   private push = 0; // how far the view has slid aside for the panel
   private pushTo = 0;
@@ -454,6 +485,8 @@ export class Scene {
     this.snap = snap;
     const space: SpaceView | undefined = snap.spaces[this.space] ?? snap.spaces[0];
     if (!space) return;
+    // Returned boxes leave the building: their zones are not rooms.
+    const rooms = space.zones.filter((z) => z.kind !== 'returned');
     const boxes = snap.boxes.filter((b) => b.space === space.id);
     const members = snap.members.filter((m) => m.space === space.id);
     const added = new Set(changes.filter((c) => c.kind === 'added').map((c) => c.key));
@@ -463,16 +496,17 @@ export class Scene {
     this.signs.removeChildren().forEach((c) => c.destroy({ children: true }));
     this.things.children.filter((c) => c.label === 'prop').forEach((c) => c.destroy({ children: true }));
 
-    const rows = Math.ceil(space.zones.length / COLS);
-    const cols = Math.min(COLS, space.zones.length);
+    const rows = Math.ceil(rooms.length / COLS);
+    const cols = Math.min(COLS, rooms.length);
     const width = cols * ZW + (cols - 1) * COL_GAP;
     rowDepths = Array.from({ length: rows }, (_, r) =>
-      space.zones.some((z, i) => Math.floor(i / COLS) === r && z.kind === 'desk') ? ZH + DESK_EXTRA : ZH,
+      rooms.some((z, i) => Math.floor(i / COLS) === r && z.kind === 'desk') ? ZH + DESK_EXTRA : ZH,
     );
     const depth = rowY(rows - 1) + rowDepths[rows - 1];
     this.truck = null;
     this.people = [];
     this.belts = [];
+    this.belt = null;
     this.drawBuilding(width, depth, rows, cols, snap.spaces.indexOf(space), space.name, snap.spaces.length);
 
     const prop = (gx: number, gy: number, draw: (g: Graphics) => void, bias = 0) => {
@@ -485,7 +519,8 @@ export class Scene {
     };
 
     const alive = new Set<string>();
-    space.zones.forEach((zone, zi) => {
+    const roomOf = (zoneId: string) => rooms.findIndex((z) => z.id === zoneId);
+    rooms.forEach((zone, zi) => {
       const o = roomOrigin(zi);
 
       const floor = new Graphics();
@@ -537,24 +572,41 @@ export class Scene {
         const p = iso(o.gx + s.gx, o.gy + s.gy);
         const x = p.x;
         const y = p.y - s.level * BOX_H;
+        const depth = (o.gx + s.gx + o.gy + s.gy) * 100 + s.level;
         let sp = this.sprites.get(b.key);
         if (!sp) {
           sp = this.spawn(b);
-          // A new arrival drops in from above; everything else simply appears.
-          sp.root.position.set(x, added.has(b.key) ? y - 170 : y);
-          sp.root.alpha = added.has(b.key) ? 0 : 1;
           sp.tx = x;
           sp.ty = y;
-          if (added.has(b.key)) this.hop(sp, 520 + Math.random() * 160, 0);
+          const to = this.station(zi);
+          if (!added.has(b.key)) {
+            sp.root.position.set(x, y); // already here when the app opened
+          } else if (to && !CALM) {
+            // A new box comes in on the belt and rides to its room.
+            const start = this.beltAt(-0.6);
+            sp.root.position.set(start.x, start.y);
+            sp.root.alpha = 0;
+            this.ride(sp, -0.6, to.s, x, y);
+          } else {
+            sp.root.position.set(x, y - 170); // no belt on this floor: it drops in
+            sp.root.alpha = 0;
+            this.hop(sp, 520 + Math.random() * 160, 0);
+          }
         } else if (Math.hypot(x - sp.tx, y - sp.ty) > 1) {
-          // Moved: across the building in a high arc, within a room in a small one.
+          const from = this.station(roomOf(sp.box.zone));
+          const to = this.station(zi);
           const far = Math.hypot(x - sp.root.x, y - sp.root.y);
           sp.tx = x;
           sp.ty = y;
-          this.hop(sp, Math.min(1200, 420 + far * 1.1), Math.min(90, 14 + far * 0.3));
+          if (from && to && sp.box.zone !== b.zone && !CALM) {
+            // To another room: out of the door, along the belt, in at the other door.
+            this.ride(sp, from.s, to.s, x, y);
+          } else {
+            this.hop(sp, Math.min(1200, 420 + far * 1.1), Math.min(90, 14 + far * 0.3));
+          }
         }
         sp.box = b;
-        sp.depth = (o.gx + s.gx + o.gy + s.gy) * 100 + s.level;
+        sp.depth = depth;
         sp.leaving = false;
         this.paint(sp, now);
       }
@@ -576,19 +628,25 @@ export class Scene {
     });
 
     // Boxes that left the building: finished ones are loaded on the truck,
-    // which then drives off; the rest float away.
+    // which then drives off; returned and cancelled ones fly away.
     let loaded = false;
+    const latest = new Map(boxes.map((b) => [b.key, b]));
     this.sprites.forEach((s, key) => {
       if (alive.has(key) || s.leaving) return;
       s.leaving = true;
-      const kind = space.zones.find((z) => z.id === s.box.zone)?.kind;
-      if (this.truck && kind === 'done' && !CALM) {
+      s.gone = 0;
+      s.legs = [];
+      const nowIn = latest.get(key); // still open, but in a zone without a room
+      const kind = space.zones.find((z) => z.id === (nowIn ?? s.box).zone)?.kind;
+      if (CALM) return;
+      if (kind === 'returned') {
+        s.exit = 'fly';
+      } else if (this.truck && kind === 'done') {
+        s.exit = 'truck';
         s.tx = this.truck.x + (Math.random() - 0.5) * 14;
         s.ty = this.truck.y - 30;
         this.hop(s, 620, 60);
         loaded = true;
-      } else {
-        s.t = 1;
       }
     });
     if (loaded && this.truckRun < 0) this.truckRun = 0;
@@ -679,7 +737,6 @@ export class Scene {
       }
       // along the corridor, with a doorway per room
       if (r < rows - 1) {
-        const mid = gy0 + d + ROW_GAP / 2;
         for (const gy of [gy0 + d + 0.05, gy0 + d + ROW_GAP - 0.23]) {
           for (let i = 0; i < Math.ceil(width); i++) {
             const inRoom = i % (ZW + COL_GAP);
@@ -687,20 +744,84 @@ export class Scene {
             piece(i + 0.5, gy, (pg) => block(pg, i, gy, Math.min(1, width - i), 0.18, 13, PARTITION));
           }
         }
-        // conveyor belt down the corridor
-        for (let i = 0; i < Math.ceil(width); i++) {
-          piece(i + 0.5, mid, (pg) => {
-            block(pg, i, mid - 0.4, Math.min(1, width - i), 0.8, 7, 0x596379);
-          });
+        if (r > 0) continue; // one conveyor, between the first two rows
+        // The conveyor is a U on its side: lane A carries boxes along the first
+        // row, turns at the far end, and lane B brings them back along the second.
+        const a = gy0 + d + 0.95;
+        const b = gy0 + d + ROW_GAP - 0.95;
+        const end = width - 0.7;
+        this.belt = { a, b, end };
+        const tile = (gx: number, gy: number, w: number, axis: 'x' | 'y', dir: 1 | -1) => {
+          const [bw, bd] = axis === 'x' ? [w, 0.8] : [0.8, w];
+          const [bx, by] = axis === 'x' ? [gx, gy - 0.4] : [gx - 0.4, gy];
+          piece(bx + bw / 2, by + bd / 2, (pg) => block(pg, bx, by, bw, bd, BELT_UP, 0x596379));
           // the belt's moving slats, redrawn every frame
           const marks = new Graphics();
           marks.label = 'prop';
-          marks.zIndex = (i + 0.5 + mid) * 100 - 39;
+          marks.zIndex = (bx + bw / 2 + by + bd / 2) * 100 - 39;
           this.things.addChild(marks);
-          this.belts.push({ g: marks, gx: i, gy: mid, w: Math.min(1, width - i) });
+          this.belts.push({ g: marks, gx, gy, w, axis, dir });
+        };
+        for (let i = -1; i < end - 0.4; i++) {
+          const w = Math.min(1, end - 0.4 - i);
+          tile(i, a, w, 'x', 1);
+          tile(i, b, w, 'x', -1);
+        }
+        // the turn: one stretch across, from lane A to lane B
+        for (let y = a - 0.4; y < b + 0.4 - 0.01; y += 1) tile(end, y, Math.min(1, b + 0.4 - y), 'y', 1);
+        // where boxes come in (lane A) and the arrows that show the way round
+        const arrow = (gx: number, gy: number, dx: number, dy: number) => {
+          piece(gx + 0.6, gy + 0.6, (pg) => {
+            const tip = iso(gx + dx * 0.28, gy + dy * 0.28);
+            const l = iso(gx - dx * 0.2 - dy * 0.22, gy - dy * 0.2 + dx * 0.22);
+            const rgt = iso(gx - dx * 0.2 + dy * 0.22, gy - dy * 0.2 - dx * 0.22);
+            pg.poly([tip.x, tip.y - BELT_UP, l.x, l.y - BELT_UP, rgt.x, rgt.y - BELT_UP]).fill({ color: 0xffd166, alpha: 0.95 });
+          });
+        };
+        for (let x = 2; x < end - 1; x += 4.25) {
+          arrow(x, a, 1, 0);
+          arrow(x, b, -1, 0);
         }
       }
     }
+  }
+
+  /** The point on the conveyor a distance s along it (0 = where lane A starts), in screen coordinates. */
+  private beltAt(s: number) {
+    const { a, b, end } = this.belt!;
+    const cross = b - a;
+    const g = s <= end ? { gx: s, gy: a } : s <= end + cross ? { gx: end, gy: a + (s - end) } : { gx: end - (s - end - cross), gy: b };
+    const p = iso(g.gx, g.gy);
+    return { x: p.x, y: p.y - BELT_UP, z: (g.gx + g.gy) * 100 + 60 };
+  }
+
+  /** Where the room at this index meets the conveyor, or null if it does not. */
+  private station(index: number) {
+    if (!this.belt || index < 0) return null;
+    const o = roomOrigin(index);
+    if (o.row > 1) return null;
+    const door = o.gx + 4; // the doorway in the corridor wall
+    return { s: o.row === 0 ? door : this.belt.end + (this.belt.b - this.belt.a) + (this.belt.end - door) };
+  }
+
+  /** Sends a box from where it stands onto the belt at `from`, along it to `to`, and off to (x, y). */
+  private ride(sp: Sprite, from: number, to: number, x: number, y: number) {
+    const { a, b, end } = this.belt!;
+    const corners = [end, end + (b - a)];
+    const stops = [from, ...corners.filter((c) => c > Math.min(from, to) && c < Math.max(from, to)), to];
+    if (to < from) stops.sort((p, q) => q - p);
+    const legs: Leg[] = [];
+    const on = this.beltAt(from);
+    const r = sp.root;
+    if (Math.hypot(on.x - r.x, on.y - r.y) > 2) legs.push({ x0: r.x, y0: r.y, x1: on.x, y1: on.y, z0: 0, z1: 0, arc: 26, air: true, dur: 340, t: 0 });
+    for (let i = 1; i < stops.length; i++) {
+      const p = this.beltAt(stops[i - 1]);
+      const q = this.beltAt(stops[i]);
+      legs.push({ x0: p.x, y0: p.y, x1: q.x, y1: q.y, z0: p.z, z1: q.z, arc: 0, air: false, dur: Math.max(90, (Math.abs(stops[i] - stops[i - 1]) / BELT_SPEED) * 1000), t: 0 });
+    }
+    const off = this.beltAt(to);
+    legs.push({ x0: off.x, y0: off.y, x1: x, y1: y, z0: 0, z1: 0, arc: 30, air: true, dur: 380, t: 0 });
+    sp.legs = legs;
   }
 
   /** The room's sign: its name, how many boxes it holds and how many are old. */
@@ -789,7 +910,7 @@ export class Scene {
     const a = iso(BOX, -BOX);
     const k = iso(-BOX, -BOX);
     root.hitArea = new Polygon([l.x, l.y, d.x, d.y, a.x, a.y, a.x, a.y - BOX_H, k.x, k.y - BOX_H, l.x, l.y - BOX_H]);
-    const sp: Sprite = { root, body, g, num, badge: null, box: b, tx: 0, ty: 0, depth: 0, hover: false, leaving: false, fx: 0, fy: 0, t: 1, dur: 1, arc: 0, squash: 0, phase: Math.random() * 10 };
+    const sp: Sprite = { root, body, g, num, badge: null, box: b, tx: 0, ty: 0, depth: 0, hover: false, leaving: false, legs: [], exit: '', gone: 0, squash: 0, phase: Math.random() * 10 };
     root.on('pointertap', (e) => {
       e.stopPropagation();
       this.select(sp.box.key);
@@ -813,12 +934,12 @@ export class Scene {
   /** Scales and centres the building in the window. */
   /** Starts a box on its way to (tx, ty) from where it is now. */
   private hop(sp: Sprite, ms: number, arc: number) {
-    sp.fx = sp.root.x;
-    sp.fy = sp.root.y;
-    sp.t = CALM ? 1 : 0;
-    sp.dur = ms;
-    sp.arc = arc;
-    if (CALM) sp.root.position.set(sp.tx, sp.ty);
+    if (CALM) {
+      sp.legs = [];
+      sp.root.position.set(sp.tx, sp.ty);
+      return;
+    }
+    sp.legs = [{ x0: sp.root.x, y0: sp.root.y, x1: sp.tx, y1: sp.ty, z0: 0, z1: 0, arc, air: true, dur: ms, t: 0 }];
   }
 
   /** Fits again unless the user has set the view themselves. */
@@ -830,9 +951,10 @@ export class Scene {
     const { width, height } = this.app.screen;
     const free = width;
     this.push = 0;
-    const s = Math.min((free - 32) / this.bounds.w, (height - 24) / this.bounds.h, 1.5);
+    const top = 56; // the HUD floats over the top of the window
+    const s = Math.min((free - 32) / this.bounds.w, (height - top - 20) / this.bounds.h, 1.5);
     this.world.scale.set(s);
-    this.world.position.set((free - this.bounds.w * s) / 2 - this.bounds.x * s, (height - this.bounds.h * s) / 2 - this.bounds.y * s);
+    this.world.position.set((free - this.bounds.w * s) / 2 - this.bounds.x * s, top + (height - top - this.bounds.h * s) / 2 - this.bounds.y * s);
     this.app.stage.hitArea = this.app.screen;
     this.reveal();
   }
@@ -850,21 +972,36 @@ export class Scene {
 
     this.sprites.forEach((s, key) => {
       const r = s.root;
-      if (s.t < 1) {
-        // on its way: along a straight line on the floor, lifted by the arc
-        s.t = Math.min(1, s.t + ms / s.dur);
-        const e = s.arc ? easeInOut(s.t) : s.t * s.t; // a drop speeds up as it falls
-        r.x = s.fx + (s.tx - s.fx) * e;
-        r.y = s.fy + (s.ty - s.fy) * e - Math.sin(Math.PI * s.t) * s.arc;
-        r.zIndex = 1e7; // above the walls while in the air
+      const leg = s.legs[0];
+      if (leg) {
+        // on its way: through the air in an arc, or flat along the belt
+        leg.t = Math.min(1, leg.t + ms / leg.dur);
+        const e = !leg.air ? leg.t : leg.arc ? easeInOut(leg.t) : leg.t * leg.t; // a drop speeds up as it falls
+        r.x = leg.x0 + (leg.x1 - leg.x0) * e;
+        r.y = leg.y0 + (leg.y1 - leg.y0) * e - Math.sin(Math.PI * leg.t) * leg.arc;
+        r.zIndex = leg.air ? 1e7 : leg.z0 + (leg.z1 - leg.z0) * e;
         if (r.alpha < 1 && !s.leaving) r.alpha = Math.min(1, r.alpha + ms / 200);
-        if (s.t >= 1) s.squash = SQUASH;
-        if (s.leaving && s.t > 0.7) r.alpha = Math.max(0, (1 - s.t) / 0.3);
+        if (s.leaving && s.legs.length === 1 && leg.t > 0.7) r.alpha = Math.max(0, (1 - leg.t) / 0.3);
+        if (leg.t >= 1) {
+          s.legs.shift();
+          if (!s.legs.length && leg.air) s.squash = SQUASH;
+        }
         return;
       }
       if (s.leaving) {
-        r.alpha -= ms / 400;
-        if (!this.truck || s.arc === 0) r.y -= ms / 20;
+        s.gone += ms;
+        if (s.exit === 'fly') {
+          // sent back: it shoots up and away, spinning
+          const v = 0.25 + s.gone * 0.0035;
+          r.y -= v * ms;
+          r.x += 0.14 * ms;
+          s.body.rotation += 0.012 * ms;
+          r.zIndex = 1e7;
+          r.alpha -= ms / 650;
+        } else {
+          r.alpha -= ms / 400;
+          if (s.exit !== 'truck') r.y -= ms / 20;
+        }
         if (r.alpha <= 0) {
           r.destroy({ children: true });
           this.sprites.delete(key);
@@ -896,7 +1033,7 @@ export class Scene {
     }
     // people breathe; the belt runs
     for (const p of this.people) p.g.y = p.y + Math.sin(T * 2.4 + p.phase) * 1.4;
-    for (const b of this.belts) this.drawBelt(b, T * 0.9);
+    for (const b of this.belts) this.drawBelt(b, T * 1.6);
 
     // the truck: waits for its load, drives off, comes back empty
     if (this.truck) {
@@ -919,13 +1056,13 @@ export class Scene {
   }
 
   /** Slats across one tile of the conveyor, shifted by how far the belt has run. */
-  private drawBelt(b: { g: Graphics; gx: number; gy: number; w: number }, run: number) {
+  private drawBelt(b: BeltTile, run: number) {
     b.g.clear();
     const step = 0.5;
-    for (let d = ((run % step) + step) % step; d < b.w; d += step) {
-      const p = iso(b.gx + d, b.gy - 0.4);
-      const q = iso(b.gx + d, b.gy + 0.4);
-      b.g.moveTo(p.x, p.y - 7).lineTo(q.x, q.y - 7).stroke({ width: 1.5, color: 0x9aa3b5, alpha: 0.85 });
+    const shift = (((run * b.dir) % step) + step) % step;
+    for (let d = shift; d < b.w; d += step) {
+      const [p, q] = b.axis === 'x' ? [iso(b.gx + d, b.gy - 0.4), iso(b.gx + d, b.gy + 0.4)] : [iso(b.gx - 0.4, b.gy + d), iso(b.gx + 0.4, b.gy + d)];
+      b.g.moveTo(p.x, p.y - BELT_UP).lineTo(q.x, q.y - BELT_UP).stroke({ width: 1.5, color: 0x9aa3b5, alpha: 0.85 });
     }
   }
 }

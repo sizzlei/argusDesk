@@ -19,7 +19,8 @@ let menuOpen = false;
 
 export function renderHud(state: AppState, snap: Snapshot | null, space: number, lastError: string, backend: Backend, hooks: HudHooks) {
   const hud = document.getElementById('hud')!;
-  const zones = snap?.spaces[space]?.zones ?? [];
+  // Returned boxes leave the building, so they have no room and no counter.
+  const zones = (snap?.spaces[space]?.zones ?? []).filter((z) => z.kind !== 'returned');
   const item = (label: string, run: () => void) =>
     h('button', { role: 'menuitem', onclick: () => ((menuOpen = false), run()) }, label);
 

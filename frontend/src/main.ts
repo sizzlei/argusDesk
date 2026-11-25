@@ -57,13 +57,21 @@ async function boot() {
         legend();
       },
     });
+  let legendOpen = false;
+  document.getElementById('legend-toggle')!.addEventListener('click', () => {
+    legendOpen = !legendOpen;
+    legend();
+  });
   /** The legend lists the request types on the floor and the age colours. */
   const legend = () => {
     const el = document.getElementById('legend')!;
     const id = snap?.spaces[space]?.id;
     const types = new Map<string, string>();
     snap?.boxes.filter((b) => b.space === id).forEach((b) => types.set(b.type, b.tag));
-    el.hidden = !snap || types.size === 0;
+    const toggle = document.getElementById('legend-toggle')!;
+    toggle.hidden = !snap || types.size === 0;
+    toggle.setAttribute('aria-expanded', String(legendOpen));
+    el.hidden = toggle.hidden || !legendOpen; // shown only while asked for
     if (el.hidden) return;
     const css = (c: number) => `#${c.toString(16).padStart(6, '0')}`;
     const item = (cls: string, colour: number, text: string) => {
