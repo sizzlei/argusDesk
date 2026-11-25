@@ -1082,3 +1082,158 @@ dialog.confirm .buttons {
 #legend {
   bottom: 58px;
 }
+
+/* ---- the game: level chip and the record panel ---- */
+
+.game-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+}
+
+.game-chip[aria-expanded='true'] {
+  border-color: var(--ink);
+}
+
+.game-chip .lv {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.game-chip .lv.team {
+  color: var(--accent);
+}
+
+.xp {
+  width: 64px;
+  height: 6px;
+  overflow: hidden;
+  border-radius: 3px;
+  background: var(--line);
+}
+
+.xp i {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: var(--accent);
+  transition: width 0.6s ease;
+}
+
+#game {
+  position: absolute;
+  top: 66px;
+  left: 220px;
+  z-index: 9;
+  width: min(520px, calc(100% - 244px));
+  max-height: calc(100% - 90px);
+  padding: 16px 18px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: 0 12px 32px rgb(31 42 68 / 16%);
+}
+
+#game h3 {
+  margin: 16px 0 8px;
+  font-size: 13px;
+}
+
+#game .tallies {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.tally {
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--paper);
+}
+
+.tally .who {
+  display: flex;
+  justify-content: space-between;
+  margin: 0 0 8px;
+  font-weight: 600;
+}
+
+.tally.team .who b {
+  color: var(--accent);
+}
+
+.tally .xp {
+  width: 100%;
+  height: 8px;
+}
+
+.tally p.quiet {
+  margin: 4px 0 8px;
+  font-size: 12px;
+}
+
+.tally dl {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  margin: 0;
+}
+
+.tally dt {
+  color: var(--quiet);
+  font-size: 12px;
+}
+
+.tally dd {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.badges {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.badges li {
+  display: grid;
+  gap: 2px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  font-size: 12px;
+}
+
+.badges .medal {
+  font-size: 18px;
+  line-height: 1;
+}
+
+.badges .name {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.badges li.earned {
+  border-color: #e9c46a;
+  background: #fff8e1;
+}
+
+.badges li.earned .medal {
+  color: #d99a00;
+}
+
+.badges li.locked {
+  color: var(--quiet);
+}

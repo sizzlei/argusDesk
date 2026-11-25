@@ -1,9 +1,10 @@
 import { connect } from './backend';
+import { news } from './game';
 import { renderHud } from './hud';
 import { showPanel } from './panel';
 import { AGE, Scene, TAGS } from './scene';
 import { renderSetup } from './setup';
-import type { AppState, Box, Snapshot } from './types';
+import type { AppState, Box, GameStats, Snapshot } from './types';
 import { checkForUpdates, initUpdates } from './update';
 import { errText, toast } from './ui';
 
@@ -14,6 +15,8 @@ async function boot() {
   let space = 0;
   let lastError = '';
   let selected: Box | null = null;
+  let game: GameStats | null = null;
+  let gameOpen = false;
 
   const tooltip = document.getElementById('tooltip')!;
   const scene = new Scene(document.getElementById('scene')!, {
@@ -50,6 +53,12 @@ async function boot() {
           apply(next);
           toast(on ? (next.notifyProblem ? `알림을 켰지만 보낼 수 없습니다: ${next.notifyProblem}` : '알림을 켰습니다.') : '알림을 껐습니다.');
         }, fail),
+      game,
+      gameOpen,
+      toggleGame: () => {
+        gameOpen = !gameOpen;
+        hud();
+      },
       setSpace: (i) => {
         space = i;
         scene.setSpace(i);
@@ -97,6 +106,25 @@ async function boot() {
       row('묵음', ages.map((t, i) => item('', AGE[i], t))),
     );
   };
+  /** Takes new game statistics and celebrates what was just earned. */
+  const score = (next: GameStats | null) => {
+    if (!next) return;
+    const fresh = news(game, next);
+    game = next;
+    hud();
+    if (fresh.myLevel) {
+      toast(`레벨 업! 나 Lv.${fresh.myLevel}`);
+      scene.celebrate();
+    }
+    if (fresh.teamLevel) {
+      toast(`센터 레벨 업! Lv.${fresh.teamLevel}`);
+      scene.celebrate();
+    }
+    fresh.badges.forEach((b) => {
+      toast(`배지 획득: ${b.name} · ${b.desc}`);
+      scene.celebrate();
+    });
+  };
   const fail = (e: unknown) => void toast(errText(e), 'error');
 
   /** Takes a new app state: shows a setup page if something is missing. */
@@ -122,6 +150,7 @@ async function boot() {
     hud();
     legend();
   });
+  backend.onGame(score);
   backend.onError((err) => {
     lastError = err.message;
     if (err.auth) void backend.state().then(apply);
@@ -136,6 +165,7 @@ async function boot() {
     hud();
     legend();
   }
+  score(await backend.gameStats().catch(() => null));
   initUpdates(backend);
 }
 

@@ -2,7 +2,8 @@
 // few commands the app has.
 
 import type { Backend } from './backend';
-import type { AppState, Snapshot } from './types';
+import { gameChip, renderGame } from './game';
+import type { AppState, GameStats, Snapshot } from './types';
 import { clock, fill, h, toast } from './ui';
 
 export interface HudHooks {
@@ -13,6 +14,9 @@ export interface HudHooks {
   logout(): void;
   setNotify(on: boolean): void;
   setSpace(index: number): void;
+  game: GameStats | null;
+  gameOpen: boolean;
+  toggleGame(): void;
 }
 
 let menuOpen = false;
@@ -44,6 +48,8 @@ export function renderHud(state: AppState, snap: Snapshot | null, space: number,
       .reverse(),
   );
 
+  renderGame(hooks.game, hooks.gameOpen, hooks.toggleGame);
+
   fill(
     hud,
     h(
@@ -53,6 +59,7 @@ export function renderHud(state: AppState, snap: Snapshot | null, space: number,
       h('span', { class: 'quiet', title: state.configPath }, `설정 ${state.configVersion || '?'}`),
       backend.mock ? h('span', { class: 'chip' }, '가짜 데이터') : null,
       state.usingLastGood ? h('span', { class: 'chip warn', title: state.configError }, '이전 설정으로 실행 중') : null,
+      gameChip(hooks.game, hooks.gameOpen, hooks.toggleGame),
     ),
     h(
       'ul',

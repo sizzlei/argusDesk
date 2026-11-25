@@ -45,8 +45,25 @@ type Config struct {
 	Timezone    string  `yaml:"timezone"`
 	PollSeconds int     `yaml:"poll_seconds"`
 	Spaces      []Space `yaml:"spaces"`
+	Game        Game    `yaml:"game"`
 
 	loc *time.Location
+}
+
+// Game sets how finished tickets turn into experience. All of it is optional.
+type Game struct {
+	SeasonStart string `yaml:"season_start"` // "2026-01-01"; default: January 1st of this year
+	XP          int    `yaml:"xp"`           // experience for a finished ticket; default 10
+
+	start time.Time
+}
+
+// Season returns when the current season started.
+func (g *Game) Season(now time.Time, loc *time.Location) time.Time {
+	if !g.start.IsZero() {
+		return g.start
+	}
+	return time.Date(now.In(loc).Year(), 1, 1, 0, 0, 0, 0, loc)
 }
 
 // Space is one Jira project shown as one room.
@@ -97,6 +114,7 @@ type Type struct {
 	Workflow    string       `yaml:"workflow"`
 	Tag         string       `yaml:"tag"`
 	StaleField  string       `yaml:"stale_field"` // "created", "duedate" or a field name
+	XP          int          `yaml:"xp"`          // experience when finished; 0 = the game's default
 	Unscheduled *Unscheduled `yaml:"unscheduled"`
 }
 
@@ -225,6 +243,19 @@ func (c *Config) check() error {
 		bad("timezone: 알 수 없는 시간대 %q", c.Timezone)
 	}
 	c.loc = loc
+	if c.Game.XP == 0 {
+		c.Game.XP = 10
+	}
+	if c.Game.XP < 0 {
+		bad("game.xp: 0보다 커야 합니다")
+	}
+	if c.Game.SeasonStart != "" && loc != nil {
+		at, perr := time.ParseInLocation("2006-01-02", c.Game.SeasonStart, loc)
+		if perr != nil {
+			bad("game.season_start: 날짜는 2026-01-01 형식이어야 합니다 (현재 %q)", c.Game.SeasonStart)
+		}
+		c.Game.start = at
+	}
 	if len(c.Spaces) == 0 {
 		bad("spaces: 공간이 하나도 없습니다")
 	}

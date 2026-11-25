@@ -185,3 +185,32 @@ export interface TicketActions {
   serviceDesk: boolean; // comments are internal or public; otherwise plain
   approvalsError: string;
 }
+
+/** What a person, or the whole team, has done in the season. */
+export interface Tally {
+  done: number;
+  today: number;
+  week: number;
+  xp: number;
+  level: number;
+  levelXp: number; // experience this level starts at
+  nextXp: number; // experience the next level starts at
+}
+
+export interface Badge {
+  id: string;
+  name: string;
+  desc: string;
+  scope: 'me' | 'team';
+  have: number;
+  need: number;
+  earned: boolean;
+}
+
+/** The game state for one user: the team's total and the user's own, never anyone else's. */
+export interface GameStats {
+  since: string;
+  team: Tally;
+  me: Tally;
+  badges: Badge[];
+}

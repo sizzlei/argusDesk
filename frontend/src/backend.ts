@@ -4,7 +4,7 @@
 // In mock mode (npm run dev:mock) the same interface is served by mock.ts
 // with made-up data, so the screen runs in a plain browser.
 
-import type { AppState, BoardError, BoardEvent, Release, Snapshot, TicketActions, TicketDetail, UpdateInfo } from './types';
+import type { AppState, BoardError, BoardEvent, GameStats, Release, Snapshot, TicketActions, TicketDetail, UpdateInfo } from './types';
 
 export interface Backend {
   mock: boolean;
@@ -28,6 +28,9 @@ export interface Backend {
   openUrl(url: string): void;
   onBoard(cb: (ev: BoardEvent) => void): void;
   onError(cb: (err: BoardError) => void): void;
+  // the season's experience, levels and badges
+  gameStats(): Promise<GameStats | null>;
+  onGame(cb: (stats: GameStats) => void): void;
   // updates
   checkUpdate(): Promise<UpdateInfo>;
   lastUpdateCheck(): Promise<number>;
@@ -60,6 +63,8 @@ async function real(): Promise<Backend> {
     openUrl: (url) => void Browser.OpenURL(url),
     onBoard: (cb) => void Events.On('board:snapshot', (ev: { data: BoardEvent }) => cb(ev.data)),
     onError: (cb) => void Events.On('board:error', (ev: { data: BoardError }) => cb(ev.data)),
+    gameStats: () => call('GameStats'),
+    onGame: (cb) => void Events.On('game:stats', (ev: { data: GameStats }) => cb(ev.data)),
     checkUpdate: () => call('CheckUpdate'),
     lastUpdateCheck: () => call('LastUpdateCheck'),
     releaseNotes: (tag) => call('ReleaseNotes', tag),

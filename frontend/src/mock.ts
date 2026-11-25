@@ -2,7 +2,7 @@
 // invented; nothing comes from a real Jira.
 
 import type { Backend } from './backend';
-import type { AppState, BoardEvent, Box, Change, Member, PathStep, Snapshot, ZoneView } from './types';
+import type { AppState, Badge, BoardEvent, Box, Change, GameStats, Member, PathStep, Snapshot, Tally, ZoneView } from './types';
 
 const HOUR = 3600_000;
 
@@ -254,6 +254,49 @@ export function mockBackend(): Backend {
     publish([{ kind: 'moved', key: b.key, fromZone: from, toZone: to }]);
   };
 
+  // The game: made-up totals that grow as boxes are shipped.
+  const gameListeners: ((s: GameStats) => void)[] = [];
+  const counts = { team: 498, me: 98, teamToday: 6, meToday: 3 }; // just short of a level and a badge, to show them
+  const tally = (done: number, today: number, scale: number): Tally => {
+    const xp = done * 10;
+    let level = 1;
+    let from = 0;
+    while (xp >= from + 100 * level * scale) from += 100 * level++ * scale;
+    return { done, today, week: today + 9, xp, level, levelXp: from, nextXp: from + 100 * level * scale };
+  };
+  const game = (): GameStats => {
+    const b = (id: string, name: string, desc: string, scope: 'me' | 'team', have: number, need: number): Badge => ({ id, name, desc, scope, have: Math.min(have, need), need, earned: have >= need });
+    return {
+      since: '2026-01-01T00:00:00+09:00',
+      team: tally(counts.team, counts.teamToday, 4),
+      me: tally(counts.me, counts.meToday, 1),
+      badges: [
+        b('first', '첫 출고', '상자 하나를 끝까지 보냈다', 'me', counts.me, 1),
+        b('done-50', '출고 50', '시즌에 상자 50개 출고', 'me', counts.me, 50),
+        b('done-100', '출고 100', '시즌에 상자 100개 출고', 'me', counts.me, 100),
+        b('done-300', '출고 300', '시즌에 상자 300개 출고', 'me', counts.me, 300),
+        b('day-5', '바쁜 하루', '하루에 5개 출고', 'me', counts.meToday, 5),
+        b('day-10', '불타는 하루', '하루에 10개 출고', 'me', counts.meToday, 10),
+        b('streak-5', '꾸준함', '5일(근무일) 연속 출고', 'me', 5, 5),
+        b('fast-10', '번개 처리', '접수 1시간 안에 끝낸 상자 10개', 'me', 4, 10),
+        b('types', '유형 수집가', '모든 요청 유형을 한 번씩 출고', 'me', 4, 5),
+        b('team-500', '팀 출고 500', '시즌에 팀이 상자 500개 출고', 'team', counts.team, 500),
+        b('team-1000', '팀 출고 1000', '시즌에 팀이 상자 1000개 출고', 'team', counts.team, 1000),
+        b('team-day-20', '팀 대목', '팀이 하루에 20개 출고', 'team', counts.teamToday, 20),
+      ],
+    };
+  };
+  const finish = (mine: boolean) => {
+    counts.team++;
+    counts.teamToday++;
+    if (mine) {
+      counts.me++;
+      counts.meToday++;
+    }
+    const s = game();
+    gameListeners.forEach((cb) => cb(s));
+  };
+
   // Every few seconds something happens, as it would over a working day.
   function tick() {
     now += 20 * 60_000;
@@ -263,7 +306,7 @@ export function mockBackend(): Backend {
       const b = make(rand(3) === 0 ? 'review' : 'lobby', 0, now);
       boxes.push(b);
       changes.push({ kind: 'added', key: b.key, toZone: b.zone });
-    } else if (roll < 9) {
+    } else if (roll < 8) {
       const movable = boxes.filter((b) => order.indexOf(b.zone) >= 0 && b.zone !== 'dock');
       const b = movable[rand(movable.length)];
       if (b) {
@@ -274,7 +317,11 @@ export function mockBackend(): Backend {
       }
     } else {
       const done = boxes.findIndex((b) => b.zone === 'dock');
-      if (done >= 0) changes.push({ kind: 'removed', key: boxes.splice(done, 1)[0].key, fromZone: 'dock' });
+      if (done >= 0) {
+        const gone = boxes.splice(done, 1)[0];
+        changes.push({ kind: 'removed', key: gone.key, fromZone: 'dock' });
+        finish(gone.assigneeId === 'u1' || rand(2) === 0);
+      }
     }
     const snap = snapshot(boxes, now);
     listeners.forEach((cb) => cb({ snapshot: snap, changes }));
@@ -382,6 +429,8 @@ export function mockBackend(): Backend {
     openUrl: (url) => console.info('open', url),
     onBoard: (cb) => void listeners.push(cb),
     onError: () => {},
+    gameStats: async () => game(),
+    onGame: (cb) => void gameListeners.push(cb),
     checkUpdate: async () => ({
       current: '0.1.0',
       available: false,

@@ -12,6 +12,7 @@ import (
 
 	"github.com/sizzlei/argusDesk/internal/board"
 	"github.com/sizzlei/argusDesk/internal/config"
+	"github.com/sizzlei/argusDesk/internal/game"
 	"github.com/sizzlei/argusDesk/internal/jira"
 	"github.com/sizzlei/argusDesk/internal/model"
 	"github.com/sizzlei/argusDesk/internal/secret"
@@ -24,6 +25,7 @@ const (
 	evSnapshot = "board:snapshot" // BoardEvent
 	evError    = "board:error"    // BoardError
 	evProgress = "update:progress"
+	evGame     = "game:stats" // *game.Stats
 )
 
 // App is the service bound to the screen: every exported method can be
@@ -44,6 +46,10 @@ type App struct {
 	kick        chan struct{}
 
 	notify notifier
+
+	gameStats *game.Stats
+	gameAt    time.Time // when the statistics were last read
+	gameBusy  atomic.Bool
 
 	updating atomic.Bool
 	restart  func() error
@@ -432,6 +438,7 @@ func (a *App) startPolling() {
 	a.stopPolling = cancel
 	engine := board.NewEngine(a.cfg, a.client, a.me.AccountID)
 	a.engine = engine
+	a.gameAt = time.Time{} // read the statistics again for this sign-in and these settings
 	every := a.cfg.Poll()
 	a.mu.Unlock()
 
@@ -453,6 +460,7 @@ func (a *App) startPolling() {
 				if wanted {
 					a.notify.send(board.Notes(snap, changes, a.notify.skip()))
 				}
+				a.refreshGame(ctx, snap, changes)
 			case errors.Is(err, jira.ErrUnauthorized):
 				a.mu.Lock()
 				a.authError, a.me = err.Error(), nil
@@ -474,6 +482,59 @@ func (a *App) startPolling() {
 			case <-time.After(wait):
 			}
 		}
+	}()
+}
+
+// GameStats returns the season's statistics, or nil before they were read.
+func (a *App) GameStats() *game.Stats {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.gameStats
+}
+
+// refreshGame reads the season's finished tickets again when something was
+// finished just now, and otherwise every ten minutes. It runs beside the
+// polling loop: the statistics are a heavier read and never hold it up.
+func (a *App) refreshGame(ctx context.Context, snap *model.Snapshot, changes []model.Change) {
+	a.mu.Lock()
+	cfg, client, me, last := a.cfg, a.client, a.me, a.gameAt
+	a.mu.Unlock()
+	if cfg == nil || client == nil || me == nil {
+		return
+	}
+	finished := false
+	kinds := map[string]string{}
+	for _, sp := range snap.Spaces {
+		for _, z := range sp.Zones {
+			kinds[z.ID] = z.Kind
+		}
+	}
+	for _, c := range changes {
+		if (c.Kind == "moved" && kinds[c.ToZone] == config.KindDone) || (c.Kind == "removed" && kinds[c.FromZone] == config.KindDone) {
+			finished = true
+		}
+	}
+	if !finished && time.Since(last) < 10*time.Minute {
+		return
+	}
+	if !a.gameBusy.CompareAndSwap(false, true) {
+		return
+	}
+	go func() {
+		defer a.gameBusy.Store(false)
+		rctx, cancel := context.WithTimeout(ctx, 3*time.Minute)
+		defer cancel()
+		now := time.Now().In(cfg.Location())
+		since := cfg.Game.Season(now, cfg.Location())
+		dones, err := board.Dones(rctx, cfg, client, since)
+		if err != nil {
+			return // the next round tries again; the centre itself is unaffected
+		}
+		stats := game.Compute(dones, me.AccountID, board.TypeNames(cfg), since, now)
+		a.mu.Lock()
+		a.gameStats, a.gameAt = stats, time.Now()
+		a.mu.Unlock()
+		a.app.Event.Emit(evGame, stats)
 	}()
 }
 

@@ -371,6 +371,8 @@ export class Scene {
   private people: { g: Graphics; y: number; phase: number }[] = [];
   private belts: BeltTile[] = [];
   private belt: Belt | null = null;
+  private fx = new Container(); // confetti, in window coordinates, above everything
+  private bits: { g: Graphics; vx: number; vy: number; spin: number; life: number }[] = [];
   private held = false; // the user zoomed or moved the view: leave it alone
   private push = 0; // how far the view has slid aside for the panel
   private pushTo = 0;
@@ -393,6 +395,8 @@ export class Scene {
     this.things.sortableChildren = true;
     this.lift.addChild(this.world);
     this.app.stage.addChild(this.lift);
+    this.app.stage.addChild(this.fx);
+    this.fx.eventMode = 'none';
     this.app.stage.eventMode = 'static';
     this.app.stage.hitArea = this.app.screen;
     this.app.stage.on('pointertap', (e) => {
@@ -650,6 +654,12 @@ export class Scene {
       }
     });
     if (loaded && this.truckRun < 0) this.truckRun = 0;
+    const parked = this.truck as { x: number; y: number } | null; // set while the rooms were drawn
+    if (loaded && parked) {
+      // a small cheer as the box lands on the truck
+      const at = { x: this.world.x + parked.x * this.world.scale.x, y: this.world.y + (parked.y - 30) * this.world.scale.y };
+      setTimeout(() => this.burst(at.x, at.y, 16), 600);
+    }
     if (this.selected && !alive.has(this.selected)) this.select('');
     else if (this.selected) this.hooks.onSelect(this.sprites.get(this.selected)!.box);
 
@@ -932,6 +942,26 @@ export class Scene {
   }
 
   /** Scales and centres the building in the window. */
+  /** Throws a handful of confetti from a point in the window. */
+  private burst(x: number, y: number, count: number, power = 1) {
+    if (CALM) return;
+    const colours = [0x3b5bdb, 0xffd166, 0xe56b3c, 0x3f9c63, 0xd9629a, 0xffffff];
+    for (let i = 0; i < count; i++) {
+      const g = new Graphics().rect(-3, -2, 6, 4).fill(colours[i % colours.length]);
+      g.position.set(x, y);
+      const a = -Math.PI / 2 + (Math.random() - 0.5) * 2.2;
+      const v = (0.25 + Math.random() * 0.45) * power;
+      this.fx.addChild(g);
+      this.bits.push({ g, vx: Math.cos(a) * v, vy: Math.sin(a) * v, spin: (Math.random() - 0.5) * 0.02, life: 900 + Math.random() * 600 });
+    }
+  }
+
+  /** A celebration across the window: a level gained, a badge earned. */
+  celebrate() {
+    const { width, height } = this.app.screen;
+    for (let i = 1; i <= 5; i++) this.burst((width * i) / 6, height * 0.42, 22, 1.5);
+  }
+
   /** Starts a box on its way to (tx, ty) from where it is now. */
   private hop(sp: Sprite, ms: number, arc: number) {
     if (CALM) {
@@ -1025,6 +1055,20 @@ export class Scene {
         s.body.scale.set(1);
       }
     });
+
+    for (let i = this.bits.length - 1; i >= 0; i--) {
+      const b = this.bits[i];
+      b.life -= ms;
+      b.vy += 0.0011 * ms; // gravity
+      b.g.x += b.vx * ms;
+      b.g.y += b.vy * ms;
+      b.g.rotation += b.spin * ms;
+      b.g.alpha = Math.min(1, b.life / 300);
+      if (b.life <= 0) {
+        b.g.destroy();
+        this.bits.splice(i, 1);
+      }
+    }
 
     if (CALM) {
       this.belts.forEach((b) => this.drawBelt(b, 0));

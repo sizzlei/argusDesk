@@ -230,3 +230,29 @@ func TestJQL(t *testing.T) {
 		t.Error("a jql in the file replaces the generated one")
 	}
 }
+
+func TestDoneJQLAndDones(t *testing.T) {
+	cfg := example(t)
+	sp := &cfg.Spaces[0]
+	since := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	q := DoneJQL(sp, since)
+	if !strings.Contains(q, `statusCategoryChangedDate >= "2026-01-01"`) || !strings.Contains(q, "status in (") {
+		t.Fatalf("jql = %s", q)
+	}
+	var typeName string
+	for n := range sp.Types {
+		typeName = n
+		break
+	}
+	raw := func(v any) json.RawMessage { b, _ := json.Marshal(v); return b }
+	f := &fake{issues: []jira.Issue{{Key: "A-1", Fields: map[string]json.RawMessage{
+		"assignee":                 raw(map[string]string{"accountId": "u1"}),
+		"issuetype":                raw(map[string]string{"name": typeName}),
+		"created":                  raw("2026-11-24T09:00:00.000+0900"),
+		"statuscategorychangedate": raw("2026-11-25T10:00:00.000+0900"),
+	}}, {Key: "A-2", Fields: map[string]json.RawMessage{}}}}
+	got, err := Dones(context.Background(), cfg, f, since)
+	if err != nil || len(got) != 1 || got[0].AssigneeID != "u1" || got[0].XP != 10 || got[0].At.IsZero() {
+		t.Fatalf("got %+v, err %v", got, err)
+	}
+}
