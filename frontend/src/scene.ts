@@ -17,6 +17,8 @@ const ZW = 8; // room size in tiles
 const ZH = 7;
 const COL_GAP = 0.5; // partition between rooms of a row
 const ROW_GAP = 4.8; // corridor between rows (holds the two lanes of the conveyor)
+const ATRIUM_GAP = 8.2; // upper floors: the rows stand apart around a garden, with the conveyor circling it
+let rowGap = ROW_GAP; // the gap in use, set per floor
 const COLS = 3; // rooms per row
 const PAD = 0.7; // floor slab around the rooms
 const WALL_H = 58; // outer wall height on screen
@@ -28,7 +30,7 @@ const iso = (gx: number, gy: number) => ({ x: ((gx - gy) * TW) / 2, y: ((gx + gy
 // space. Set from the zones each time the building is drawn.
 let rowDepths: number[] = [];
 const DESK_EXTRA = 3;
-const rowY = (row: number) => rowDepths.slice(0, row).reduce((sum, d) => sum + d + ROW_GAP, 0);
+const rowY = (row: number) => rowDepths.slice(0, row).reduce((sum, d) => sum + d + rowGap, 0);
 
 /** Rooms snake through the building: left to right, then back. */
 function roomOrigin(index: number) {
@@ -42,7 +44,7 @@ function roomOrigin(index: number) {
 const INK = 0x1f2a44;
 const QUIET = 0x667085;
 const ACCENT = 0x3b5bdb;
-const SLAB = 0xdde3ec;
+const GROUND_SLAB = 0xdde3ec;
 const WALL = 0xf6f8fb;
 const PARTITION = 0xc8d0dc;
 const FLOOR: Record<ZoneKind, number> = {
@@ -549,6 +551,7 @@ interface Belt {
   a: number; // gy of lane A
   b: number; // gy of lane B
   end: number; // gx of the turn
+  entry: number; // where a new box comes onto lane A
 }
 const BELT_SPEED = 7; // tiles a second
 const BELT_UP = 7; // the belt's surface above the floor, on screen
@@ -759,6 +762,8 @@ export class Scene {
     this.things.children.filter((c) => c.label === 'prop').forEach((c) => c.destroy({ children: true }));
 
     const rows = Math.ceil(rooms.length / COLS);
+    // The ground floor is a tight warehouse; the floors above open around a garden.
+    rowGap = snap.spaces.indexOf(space) > 0 && rows > 1 ? ATRIUM_GAP : ROW_GAP;
     const cols = Math.min(COLS, rooms.length);
     const width = cols * ZW + (cols - 1) * COL_GAP;
     rowDepths = Array.from({ length: rows }, (_, r) =>
@@ -807,10 +812,10 @@ export class Scene {
           sp.root.position.set(x, y); // already here when the app opened
         } else if (to && !CALM) {
           // A new box comes in on the belt and rides to its room.
-          const start = this.beltAt(-0.6);
+          const start = this.beltAt(belt!.entry);
           sp.root.position.set(start.x, start.y);
           sp.root.alpha = 0;
-          this.ride(sp, -0.6, to.s, x, y);
+          this.ride(sp, belt!.entry, to.s, x, y);
         } else {
           sp.root.position.set(x, y - 170); // no belt on this floor: it drops in
           sp.root.alpha = 0;
@@ -1020,6 +1025,7 @@ export class Scene {
 
   /** The floor slab, the two back walls, the room partitions and the conveyor. */
   private drawBuilding(width: number, depth: number, rows: number, cols: number, floor: number, name: string, floors: number) {
+    const SLAB = floor > 0 ? 0xe7e1d6 : floor < 0 ? 0xe2dccf : GROUND_SLAB; // a warmer floor away from the warehouse
     const g = new Graphics();
     const x0 = -PAD;
     const y0 = -PAD;
@@ -1095,7 +1101,7 @@ export class Scene {
       }
       // along the corridor, with a doorway per room
       if (r < rows - 1) {
-        for (const gy of [gy0 + d + 0.05, gy0 + d + ROW_GAP - 0.23]) {
+        for (const gy of [gy0 + d + 0.05, gy0 + d + rowGap - 0.23]) {
           for (let i = 0; i < Math.ceil(width); i++) {
             const inRoom = i % (ZW + COL_GAP);
             if (inRoom >= 3 && inRoom < 5) continue; // doorway
@@ -1106,9 +1112,11 @@ export class Scene {
         // The conveyor is a U on its side: lane A carries boxes along the first
         // row, turns at the far end, and lane B brings them back along the second.
         const a = gy0 + d + 0.95;
-        const b = gy0 + d + ROW_GAP - 0.95;
+        const b = gy0 + d + rowGap - 0.95;
         const end = width - 0.7;
-        this.belt = { a, b, end };
+        const atrium = rowGap === ATRIUM_GAP;
+        const from = atrium ? 0.3 : -1; // where the lanes begin
+        this.belt = { a, b, end, entry: atrium ? 0.7 : -0.6 };
         const tile = (gx: number, gy: number, w: number, axis: 'x' | 'y', dir: 1 | -1) => {
           const [bw, bd] = axis === 'x' ? [w, 0.8] : [0.8, w];
           const [bx, by] = axis === 'x' ? [gx, gy - 0.4] : [gx - 0.4, gy];
@@ -1120,13 +1128,47 @@ export class Scene {
           this.things.addChild(marks);
           this.belts.push({ g: marks, gx, gy, w, axis, dir });
         };
-        for (let i = -1; i < end - 0.4; i++) {
+        for (let i = from; i < end - 0.4; i++) {
           const w = Math.min(1, end - 0.4 - i);
           tile(i, a, w, 'x', 1);
           tile(i, b, w, 'x', -1);
         }
         // the turn: one stretch across, from lane A to lane B
         for (let y = a - 0.4; y < b + 0.4 - 0.01; y += 1) tile(end, y, Math.min(1, b + 0.4 - y), 'y', 1);
+        if (atrium) {
+          // Upstairs the belt closes into a ring around a garden.
+          for (let y = a + 0.4; y < b - 0.4 - 0.01; y += 1) tile(0.7, y, Math.min(1, b - 0.4 - y), 'y', -1);
+          const gx0 = 1.9;
+          const gy1 = a + 1.0;
+          const gw = end - 1.2 - gx0;
+          const gd = b - 1.0 - gy1;
+          const lawn = new Graphics();
+          lawn.poly(floorPoly(gx0, gy1, gw, gd)).fill(0xcfe6cc);
+          lawn.poly(floorPoly(gx0 + 0.25, gy1 + 0.25, gw - 0.5, gd - 0.5)).fill(0xdcefd8);
+          // a stone path through the middle
+          for (let x = gx0 + 0.8; x < gx0 + gw - 0.8; x += 1.1) lawn.poly(floorPoly(x, gy1 + gd / 2 - 0.3, 0.7, 0.6)).fill(0xeee9df);
+          // a pond
+          const pond = iso(gx0 + gw / 2, gy1 + gd / 2 - 1.3);
+          lawn.ellipse(pond.x, pond.y, 46, 23).fill(0xe9e2d6);
+          lawn.ellipse(pond.x, pond.y, 40, 20).fill(0xa9d8f2);
+          lawn.ellipse(pond.x - 8, pond.y - 4, 14, 6).fill({ color: 0xffffff, alpha: 0.5 });
+          this.ground.addChild(lawn);
+          const deco = (gx: number, gy: number, draw: (pg: Graphics) => void) => {
+            const pg = new Graphics();
+            draw(pg);
+            pg.label = 'prop';
+            pg.zIndex = (gx + gy) * 100;
+            this.things.addChild(pg);
+          };
+          for (let x = gx0 + 0.5; x < gx0 + gw - 0.6; x += 3.4) {
+            deco(x + 0.25, gy1 + 0.55, (pg) => tree(pg, x, gy1 + 0.3));
+            deco(x + 1.95, gy1 + gd - 0.55, (pg) => tree(pg, x + 1.7, gy1 + gd - 0.8));
+          }
+          deco(gx0 + gw / 2 - 3.2, gy1 + gd / 2 + 0.75, (pg) => bench(pg, gx0 + gw / 2 - 4.0, gy1 + gd / 2 + 0.5, 'x', 1.6));
+          deco(gx0 + gw / 2 + 3.2, gy1 + gd / 2 + 0.75, (pg) => bench(pg, gx0 + gw / 2 + 2.4, gy1 + gd / 2 + 0.5, 'x', 1.6));
+          deco(gx0 + gw / 2 - 0.2, gy1 + gd - 0.5, (pg) => hedge(pg, gx0 + gw / 2 - 1.6, gy1 + gd - 0.65, 'x', 3.2));
+          this.plate('중앙 정원', gx0 + gw / 2, gy1 + gd / 2 + 0.6);
+        }
         // where boxes come in (lane A) and the arrows that show the way round
         const arrow = (gx: number, gy: number, dx: number, dy: number) => {
           piece(gx + 0.6, gy + 0.6, (pg) => {
@@ -1175,6 +1217,7 @@ export class Scene {
     const width = Math.max(ZW, 1.2 + beds * 1.7);
     const depth = 6;
     rowDepths = [depth];
+    rowGap = ROW_GAP;
     this.drawBuilding(width, depth, 1, 1, -1, '숙소', 2);
     const floor = new Graphics();
     floor.poly(floorPoly(0, 0, width, depth)).fill(0xeadfce);
