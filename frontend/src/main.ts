@@ -1,5 +1,7 @@
 import { connect } from './backend';
 import { news } from './game';
+import { filtersOpen, renderFilters, toggleFilters } from './filters';
+import { initFinder, openFinder } from './finder';
 import { renderHud } from './hud';
 import { addNotes, noticeCount, noticesOpen, renderNotices, toggleNotices } from './notices';
 import { closeTickets, openTicket, openTickets, syncTickets } from './panel';
@@ -9,6 +11,7 @@ import type { AppState, Box, Change, GameStats, Snapshot } from './types';
 import { checkForUpdates, initUpdates } from './update';
 import { openAvatarPicker, openVacation } from './vacation';
 import { errText, toast } from './ui';
+import { type Filter, applyFilter, loadFilter, saveFilter } from './view';
 
 async function boot() {
   const backend = await connect();
@@ -19,30 +22,22 @@ async function boot() {
   let selected: Box | null = null;
   let game: GameStats | null = null;
   let gameOpen = false;
-  // "My work" hides everything but the boxes I hold or have to approve.
-  const MINE = 'argusdesk.mineOnly';
-  let mineOnly = false;
-  try {
-    mineOnly = localStorage.getItem(MINE) === '1';
-  } catch {
-    // no storage: the choice lasts until the app closes
-  }
+  // The filter narrows what the room and the counters show.
+  let filter = loadFilter();
   let hidden = new Set<string>();
-  const isMine = (b: Box) => b.mine || !!b.myApproval;
-  /** The snapshot as the room and the counters show it: all of it, or my part. */
+  /** The snapshot as the room and the counters show it. */
   const view = (): Snapshot | null => {
-    hidden = new Set();
-    if (!snap || !mineOnly) return snap;
-    const boxes = snap.boxes.filter(isMine);
-    snap.boxes.forEach((b) => isMine(b) || hidden.add(b.key));
-    const spaces = snap.spaces.map((sp) => ({
-      ...sp,
-      zones: sp.zones.map((z) => {
-        const here = boxes.filter((b) => b.space === sp.id && b.zone === z.id);
-        return { ...z, count: here.length, staleCount: here.filter((b) => b.stale).length };
-      }),
-    }));
-    return { ...snap, spaces, boxes };
+    if (!snap) return null;
+    const v = applyFilter(snap, filter);
+    hidden = v.hidden;
+    return v.snap;
+  };
+  const setFilter = (next: Filter) => {
+    filter = next;
+    saveFilter(next);
+    draw([]);
+    hud();
+    legend();
   };
   /** Draws the room from the current snapshot and filter. */
   const draw = (changes: Change[]) => {
@@ -89,35 +84,35 @@ async function boot() {
     }
     selected = box;
     openTicket(box, snap, backend, tickets);
+    scene.focus(box.key);
     hud();
   };
   const hud = () => {
     renderNotices(snap, visit, () => hud());
-    renderHud(state, view(), space, lastError, backend, {
+    const shown = view();
+    renderFilters(snap, space, filter, shown?.boxes.length ?? 0, snap?.boxes.length ?? 0, setFilter, () => hud());
+    renderHud(state, shown, space, lastError, backend, {
       refresh: () => void backend.refresh(),
       reloadConfig: () => void backend.reloadConfig().then(apply, fail),
       chooseConfig: () => void backend.chooseConfig().then(apply, fail),
       checkUpdate: () => void checkForUpdates(true),
       logout: () => void backend.logout().then(apply, fail),
       windows: openTickets(),
-      mineOnly,
-      setMineOnly: (on) => {
-        if (on === mineOnly) return;
-        mineOnly = on;
-        try {
-          localStorage.setItem(MINE, on ? '1' : '0');
-        } catch {
-          // not kept
-        }
-        draw([]);
+      filter,
+      setFilter,
+      filtersOpen: filtersOpen(),
+      toggleFilters: () => {
+        toggleFilters();
+        if (filtersOpen()) toggleNotices(false);
         hud();
-        legend();
       },
+      search: openFinder,
       notices: {
         ...noticeCount(snap),
         open: noticesOpen(),
         toggle: () => {
           toggleNotices();
+          if (noticesOpen()) toggleFilters(false);
           hud();
         },
       },
@@ -239,6 +234,7 @@ async function boot() {
     else hud();
   });
 
+  initFinder(() => snap, visit);
   apply(state);
   const first = await backend.snapshot();
   if (first) {

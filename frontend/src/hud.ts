@@ -6,6 +6,7 @@ import { avatarIcon, lookOf } from './avatars';
 import { gameChip, renderGame } from './game';
 import type { AppState, GameStats, Snapshot } from './types';
 import { clock, fill, h, toast } from './ui';
+import { type Filter, type Scope, extraCount } from './view';
 
 export interface HudHooks {
   refresh(): void;
@@ -17,8 +18,11 @@ export interface HudHooks {
   vacation(): void;
   avatar(): void;
   windows: number; // open ticket windows
-  mineOnly: boolean; // the room shows only my boxes
-  setMineOnly(on: boolean): void;
+  filter: Filter; // which boxes the room shows
+  setFilter(next: Filter): void;
+  filtersOpen: boolean;
+  toggleFilters(): void;
+  search(): void;
   notices: { approvals: number; unread: number; open: boolean; toggle(): void };
   closeWindows(): void;
   setSpace(index: number): void;
@@ -28,6 +32,12 @@ export interface HudHooks {
 }
 
 let menuOpen = false;
+
+const SCOPES: [Scope, string, string][] = [
+  ['all', '전체', '팀 전체의 상자를 봅니다'],
+  ['mine', '내 작업', '내가 담당하거나 내가 승인할 상자만 봅니다'],
+  ['unassigned', '미배정', '담당자가 없는 상자만 봅니다'],
+];
 
 const TIRED = ['여유', '피곤', '지침'];
 
@@ -133,12 +143,22 @@ export function renderHud(state: AppState, snap: Snapshot | null, space: number,
     h(
       'div',
       { class: 'tools' },
+      snap ? h('button', { class: 'find', title: '상자 찾기 (Ctrl/⌘ K)', 'aria-label': '상자 찾기', onclick: hooks.search }, h('span', { class: 'find-ico', 'aria-hidden': 'true' }), h('kbd', {}, /Mac/.test(navigator.platform) ? '⌘K' : 'Ctrl K')) : null,
       snap
         ? h(
             'div',
             { class: 'scope', role: 'group', 'aria-label': '보이는 작업' },
-            h('button', { class: hooks.mineOnly ? '' : 'on', 'aria-pressed': String(!hooks.mineOnly), title: '팀 전체의 상자를 봅니다', onclick: () => hooks.setMineOnly(false) }, '전체'),
-            h('button', { class: hooks.mineOnly ? 'on' : '', 'aria-pressed': String(hooks.mineOnly), title: '내가 담당하거나 내가 승인할 상자만 봅니다', onclick: () => hooks.setMineOnly(true) }, '내 작업'),
+            ...SCOPES.map(([scope, text, tip]) =>
+              h('button', { class: hooks.filter.scope === scope ? 'on' : '', 'aria-pressed': String(hooks.filter.scope === scope), title: tip, onclick: () => hooks.filter.scope !== scope && hooks.setFilter({ ...hooks.filter, scope }) }, text),
+            ),
+          )
+        : null,
+      snap
+        ? h(
+            'button',
+            { class: `filter-btn${extraCount(hooks.filter) ? ' on' : ''}`, 'aria-expanded': String(hooks.filtersOpen), 'aria-controls': 'filters', title: '묵은 상자, 유형으로 걸러 보기', onclick: hooks.toggleFilters },
+            '필터',
+            extraCount(hooks.filter) ? h('span', { class: 'n' }, String(extraCount(hooks.filter))) : null,
           )
         : null,
       strip,

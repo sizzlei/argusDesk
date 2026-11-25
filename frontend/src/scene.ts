@@ -5,561 +5,18 @@
 // Lets PixiJS run where the page may not build code from strings (a strict
 // content security policy); it has no effect elsewhere.
 import 'pixi.js/unsafe-eval';
-import { Application, Container, Graphics, Polygon, Text } from 'pixi.js';
-import { type Look, lookOf } from './avatars';
-import type { Away, Box, Change, Member, Snapshot, SpaceView, ZoneKind, ZoneView } from './types';
+import { Application, Container, Graphics, Polygon } from 'pixi.js';
+import { lookOf } from './avatars';
+import type { Away, Box, Change, Member, Snapshot, SpaceView, ZoneView } from './types';
+import { TW, TH, ZW, ZH, COL_GAP, ROW_GAP, ATRIUM_GAP, grid, COLS, PAD, WALL_H, STOREY, iso, DESK_EXTRA, rowY, roomOrigin } from './scene/grid';
+import { INK, QUIET, ACCENT, FLOOR, AGE, shade, ageStep, shortAge, shortName } from './scene/palette';
+import { label, block, BOX, BOX_H, drawBox, floorPoly, tree, hedge, purifier, cooler, bench, sofa, dbTank, Lamp, rack, chiller, desk, person, truck, decorate, furnish } from './scene/props';
+import { LANE_TOP, lanePitch, slots } from './scene/layout';
+import { Sprite, Leg, BeltTile, Belt, BELT_SPEED, BELT_UP, CALM, easeInOut, SQUASH } from './scene/parts';
+import { drawBuilding, beltTile } from './scene/building';
+import { drawLodge } from './scene/lodge';
 
-// ---- isometric grid ---------------------------------------------------------
-
-const TW = 64; // tile width on screen
-const TH = 32; // tile height on screen
-const ZW = 8; // room size in tiles
-const ZH = 7;
-const COL_GAP = 0.5; // partition between rooms of a row
-const ROW_GAP = 4.8; // corridor between rows (holds the two lanes of the conveyor)
-const ATRIUM_GAP = 8.2; // upper floors: the rows stand apart around a garden, with the conveyor circling it
-let rowGap = ROW_GAP; // the gap in use, set per floor
-const COLS = 3; // rooms per row
-const PAD = 0.7; // floor slab around the rooms
-const WALL_H = 58; // outer wall height on screen
-const STOREY = 34; // height of a floor below the one shown, on screen
-
-const iso = (gx: number, gy: number) => ({ x: ((gx - gy) * TW) / 2, y: ((gx + gy) * TH) / 2 });
-
-// A row that holds a desk room is deeper, so every teammate's row of boxes has
-// space. Set from the zones each time the building is drawn.
-let rowDepths: number[] = [];
-const DESK_EXTRA = 3;
-const rowY = (row: number) => rowDepths.slice(0, row).reduce((sum, d) => sum + d + rowGap, 0);
-
-/** Rooms snake through the building: left to right, then back. */
-function roomOrigin(index: number) {
-  const row = Math.floor(index / COLS);
-  const col = row % 2 === 0 ? index % COLS : COLS - 1 - (index % COLS);
-  return { gx: col * (ZW + COL_GAP), gy: rowY(row), col, row, d: rowDepths[row] ?? ZH };
-}
-
-// ---- colours ----------------------------------------------------------------
-
-const INK = 0x1f2a44;
-const QUIET = 0x667085;
-const ACCENT = 0x3b5bdb;
-const GROUND_SLAB = 0xdde3ec;
-const WALL = 0xf6f8fb;
-const PARTITION = 0xc8d0dc;
-const FLOOR: Record<ZoneKind, number> = {
-  wait: 0xf2e6cc,
-  work: 0xd6e7f7,
-  desk: 0xd3eedd,
-  done: 0xfbe2b4,
-  returned: 0xf5d7d3,
-  unsorted: 0xe4dcf5,
-  siding: 0xe9e3f2,
-};
-export const TAGS: Record<string, number> = {
-  orange: 0xf08c3a,
-  purple: 0x8b63c9,
-  blue: 0x3d85c6,
-  green: 0x3f9c63,
-  teal: 0x2f9a9a,
-  pink: 0xd9629a,
-  yellow: 0xd9b02f,
-  navy: 0x34477f,
-  gray: 0x8a8f99,
-};
-const CARDBOARD = 0xd9a866;
-/** Box colour by how old it is: fresh, nearing the limit, then three steps past it. */
-export const AGE = [CARDBOARD, 0xe9a23b, 0xe56b3c, 0xc7352f, 0x8a1c2c];
-const UNSCHEDULED = 0xcfd5de;
-const SKIN = 0xf3d2b3;
-
-function mix(a: number, b: number, t: number) {
-  const ch = (s: number) => {
-    const x = (a >> s) & 255;
-    const y = (b >> s) & 255;
-    return Math.round(x + (y - x) * t) << s;
-  };
-  return ch(16) | ch(8) | ch(0);
-}
-const shade = (c: number, t: number) => mix(c, 0x1b2233, t);
-const tint = (c: number, t: number) => mix(c, 0xffffff, t);
-
-/** 0 fresh · 1 past half the limit · 2 past the limit · 3 past 3x · 4 past 10x. */
-export function ageStep(b: Box) {
-  if (b.note || !b.staleRatio) return 0;
-  const r = b.staleRatio;
-  return r < 0.5 ? 0 : r < 1 ? 1 : r < 3 ? 2 : r < 10 ? 3 : 4;
-}
-
-/** "5시간", "3일", "2달": how long past its starting point a box is. */
-function shortAge(ms: number) {
-  const h = ms / 3600_000;
-  if (h < 1) return `${Math.max(1, Math.round(h * 60))}분`;
-  if (h < 48) return `${Math.round(h)}시간`;
-  const d = h / 24;
-  return d < 60 ? `${Math.round(d)}일` : `${Math.round(d / 30)}달`;
-}
-
-/** Jira display names may carry a department after the name: keep the name. */
-export const shortName = (name: string) => name.trim().split(/\s+/)[0] ?? name;
-
-// ---- drawing blocks ---------------------------------------------------------
-
-function label(text: string, size: number, colour: number, weight: '400' | '600' | '700' = '400') {
-  return new Text({
-    text,
-    style: {
-      fontFamily: '-apple-system, "Apple SD Gothic Neo", "Malgun Gothic", "Segoe UI", sans-serif',
-      fontSize: size,
-      fontWeight: weight,
-      fill: colour,
-    },
-  });
-}
-
-/**
- * A flat-shaded block. (gx, gy) is its back corner on the grid, w and d its
- * size in tiles, h its height on screen and base how far it floats above the
- * floor. Light comes from the upper left: top brightest, right face darkest.
- */
-function block(g: Graphics, gx: number, gy: number, w: number, d: number, h: number, colour: number, base = 0) {
-  const a = iso(gx, gy);
-  const b = iso(gx + w, gy);
-  const c = iso(gx + w, gy + d);
-  const e = iso(gx, gy + d);
-  const lo = -base;
-  const hi = -base - h;
-  g.poly([e.x, e.y + lo, c.x, c.y + lo, c.x, c.y + hi, e.x, e.y + hi]).fill(shade(colour, 0.1));
-  g.poly([c.x, c.y + lo, b.x, b.y + lo, b.x, b.y + hi, c.x, c.y + hi]).fill(shade(colour, 0.26));
-  g.poly([a.x, a.y + hi, b.x, b.y + hi, c.x, c.y + hi, e.x, e.y + hi]).fill(tint(colour, 0.16));
-}
-
-/** A soft shadow on the floor under a block. */
-function shadow(g: Graphics, gx: number, gy: number, w: number, d: number) {
-  const p = [iso(gx + 0.12, gy + 0.12), iso(gx + w + 0.12, gy + 0.12), iso(gx + w + 0.12, gy + d + 0.12), iso(gx + 0.12, gy + d + 0.12)];
-  g.poly(p.flatMap((q) => [q.x, q.y])).fill({ color: 0x1b2233, alpha: 0.1 });
-}
-
-const BOX = 0.4; // half-size of a box in tiles
-const BOX_H = 27; // box height on screen
-
-/** A cardboard box whose base centre sits at (0, 0). */
-function drawBox(g: Graphics, b: Box, lit: boolean) {
-  const step = ageStep(b);
-  const c = b.note ? UNSCHEDULED : AGE[step];
-  g.clear();
-  shadow(g, -BOX, -BOX, BOX * 2, BOX * 2);
-  block(g, -BOX, -BOX, BOX * 2, BOX * 2, BOX_H, lit ? tint(c, 0.18) : c);
-  // tape across the top: accent colour marks my boxes
-  const m1 = iso(0, -BOX);
-  const m2 = iso(0, BOX);
-  g.moveTo(m1.x, m1.y - BOX_H)
-    .lineTo(m2.x, m2.y - BOX_H)
-    .stroke({ width: b.mine ? 5 : 3, color: b.mine ? ACCENT : shade(c, 0.16), alpha: b.mine ? 1 : 0.6 });
-  // waybill on the left face: white label with a stripe in the request type's colour
-  const l = iso(-BOX, BOX);
-  const d = iso(BOX, BOX);
-  const at = (t: number, up: number) => [l.x + (d.x - l.x) * t, l.y + (d.y - l.y) * t - up];
-  g.poly([...at(0.08, 5), ...at(0.92, 5), ...at(0.92, 22), ...at(0.08, 22)]).fill(0xffffff);
-  g.poly([...at(0.08, 5), ...at(0.26, 5), ...at(0.26, 22), ...at(0.08, 22)]).fill(TAGS[b.tag] ?? TAGS.gray);
-  // urgent flag
-  if (/high|highest|critical|긴급|높음/i.test(b.priority)) {
-    g.moveTo(0, -BOX_H).lineTo(0, -BOX_H - 18).stroke({ width: 1.5, color: INK });
-    g.poly([0, -BOX_H - 18, 10, -BOX_H - 14, 0, -BOX_H - 9]).fill(0xe03131);
-  }
-}
-
-function floorPoly(gx: number, gy: number, w: number, d: number) {
-  return [iso(gx, gy), iso(gx + w, gy), iso(gx + w, gy + d), iso(gx, gy + d)].flatMap((q) => [q.x, q.y]);
-}
-
-/** A potted plant, for corners. */
-function plant(g: Graphics, gx: number, gy: number) {
-  shadow(g, gx, gy, 0.4, 0.4);
-  block(g, gx, gy, 0.4, 0.4, 9, 0xb7795a);
-  const c = iso(gx + 0.2, gy + 0.2);
-  g.poly([c.x - 13, c.y - 9, c.x, c.y - 2, c.x, c.y - 44]).fill(0x4fa86b);
-  g.poly([c.x + 13, c.y - 9, c.x, c.y - 2, c.x, c.y - 44]).fill(0x3b8a55);
-}
-
-/** A tree in a planter: taller than the potted plant, with layered leaves. */
-function tree(g: Graphics, gx: number, gy: number) {
-  shadow(g, gx - 0.1, gy - 0.1, 0.7, 0.7);
-  block(g, gx, gy, 0.5, 0.5, 11, 0xe9e2d6);
-  block(g, gx + 0.2, gy + 0.2, 0.1, 0.1, 16, 0x8a6a4a, 11);
-  const c = iso(gx + 0.25, gy + 0.25);
-  for (const [w, up, h] of [[20, 22, 26], [16, 38, 24], [11, 54, 22]] as const) {
-    g.poly([c.x - w, c.y - up, c.x, c.y - up + 7, c.x, c.y - up - h]).fill(0x5cb37a);
-    g.poly([c.x + w, c.y - up, c.x, c.y - up + 7, c.x, c.y - up - h]).fill(0x3f9460);
-  }
-}
-
-/** A long planter of low bushes, to line a wall. */
-function hedge(g: Graphics, gx: number, gy: number, along: 'x' | 'y', len: number) {
-  const [w, d] = along === 'x' ? [len, 0.4] : [0.4, len];
-  shadow(g, gx, gy, w, d);
-  block(g, gx, gy, w, d, 8, 0xe9e2d6);
-  for (let t = 0.05; t < len - 0.3; t += 0.42) {
-    const [bx, by] = along === 'x' ? [gx + t, gy + 0.05] : [gx + 0.05, gy + t];
-    block(g, bx, by, 0.3, 0.3, 9 + ((t * 10) % 3) * 2, t % 0.84 < 0.42 ? 0x5cb37a : 0x4aa36c, 8);
-  }
-}
-
-/** An air purifier: a white tower with a grille and a status light. */
-function purifier(g: Graphics, gx: number, gy: number) {
-  shadow(g, gx, gy, 0.5, 0.5);
-  block(g, gx, gy, 0.5, 0.5, 34, 0xf4f6f9);
-  block(g, gx + 0.06, gy + 0.06, 0.38, 0.38, 3, 0x9aa3b5, 34); // outlet on top
-  // grille on the left front face
-  const l = iso(gx, gy + 0.5);
-  const r = iso(gx + 0.5, gy + 0.5);
-  for (let i = 0; i < 4; i++) {
-    const up = 8 + i * 5;
-    g.moveTo(l.x + 3, l.y + 1.5 - up).lineTo(r.x - 3, r.y - 1.5 - up).stroke({ width: 1.5, color: 0xc3cad6 });
-  }
-  g.circle((l.x + r.x) / 2, (l.y + r.y) / 2 - 29, 1.8).fill(0x3fd08a); // air is clean
-}
-
-/** A water cooler. */
-function cooler(g: Graphics, gx: number, gy: number) {
-  shadow(g, gx, gy, 0.4, 0.4);
-  block(g, gx, gy, 0.4, 0.4, 24, 0xeef1f5);
-  block(g, gx + 0.07, gy + 0.07, 0.26, 0.26, 14, 0x9fd0f5, 24);
-  block(g, gx + 0.1, gy + 0.1, 0.2, 0.2, 2, 0x6fb1e6, 38);
-}
-
-/** A bench against a wall. */
-function bench(g: Graphics, gx: number, gy: number, along: 'x' | 'y', len: number) {
-  const [w, d] = along === 'x' ? [len, 0.5] : [0.5, len];
-  shadow(g, gx, gy, w, d);
-  block(g, gx, gy, w, d, 4, 0x7f95c9, 7);
-  block(g, gx + 0.05, gy + 0.05, 0.1, 0.1, 7, 0x8a93a6);
-  block(g, gx + w - 0.15, gy + d - 0.15, 0.1, 0.1, 7, 0x8a93a6);
-}
-
-/** A sofa with its back to the far side, and a low table in front of it. */
-function sofa(g: Graphics, gx: number, gy: number) {
-  shadow(g, gx, gy, 2.2, 0.9);
-  block(g, gx, gy, 2.2, 0.3, 22, 0x6f86c9); // back
-  block(g, gx, gy + 0.3, 2.2, 0.6, 10, 0x8ea3dd); // seat
-  block(g, gx, gy + 0.3, 0.25, 0.6, 16, 0x6f86c9); // arms
-  block(g, gx + 1.95, gy + 0.3, 0.25, 0.6, 16, 0x6f86c9);
-  shadow(g, gx + 0.5, gy + 1.5, 1.2, 0.6);
-  block(g, gx + 0.5, gy + 1.5, 1.2, 0.6, 3, 0xe6d3b3, 8);
-  block(g, gx + 0.6, gy + 1.6, 0.1, 0.1, 8, 0x8a93a6);
-  block(g, gx + 1.5, gy + 1.9, 0.1, 0.1, 8, 0x8a93a6);
-  block(g, gx + 0.9, gy + 1.65, 0.16, 0.16, 5, 0xffffff, 11); // a cup
-}
-
-/** A database: the stacked-discs symbol as a tank, so the room says what it is. */
-function dbTank(g: Graphics, gx: number, gy: number) {
-  const c = iso(gx, gy);
-  g.ellipse(c.x + 3, c.y + 2, 22, 11).fill({ color: 0x1b2233, alpha: 0.12 });
-  for (let i = 0; i < 3; i++) {
-    const y = c.y - 4 - i * 15;
-    g.rect(c.x - 18, y - 12, 36, 12).fill(shade(ACCENT, 0.18));
-    g.rect(c.x - 18, y - 12, 14, 12).fill(shade(ACCENT, 0.05));
-    g.ellipse(c.x, y, 18, 9).fill(shade(ACCENT, 0.18));
-    g.ellipse(c.x, y - 12, 18, 9).fill(tint(ACCENT, 0.35));
-  }
-}
-
-interface Lamp {
-  x: number;
-  y: number;
-  colour: number;
-  phase: number;
-  rate: number;
-}
-
-/** A server rack. Its lamps are returned so they can blink. */
-function rack(g: Graphics, gx: number, gy: number, lamps: Lamp[]) {
-  const w = 1.0;
-  const d = 0.8;
-  const h = 46;
-  shadow(g, gx, gy, w, d);
-  block(g, gx, gy, w, d, h, 0x2b3550);
-  // the front (left face): shelves of equipment, each with a pair of lamps
-  const l = iso(gx, gy + d);
-  const r = iso(gx + w, gy + d);
-  const at = (t: number, up: number) => ({ x: l.x + (r.x - l.x) * t, y: l.y + (r.y - l.y) * t - up });
-  for (let i = 0; i < 5; i++) {
-    const up = 6 + i * 8;
-    const a = at(0.1, up);
-    const b = at(0.9, up);
-    g.poly([a.x, a.y, b.x, b.y, b.x, b.y - 5, a.x, a.y - 5]).fill(0x3a4668);
-    for (const t of [0.2, 0.32]) {
-      const p = at(t, up + 2.5);
-      lamps.push({ x: p.x, y: p.y, colour: (i + Math.round(t * 10)) % 5 === 0 ? 0xffc145 : 0x3fd08a, phase: Math.random() * 6, rate: 1.5 + Math.random() * 5 });
-    }
-  }
-}
-
-/** A cooling unit for the server room. */
-function chiller(g: Graphics, gx: number, gy: number) {
-  shadow(g, gx, gy, 0.8, 1.2);
-  block(g, gx, gy, 0.8, 1.2, 30, 0xe6eaf0);
-  const l = iso(gx, gy + 1.2);
-  const r = iso(gx + 0.8, gy + 1.2);
-  const cx = (l.x + r.x) / 2;
-  const cy = (l.y + r.y) / 2 - 15;
-  g.ellipse(cx, cy, 8, 9).fill(0x9aa3b5);
-  g.ellipse(cx, cy, 3, 3.5).fill(0xe6eaf0);
-}
-
-/** A desk with a monitor, seen from its side; the shelf variant is a low rack. */
-function desk(g: Graphics, gx: number, gy: number, kind: 'desk' | 'shelf' | 'mine') {
-  const x = gx - 0.3;
-  const y = gy - 0.45;
-  shadow(g, x, y, 0.6, 0.9);
-  if (kind === 'shelf') {
-    block(g, x, y, 0.6, 0.9, 10, 0x8792a5);
-    block(g, x, y, 0.6, 0.9, 3, 0xaab3c2, 16);
-    return;
-  }
-  block(g, x + 0.05, y + 0.05, 0.1, 0.1, 11, 0x8a93a6); // legs
-  block(g, x + 0.45, y + 0.75, 0.1, 0.1, 11, 0x8a93a6);
-  block(g, x, y, 0.6, 0.9, 3, kind === 'mine' ? 0x9db4f5 : 0xe6d3b3, 11); // top
-  block(g, x + 0.4, y + 0.2, 0.06, 0.5, 13, 0x2b3550, 17); // monitor
-  block(g, x + 0.4, y + 0.41, 0.06, 0.08, 4, 0x8a93a6, 14);
-}
-
-/** A person: body, head and hair as three blocks. */
-function person(g: Graphics, look: Look, me: boolean, mood = 0) {
-  const colour = look.body;
-  g.ellipse(0, 1, 11, 5.5).fill({ color: 0x1b2233, alpha: 0.14 });
-  const sit = mood === 2 ? 7 : 0; // resting: seated on a bench, so the body is shorter and the legs point forward
-  if (sit) block(g, -0.17, 0.02, 0.34, 0.3, 5, shade(colour, 0.3), 7);
-  block(g, -0.17, -0.17, 0.34, 0.34, sit ? 13 : 20, colour, sit);
-  block(g, -0.14, -0.14, 0.28, 0.28, 12, SKIN, 20);
-  // hair: four shapes, so two teammates in the same colour still differ
-  switch (look.style) {
-    case 'tall':
-      block(g, -0.15, -0.15, 0.3, 0.3, 8, look.hair, 32);
-      break;
-    case 'side':
-      block(g, -0.15, -0.15, 0.3, 0.3, 4, look.hair, 32);
-      block(g, -0.16, -0.16, 0.32, 0.1, 9, look.hair, 25); // falls down the back
-      break;
-    case 'cap':
-      block(g, -0.15, -0.15, 0.3, 0.3, 5, look.hair, 32);
-      block(g, -0.15, 0.13, 0.3, 0.12, 2, look.hair, 32); // the brim
-      break;
-    default:
-      block(g, -0.15, -0.15, 0.3, 0.3, 4, look.hair, 32);
-  }
-  if (mood >= 1) {
-    // tired: drops of sweat beside the head
-    for (const [dx, dy] of mood === 2 ? [[-13, -34], [13, -30], [-10, -24]] : [[-13, -32], [12, -27]]) {
-      g.poly([dx, dy - 5, dx + 2.6, dy, dx, dy + 2.6, dx - 2.6, dy]).fill(0x6fb1e6);
-    }
-  }
-  if (me) g.poly([0, -56, 6, -50, 0, -44, -6, -50]).fill(ACCENT); // marker above my head
-}
-
-/** A bed in the lodge, with someone asleep in it or neatly made. */
-function bed(g: Graphics, gx: number, gy: number, colour: number | null) {
-  shadow(g, gx, gy, 1.0, 1.9);
-  block(g, gx, gy, 1.0, 0.12, 16, 0xb58a55); // headboard
-  block(g, gx, gy + 0.1, 1.0, 1.8, 6, 0xf4efe6, 5); // mattress
-  block(g, gx + 0.05, gy + 0.15, 0.1, 0.1, 5, 0x8a6a4a);
-  block(g, gx + 0.85, gy + 1.75, 0.1, 0.1, 5, 0x8a6a4a);
-  block(g, gx + 0.2, gy + 0.18, 0.6, 0.36, 4, 0xffffff, 11); // pillow
-  block(g, gx, gy + 0.62, 1.0, 1.28, 5, colour ?? 0xcfd8e6, 11); // blanket
-  if (colour !== null) {
-    block(g, gx + 0.36, gy + 0.22, 0.28, 0.28, 9, SKIN, 15); // a head on the pillow
-    block(g, gx + 0.35, gy + 0.21, 0.3, 0.14, 3, shade(colour, 0.55), 24);
-    block(g, gx + 0.25, gy + 0.7, 0.5, 1.0, 4, tint(colour, 0.1), 16); // the sleeper under the blanket
-  }
-}
-
-/** A floor lamp. */
-function lamp(g: Graphics, gx: number, gy: number) {
-  shadow(g, gx, gy, 0.3, 0.3);
-  block(g, gx + 0.1, gy + 0.1, 0.1, 0.1, 30, 0x8a93a6);
-  block(g, gx, gy, 0.3, 0.3, 9, 0xffe7a3, 30);
-}
-
-/** A delivery truck parked outside the dock. */
-function truck(g: Graphics, gx: number, gy: number) {
-  shadow(g, gx, gy, 2.9, 1.1);
-  block(g, gx, gy, 1.9, 1.1, 34, 0xf7f9fc, 8); // cargo
-  block(g, gx + 1.95, gy + 0.05, 0.85, 1.0, 24, ACCENT, 8); // cab
-  block(g, gx + 2.45, gy + 0.1, 0.36, 0.9, 10, 0xbfd3f7, 20); // windscreen
-  for (const wx of [0.35, 1.35, 2.3]) {
-    const p = iso(gx + wx, gy + 1.1);
-    g.ellipse(p.x + 4, p.y - 6, 7, 8).fill(0x2b3550);
-    g.ellipse(p.x + 4, p.y - 6, 3, 3.5).fill(0x8a93a6);
-  }
-}
-
-/** Furniture that tells the rooms apart at a glance. */
-/**
- * Things that make a room a place rather than a store of boxes. They stand
- * where boxes and people never do: the corners and the strips along the walls.
- */
-function decorate(add: (gx: number, gy: number, draw: (g: Graphics) => void) => void, kind: ZoneKind, nth: number, gx: number, gy: number, d: number) {
-  const right = gx + ZW;
-  const front = gy + d;
-  switch (kind) {
-    case 'wait':
-      add(gx + 0.5, gy + 0.5, (g) => tree(g, gx + 0.25, gy + 0.25));
-      add(gx + 0.5, front - 1.6, (g) => bench(g, gx + 0.2, front - 2.4, 'y', 1.8));
-      add(right - 0.5, front - 0.5, (g) => plant(g, right - 0.7, front - 0.7));
-      break;
-    case 'work':
-      if (nth % 2 === 0) {
-        add(gx + 0.45, front - 0.5, (g) => purifier(g, gx + 0.2, front - 0.75));
-        add(gx + 0.4, gy + 0.5, (g) => plant(g, gx + 0.25, gy + 0.3));
-      } else {
-        add(gx + 0.5, front - 0.5, (g) => tree(g, gx + 0.25, front - 0.8));
-        add(gx + 0.45, gy + 0.5, (g) => cooler(g, gx + 0.25, gy + 0.3));
-      }
-      add(gx + 3.9, front - 0.3, (g) => hedge(g, gx + 2.9, front - 0.5, 'x', 2.0));
-      add(gx + 1.7, front - 0.75, (g) => bench(g, gx + 0.95, front - 1.0, 'x', 1.6));
-      break;
-    case 'desk':
-      add(right - 0.5, gy + 0.4, (g) => purifier(g, right - 0.75, gy + 0.15));
-      add(right - 0.5, front - 0.5, (g) => tree(g, right - 0.8, front - 0.8));
-      add(gx + 0.45, front - 0.45, (g) => cooler(g, gx + 0.25, front - 0.65));
-      add(gx + 4.2, front - 0.3, (g) => hedge(g, gx + 3.0, front - 0.5, 'x', 2.4));
-      add(gx + 1.7, front - 0.75, (g) => bench(g, gx + 0.95, front - 1.0, 'x', 1.6));
-      break;
-    case 'done':
-      add(right - 0.5, gy + 0.5, (g) => tree(g, right - 0.8, gy + 0.25));
-      add(gx + 0.4, front - 0.5, (g) => plant(g, gx + 0.25, front - 0.7));
-      break;
-    default:
-      break;
-  }
-}
-
-function furnish(g: Graphics, kind: ZoneKind, gx: number, gy: number) {
-  switch (kind) {
-    case 'wait': // reception counter
-      shadow(g, gx + 2.6, gy + 0.5, 2.8, 0.6);
-      block(g, gx + 2.6, gy + 0.5, 2.8, 0.6, 15, 0xc9a77a);
-      block(g, gx + 2.6, gy + 0.5, 2.8, 0.6, 3, 0xf3ead9, 15);
-      break;
-    case 'work': // review table with two screens
-      shadow(g, gx + 2.4, gy + 0.45, 3.2, 0.8);
-      block(g, gx + 2.4, gy + 0.45, 3.2, 0.8, 3, 0xe6d3b3, 12);
-      block(g, gx + 2.5, gy + 0.55, 0.14, 0.14, 12, 0x8a93a6);
-      block(g, gx + 5.35, gy + 1.0, 0.14, 0.14, 12, 0x8a93a6);
-      block(g, gx + 3.0, gy + 0.55, 0.6, 0.06, 14, 0x2b3550, 18);
-      block(g, gx + 4.3, gy + 0.55, 0.6, 0.06, 14, 0x2b3550, 18);
-      plant(g, gx + ZW - 0.9, gy + 0.4);
-      break;
-    case 'done': // pallet
-      shadow(g, gx + 0.5, gy + 0.5, 1.4, 1.0);
-      block(g, gx + 0.5, gy + 0.5, 1.4, 1.0, 5, 0xb58a55);
-      break;
-    case 'returned': // cage bin
-      shadow(g, gx + 0.6, gy + 0.5, 1.2, 1.0);
-      block(g, gx + 0.6, gy + 0.5, 1.2, 1.0, 20, 0x9aa3b5);
-      block(g, gx + 0.7, gy + 0.6, 1.0, 0.8, 2, 0x5d6678, 20);
-      break;
-    default:
-      break;
-  }
-}
-
-// ---- layout -----------------------------------------------------------------
-
-interface Slot {
-  gx: number; // grid position relative to the room
-  gy: number;
-  level: number;
-}
-
-const LANE_TOP = 1.2; // first row of a desk room
-const LANE_LEN = 6; // boxes side by side before they stack
-const lanePitch = (lanes: number, depth: number) => Math.min(1.7, (depth - LANE_TOP - 0.5) / Math.max(1, lanes - 1 || 1));
-
-/** Where each box of a room stands, relative to the room's origin. */
-function slots(zone: ZoneView, boxes: Box[], lanes: string[], depth: number): Map<string, Slot> {
-  const out = new Map<string, Slot>();
-  if (zone.kind === 'desk') {
-    // One row per assignee: the desk on the left, that person's boxes lined up
-    // beside it. The last row is the shared shelf for unassigned boxes.
-    const pitch = lanePitch(lanes.length, depth);
-    const perLane = new Map<string, number>();
-    for (const b of boxes) {
-      const lane = Math.max(0, lanes.indexOf(b.assigneeId));
-      const n = perLane.get(b.assigneeId) ?? 0;
-      perLane.set(b.assigneeId, n + 1);
-      out.set(b.key, { gx: 2.3 + (n % LANE_LEN) * 1.0, gy: LANE_TOP + lane * pitch, level: Math.floor(n / LANE_LEN) });
-    }
-    return out;
-  }
-  const cols = 5;
-  const rows = 3;
-  boxes.forEach((b, i) => {
-    const at = i % (cols * rows);
-    out.set(b.key, { gx: 1.3 + (at % cols) * 1.32, gy: 2.6 + Math.floor(at / cols) * 1.3, level: Math.floor(i / (cols * rows)) });
-  });
-  return out;
-}
-
-// ---- the scene --------------------------------------------------------------
-
-interface Sprite {
-  root: Container;
-  body: Container; // lifts when hovered or selected
-  g: Graphics;
-  num: Text;
-  badge: Container | null;
-  box: Box;
-  tx: number; // target position
-  ty: number;
-  depth: number;
-  hover: boolean;
-  leaving: boolean;
-  // movement: a box travels in legs (a hop, a ride on the belt, a hop) instead of sliding
-  legs: Leg[];
-  exit: '' | 'truck' | 'fly'; // how a leaving box goes
-  gone: number; // ms since it started leaving
-  squash: number; // ms left of the landing squash
-  phase: number; // offsets idle motion so boxes do not move in step
-}
-
-/** One stretch of a box's way: through the air in an arc, or flat along the belt. */
-interface Leg {
-  x0: number;
-  y0: number;
-  x1: number;
-  y1: number;
-  z0: number; // depth at each end, for boxes riding the belt
-  z1: number;
-  arc: number; // height of the hop; 0 = flat
-  air: boolean; // in the air: drawn above the walls
-  dur: number;
-  t: number;
-}
-
-interface BeltTile {
-  g: Graphics;
-  gx: number;
-  gy: number;
-  w: number; // length along its direction, in tiles
-  axis: 'x' | 'y';
-  dir: 1 | -1;
-}
-
-/** The conveyor: lane A runs along the first row, turns, and lane B runs back along the second. */
-interface Belt {
-  a: number; // gy of lane A
-  b: number; // gy of lane B
-  end: number; // gx of the turn
-  entry: number; // where a new box comes onto lane A
-}
-const BELT_SPEED = 7; // tiles a second
-const BELT_UP = 7; // the belt's surface above the floor, on screen
-
-// People who would rather not see motion get the changes without the show.
-const CALM = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
-const easeInOut = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
-const SQUASH = 260;
+export { AGE, TAGS, ageStep, shortName } from './scene/palette';
 
 export interface SceneHooks {
   onSelect(box: Box | null): void;
@@ -572,30 +29,30 @@ export class Scene {
   private app = new Application();
   private lift = new Container(); // slides when the floor changes
   private world = new Container();
-  private ground = new Container(); // slab, walls, room floors
-  private things = new Container(); // furniture, boxes and people, depth-sorted
-  private signs = new Container(); // room signs and name tags, always on top
+  ground = new Container(); // slab, walls, room floors
+  things = new Container(); // furniture, boxes and people, depth-sorted
+  signs = new Container(); // room signs and name tags, always on top
   private sprites = new Map<string, Sprite>();
   private space = 0;
   private snap: Snapshot | null = null;
   private hidden: ReadonlySet<string> = new Set(); // boxes the view filter hides
-  private bounds = { x: 0, y: 0, w: 1, h: 1 };
+  bounds = { x: 0, y: 0, w: 1, h: 1 };
   private selected = '';
   private inset = 0; // screen width kept free on the right (the ticket panel)
   private drag: { x: number; y: number; moved: boolean } | null = null;
   private clock = 0; // ms since the scene started, for idle motion
-  private truck: { g: Graphics; x: number; y: number } | null = null;
+  truck: { g: Graphics; x: number; y: number } | null = null;
   private truckRun = -1; // ms into the truck's round trip; -1 = parked
-  private people: { g: Graphics; y: number; phase: number; slow?: boolean }[] = [];
-  private lamps: Lamp[] = [];
-  private lampLayer = new Graphics();
-  private belts: BeltTile[] = [];
-  private belt: Belt | null = null;
+  people: { g: Graphics; y: number; phase: number; slow?: boolean }[] = [];
+  lamps: Lamp[] = [];
+  lampLayer = new Graphics();
+  belts: BeltTile[] = [];
+  belt: Belt | null = null;
   private fx = new Container(); // confetti, in window coordinates, above everything
   private bits: { g: Graphics; vx: number; vy: number; spin: number; life: number }[] = [];
-  private fatigue: Record<string, number> = {};
-  private away: Away[] = [];
-  private looks: Record<string, number> = {};
+  fatigue: Record<string, number> = {};
+  away: Away[] = [];
+  looks: Record<string, number> = {};
   private held = false; // the user zoomed or moved the view: leave it alone
   private push = 0; // how far the view has slid aside for the panel
   private pushTo = 0;
@@ -729,6 +186,22 @@ export class Scene {
     this.hooks.onSelect(this.sprites.get(key)?.box ?? null);
   }
 
+  /**
+   * Brings a box into view: if it stands outside the middle of the window
+   * (the user had zoomed in elsewhere), the view moves to it, keeping the zoom.
+   */
+  focus(key: string) {
+    const sp = this.sprites.get(key);
+    if (!sp) return;
+    const { width, height } = this.app.screen;
+    const x = this.world.x + sp.tx * this.world.scale.x;
+    const y = this.world.y + sp.ty * this.world.scale.y;
+    if (x > 120 && x < width - 120 && y > 140 && y < height - 100) return;
+    this.world.x += width / 2 - x;
+    this.world.y += height / 2 - y;
+    this.held = true;
+  }
+
   /** Marks a box as the chosen one without telling anyone (its window did). */
   mark(key: string) {
     if (key === this.selected) return;
@@ -741,7 +214,7 @@ export class Scene {
     this.snap = snap;
     this.hidden = hidden;
     if (this.space < 0) {
-      this.drawLodge();
+      drawLodge(this);
       return;
     }
     const space: SpaceView | undefined = snap.spaces[this.space] ?? snap.spaces[0];
@@ -765,19 +238,19 @@ export class Scene {
 
     const rows = Math.ceil(rooms.length / COLS);
     // The ground floor is a tight warehouse; the floors above open around a garden.
-    rowGap = snap.spaces.indexOf(space) > 0 && rows > 1 ? ATRIUM_GAP : ROW_GAP;
+    grid.rowGap = snap.spaces.indexOf(space) > 0 && rows > 1 ? ATRIUM_GAP : ROW_GAP;
     const cols = Math.min(COLS, rooms.length);
     const width = cols * ZW + (cols - 1) * COL_GAP;
-    rowDepths = Array.from({ length: rows }, (_, r) =>
+    grid.rowDepths = Array.from({ length: rows }, (_, r) =>
       rooms.some((z, i) => Math.floor(i / COLS) === r && z.kind === 'desk') ? ZH + DESK_EXTRA : ZH,
     );
-    const depth = rowY(rows - 1) + rowDepths[rows - 1];
+    const depth = rowY(rows - 1) + grid.rowDepths[rows - 1];
     this.truck = null;
     this.people = [];
     this.belts = [];
     this.belt = null;
     this.lamps = [];
-    this.drawBuilding(width, depth, rows, cols, snap.spaces.indexOf(space), space.name, snap.spaces.length);
+    drawBuilding(this, width, depth, rows, cols, snap.spaces.indexOf(space), space.name, snap.spaces.length);
 
     const prop = (gx: number, gy: number, draw: (g: Graphics) => void, bias = 0) => {
       const g = new Graphics();
@@ -844,8 +317,8 @@ export class Scene {
     // draw the sidings and stand their boxes on them
     spur.forEach((sd, id) => {
       const zone = sidings.find((z) => z.id === id)!;
-      this.beltTile(sd.x, belt!.a + 0.4, sd.mid - 0.4 - (belt!.a + 0.4), 'y', 1);
-      for (let i = 0; i < 4; i++) this.beltTile(sd.x - 0.4 + i, sd.mid, i === 3 ? 0.6 : 1, 'x', 1);
+      beltTile(this, sd.x, belt!.a + 0.4, sd.mid - 0.4 - (belt!.a + 0.4), 'y', 1);
+      for (let i = 0; i < 4; i++) beltTile(this, sd.x - 0.4 + i, sd.mid, i === 3 ? 0.6 : 1, 'x', 1);
       prop(sd.x + 3.4, sd.mid, (g) => block(g, sd.x + 3.2, sd.mid - 0.45, 0.16, 0.9, 12, 0x8a93a6)); // buffer stop
       const waiting = boxes.filter((b) => b.zone === id);
       this.tag(zone.staleCount ? `${zone.name} ${zone.count} · 묵음 ${zone.staleCount}` : `${zone.name} ${zone.count}`, sd.x + 1.4, sd.mid, 62, false);
@@ -1026,247 +499,6 @@ export class Scene {
     this.refit();
   }
 
-  /** The floor slab, the two back walls, the room partitions and the conveyor. */
-  private drawBuilding(width: number, depth: number, rows: number, cols: number, floor: number, name: string, floors: number) {
-    const SLAB = floor > 0 ? 0xe7e1d6 : floor < 0 ? 0xe2dccf : GROUND_SLAB; // a warmer floor away from the warehouse
-    const g = new Graphics();
-    const x0 = -PAD;
-    const y0 = -PAD;
-    const x1 = width + PAD;
-    const y1 = depth + PAD;
-    // ground shadow and slab
-    g.poly(floorPoly(x0 + 0.5, y0 + 0.5, x1 - x0, y1 - y0)).fill({ color: 0x1b2233, alpha: 0.08 });
-    const fl = iso(x0, y1);
-    const fr = iso(x1, y1);
-    const rr = iso(x1, y0);
-    // The floors under this one show as the building's outer walls below the slab.
-    for (let k = floor; k >= 1; k--) {
-      const top = 12 + (k - 1) * STOREY;
-      g.poly([fl.x, fl.y + top, fr.x, fr.y + top, fr.x, fr.y + top + STOREY, fl.x, fl.y + top + STOREY]).fill(shade(WALL, 0.16));
-      g.poly([fr.x, fr.y + top, rr.x, rr.y + top, rr.x, rr.y + top + STOREY, fr.x, fr.y + top + STOREY]).fill(shade(WALL, 0.3));
-      // a band of windows and the slab line of the floor below
-      for (const [p, q] of [[fl, fr], [fr, rr]] as const) {
-        const at = (t: number, dy: number) => [p.x + (q.x - p.x) * t, p.y + (q.y - p.y) * t + top + dy];
-        for (let t = 0.06; t < 0.9; t += 0.115) g.poly([...at(t, 8), ...at(t + 0.07, 8), ...at(t + 0.07, STOREY - 12), ...at(t, STOREY - 12)]).fill({ color: 0xcfe1f7, alpha: 0.75 });
-        g.poly([...at(0, STOREY - 5), ...at(1, STOREY - 5), ...at(1, STOREY), ...at(0, STOREY)]).fill(shade(SLAB, 0.3));
-      }
-    }
-    g.poly([fl.x, fl.y, fr.x, fr.y, fr.x, fr.y + 12, fl.x, fl.y + 12]).fill(shade(SLAB, 0.14));
-    g.poly([fr.x, fr.y, rr.x, rr.y, rr.x, rr.y + 12, fr.x, fr.y + 12]).fill(shade(SLAB, 0.28));
-    g.poly(floorPoly(x0, y0, x1 - x0, y1 - y0)).fill(SLAB);
-
-    // back walls: we look at their inner faces
-    const back = iso(x0, y0);
-    const left = iso(x0, y1);
-    g.poly([back.x, back.y, rr.x, rr.y, rr.x, rr.y - WALL_H, back.x, back.y - WALL_H]).fill(WALL);
-    g.poly([back.x, back.y, left.x, left.y, left.x, left.y - WALL_H, back.x, back.y - WALL_H]).fill(shade(WALL, 0.08));
-    // windows along both walls
-    const win = (ax: number, ay: number, bx: number, by: number) => {
-      const p = iso(ax, ay);
-      const q = iso(bx, by);
-      g.poly([p.x, p.y - 20, q.x, q.y - 20, q.x, q.y - 46, p.x, p.y - 46]).fill(0xcfe1f7);
-    };
-    for (let x = 1; x + 1.6 < x1; x += 2.7) win(x, y0, x + 1.6, y0);
-    for (let y = 1; y + 1.6 < y1; y += 2.7) win(x0, y, x0, y + 1.6);
-    // wall tops
-    const t = 0.18;
-    g.poly([...Object.values(iso(x0, y0)), ...Object.values(iso(x1, y0)), ...Object.values(iso(x1, y0 + t)), ...Object.values(iso(x0 + t, y0 + t)), ...Object.values(iso(x0 + t, y1)), ...Object.values(iso(x0, y1))].map((v, i) => (i % 2 ? v - WALL_H : v))).fill(tint(WALL, 0.5));
-    this.ground.addChild(g);
-    if (floors > 1) {
-      // which floor this is, on the front corner of the slab
-      const t = label(`${floor < 0 ? "B1" : `${floor + 1}F`}  ${name}`, 13, INK, '700');
-      const pill = new Graphics().roundRect(0, 0, t.width + 20, 26, 13).fill(0xffffff).stroke({ width: 1, color: 0xcfd6e2 });
-      t.position.set(10, (26 - t.height) / 2);
-      const tagBox = new Container();
-      tagBox.addChild(pill, t);
-      tagBox.position.set(fl.x + 26, fl.y - 4);
-      this.signs.addChild(tagBox);
-    }
-
-    // Partitions and the conveyor sit among the furniture so boxes sort around them.
-    const piece = (gx: number, gy: number, draw: (pg: Graphics) => void) => {
-      const pg = new Graphics();
-      draw(pg);
-      pg.label = 'prop';
-      pg.zIndex = (gx + gy) * 100 - 40;
-      this.things.addChild(pg);
-    };
-    for (let r = 0; r < rows; r++) {
-      const gy0 = rowY(r);
-      const d = rowDepths[r];
-      // between rooms of a row, with a doorway in the middle
-      for (let c = 1; c < cols; c++) {
-        const gx = c * (ZW + COL_GAP) - COL_GAP / 2 - 0.09;
-        for (let j = 0; j < d; j++) {
-          if (j === Math.floor(d / 2)) continue;
-          piece(gx, gy0 + j + 0.5, (pg) => block(pg, gx, gy0 + j, 0.18, 1, 13, PARTITION));
-        }
-      }
-      // along the corridor, with a doorway per room
-      if (r < rows - 1) {
-        for (const gy of [gy0 + d + 0.05, gy0 + d + rowGap - 0.23]) {
-          for (let i = 0; i < Math.ceil(width); i++) {
-            const inRoom = i % (ZW + COL_GAP);
-            if (inRoom >= 3 && inRoom < 5) continue; // doorway
-            piece(i + 0.5, gy, (pg) => block(pg, i, gy, Math.min(1, width - i), 0.18, 13, PARTITION));
-          }
-        }
-        if (r > 0) continue; // one conveyor, between the first two rows
-        // The conveyor is a U on its side: lane A carries boxes along the first
-        // row, turns at the far end, and lane B brings them back along the second.
-        const a = gy0 + d + 0.95;
-        const b = gy0 + d + rowGap - 0.95;
-        const end = width - 0.7;
-        const atrium = rowGap === ATRIUM_GAP;
-        const from = atrium ? 0.3 : -1; // where the lanes begin
-        this.belt = { a, b, end, entry: atrium ? 0.7 : -0.6 };
-        const tile = (gx: number, gy: number, w: number, axis: 'x' | 'y', dir: 1 | -1) => {
-          const [bw, bd] = axis === 'x' ? [w, 0.8] : [0.8, w];
-          const [bx, by] = axis === 'x' ? [gx, gy - 0.4] : [gx - 0.4, gy];
-          piece(bx + bw / 2, by + bd / 2, (pg) => block(pg, bx, by, bw, bd, BELT_UP, 0x596379));
-          // the belt's moving slats, redrawn every frame
-          const marks = new Graphics();
-          marks.label = 'prop';
-          marks.zIndex = (bx + bw / 2 + by + bd / 2) * 100 - 39;
-          this.things.addChild(marks);
-          this.belts.push({ g: marks, gx, gy, w, axis, dir });
-        };
-        for (let i = from; i < end - 0.4; i++) {
-          const w = Math.min(1, end - 0.4 - i);
-          tile(i, a, w, 'x', 1);
-          tile(i, b, w, 'x', -1);
-        }
-        // the turn: one stretch across, from lane A to lane B
-        for (let y = a - 0.4; y < b + 0.4 - 0.01; y += 1) tile(end, y, Math.min(1, b + 0.4 - y), 'y', 1);
-        if (atrium) {
-          // Upstairs the belt closes into a ring around a garden.
-          for (let y = a + 0.4; y < b - 0.4 - 0.01; y += 1) tile(0.7, y, Math.min(1, b - 0.4 - y), 'y', -1);
-          const gx0 = 1.9;
-          const gy1 = a + 1.0;
-          const gw = end - 1.2 - gx0;
-          const gd = b - 1.0 - gy1;
-          const lawn = new Graphics();
-          lawn.poly(floorPoly(gx0, gy1, gw, gd)).fill(0xcfe6cc);
-          lawn.poly(floorPoly(gx0 + 0.25, gy1 + 0.25, gw - 0.5, gd - 0.5)).fill(0xdcefd8);
-          // a stone path through the middle
-          for (let x = gx0 + 0.8; x < gx0 + gw - 0.8; x += 1.1) lawn.poly(floorPoly(x, gy1 + gd / 2 - 0.3, 0.7, 0.6)).fill(0xeee9df);
-          // a pond
-          const pond = iso(gx0 + gw / 2, gy1 + gd / 2 - 1.3);
-          lawn.ellipse(pond.x, pond.y, 46, 23).fill(0xe9e2d6);
-          lawn.ellipse(pond.x, pond.y, 40, 20).fill(0xa9d8f2);
-          lawn.ellipse(pond.x - 8, pond.y - 4, 14, 6).fill({ color: 0xffffff, alpha: 0.5 });
-          this.ground.addChild(lawn);
-          const deco = (gx: number, gy: number, draw: (pg: Graphics) => void) => {
-            const pg = new Graphics();
-            draw(pg);
-            pg.label = 'prop';
-            pg.zIndex = (gx + gy) * 100;
-            this.things.addChild(pg);
-          };
-          for (let x = gx0 + 0.5; x < gx0 + gw - 0.6; x += 3.4) {
-            deco(x + 0.25, gy1 + 0.55, (pg) => tree(pg, x, gy1 + 0.3));
-            deco(x + 1.95, gy1 + gd - 0.55, (pg) => tree(pg, x + 1.7, gy1 + gd - 0.8));
-          }
-          deco(gx0 + gw / 2 - 3.2, gy1 + gd / 2 + 0.75, (pg) => bench(pg, gx0 + gw / 2 - 4.0, gy1 + gd / 2 + 0.5, 'x', 1.6));
-          deco(gx0 + gw / 2 + 3.2, gy1 + gd / 2 + 0.75, (pg) => bench(pg, gx0 + gw / 2 + 2.4, gy1 + gd / 2 + 0.5, 'x', 1.6));
-          deco(gx0 + gw / 2 - 0.2, gy1 + gd - 0.5, (pg) => hedge(pg, gx0 + gw / 2 - 1.6, gy1 + gd - 0.65, 'x', 3.2));
-          this.plate('중앙 정원', gx0 + gw / 2, gy1 + gd / 2 + 0.6);
-        }
-        // where boxes come in (lane A) and the arrows that show the way round
-        const arrow = (gx: number, gy: number, dx: number, dy: number) => {
-          piece(gx + 0.6, gy + 0.6, (pg) => {
-            const tip = iso(gx + dx * 0.28, gy + dy * 0.28);
-            const l = iso(gx - dx * 0.2 - dy * 0.22, gy - dy * 0.2 + dx * 0.22);
-            const rgt = iso(gx - dx * 0.2 + dy * 0.22, gy - dy * 0.2 - dx * 0.22);
-            pg.poly([tip.x, tip.y - BELT_UP, l.x, l.y - BELT_UP, rgt.x, rgt.y - BELT_UP]).fill({ color: 0xffd166, alpha: 0.95 });
-          });
-        };
-        for (let x = 2; x < end - 1; x += 4.25) {
-          arrow(x, a, 1, 0);
-          arrow(x, b, -1, 0);
-        }
-      }
-    }
-  }
-
-  /** One stretch of conveyor with its moving slats. */
-  private beltTile(gx: number, gy: number, w: number, axis: 'x' | 'y', dir: 1 | -1) {
-    const [bw, bd] = axis === 'x' ? [w, 0.8] : [0.8, w];
-    const [bx, by] = axis === 'x' ? [gx, gy - 0.4] : [gx - 0.4, gy];
-    const body = new Graphics();
-    block(body, bx, by, bw, bd, BELT_UP, 0x6b7590);
-    body.label = 'prop';
-    body.zIndex = (bx + bw / 2 + by + bd / 2) * 100 - 40;
-    const marks = new Graphics();
-    marks.label = 'prop';
-    marks.zIndex = body.zIndex + 1;
-    this.things.addChild(body, marks);
-    this.belts.push({ g: marks, gx, gy, w, axis, dir });
-  }
-
-  /** The lodge in the basement: teammates on holiday sleep here. */
-  private drawLodge() {
-    this.ground.removeChildren().forEach((c) => c.destroy({ children: true }));
-    this.signs.removeChildren().forEach((c) => c.destroy({ children: true }));
-    this.things.children.filter((c) => c.label === 'prop').forEach((c) => c.destroy({ children: true }));
-    this.truck = null;
-    this.people = [];
-    this.belts = [];
-    this.belt = null;
-    this.lamps = [];
-    this.lampLayer.clear();
-    const here = this.away.filter((a) => a.active);
-    const beds = Math.max(4, here.length);
-    const width = Math.max(ZW, 1.2 + beds * 1.7);
-    const depth = 6;
-    rowDepths = [depth];
-    rowGap = ROW_GAP;
-    this.drawBuilding(width, depth, 1, 1, -1, '숙소', 2);
-    const floor = new Graphics();
-    floor.poly(floorPoly(0, 0, width, depth)).fill(0xeadfce);
-    for (let i = 1; i < width; i++) {
-      const a = iso(i, 0);
-      const b = iso(i, depth);
-      floor.moveTo(a.x, a.y).lineTo(b.x, b.y).stroke({ width: 1, color: 0x8a6a4a, alpha: 0.12 });
-    }
-    floor.poly(floorPoly(1.2, 3.3, width - 2.4, 1.8)).fill(0xd9c7b0);
-    floor.poly(floorPoly(1.4, 3.5, width - 2.8, 1.4)).fill(0xe6d8c5);
-    this.ground.addChild(floor);
-    const prop = (gx: number, gy: number, draw: (g: Graphics) => void) => {
-      const g = new Graphics();
-      draw(g);
-      g.label = 'prop';
-      g.zIndex = (gx + gy) * 100;
-      this.things.addChild(g);
-    };
-    for (let i = 0; i < beds; i++) {
-      const who = here[i];
-      const gx = 0.7 + i * 1.7;
-      prop(gx + 0.5, 1.2, (g) => bed(g, gx, 0.5, who ? lookOf(who.id, this.looks).body : null));
-      if (who) {
-        const [, mo, dd] = who.to.split('-').map(Number);
-        this.tag(`${shortName(who.name)} · ~${mo}/${dd}`, gx + 0.5, 0.9, 56, who.me);
-        this.tag('z Z', gx + 0.85, 0.7, 76, false);
-      }
-    }
-    prop(0.4, 3.0, (g) => tree(g, 0.2, 2.8));
-    prop(width - 0.5, 3.0, (g) => lamp(g, width - 0.6, 2.9));
-    prop(width - 0.5, depth - 0.5, (g) => purifier(g, width - 0.75, depth - 0.75));
-    prop(width / 2, depth - 0.3, (g) => hedge(g, width / 2 - 1.4, depth - 0.5, 'x', 2.8));
-    prop(1.6, depth - 0.75, (g) => bench(g, 0.8, depth - 1.0, 'x', 1.6));
-    const coming = this.away.filter((a) => !a.active);
-    this.plate(here.length ? `숙소 · 쉬는 중 ${here.length}명` : '숙소 · 비어 있음', width / 2, 0.15);
-    coming.slice(0, 3).forEach((a, i) => {
-      const [, mo, dd] = a.from.split('-').map(Number);
-      this.tag(`${shortName(a.name)} ${mo}/${dd}부터 휴가`, width / 2, depth - 1.6 + i * 0.6, 0, a.me);
-    });
-    const corners = [iso(-PAD, -PAD), iso(width + PAD, -PAD), iso(width + PAD, depth + PAD), iso(-PAD, depth + PAD)];
-    const xs = corners.map((c) => c.x);
-    const ys = corners.map((c) => c.y);
-    this.bounds = { x: Math.min(...xs), y: Math.min(...ys) - WALL_H - 46, w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys) + WALL_H + 60 };
-    this.refit();
-  }
-
   /** The point on the conveyor a distance s along it (0 = where lane A starts), in screen coordinates. */
   private beltAt(s: number) {
     const { a, b, end } = this.belt!;
@@ -1335,7 +567,7 @@ export class Scene {
   }
 
   /** The name plate of a room that holds no tickets: lighter than a room's sign. */
-  private plate(text: string, gx: number, gy: number) {
+  plate(text: string, gx: number, gy: number) {
     const p = iso(gx, gy);
     const t = label(text, 13, INK, '700');
     const w = t.width + 20;
@@ -1350,7 +582,7 @@ export class Scene {
   }
 
   /** A small name tag floating above something at a grid position. */
-  private tag(text: string, gx: number, gy: number, up: number, strong: boolean) {
+  tag(text: string, gx: number, gy: number, up: number, strong: boolean) {
     const p = iso(gx, gy);
     const t = label(text, 11, strong ? 0xffffff : INK, '600');
     const g = new Graphics();
@@ -1461,7 +693,7 @@ export class Scene {
   }
 
   /** Fits again unless the user has set the view themselves. */
-  private refit() {
+  refit() {
     if (!this.held) this.fit();
   }
 
@@ -1609,6 +841,7 @@ export class Scene {
       b.g.moveTo(p.x, p.y - BELT_UP).lineTo(q.x, q.y - BELT_UP).stroke({ width: 1.5, color: 0x9aa3b5, alpha: 0.85 });
     }
   }
+
 }
 
 /** Members shown in a space (used by the legend). */
