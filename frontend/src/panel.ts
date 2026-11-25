@@ -486,7 +486,12 @@ function draw(w: Win, snap: Snapshot, backend: Backend) {
   w.detailEl = h('div', { class: 'tw-detail' });
   w.actionsEl = h('section', { class: 'tw-actions' });
   w.cancelEl = h('span', { class: 'tw-cancel' });
-  w.el.querySelector('.tw-title')!.replaceChildren(h('span', { class: `tag tag-${b.tag || 'gray'}` }, b.type), h('b', {}, b.key));
+  // Minimised, the title bar shows the type as a colour only, then the number and the summary.
+  w.el.querySelector('.tw-title')!.replaceChildren(
+    h('span', { class: `tag tag-${b.tag || 'gray'}`, title: b.type }, h('span', { class: 'tag-name' }, b.type)),
+    h('b', {}, b.key),
+    h('span', { class: 'tw-sum', title: b.summary }, b.summary),
+  );
   fill(
     w.body,
     h(

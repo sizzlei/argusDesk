@@ -1574,3 +1574,28 @@ dialog.avatars .looks button.on {
   padding: 0 5px;
   font-size: 15px;
 }
+
+/* The summary shows only in the minimised title bar, where the type is just its colour. */
+.tw-sum {
+  display: none;
+}
+
+.tw.mini .tw-sum {
+  display: block;
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tw.mini .tag {
+  flex: none;
+  width: 10px;
+  height: 16px;
+  padding: 0;
+  border-radius: 3px;
+}
+
+.tw.mini .tag-name {
+  display: none;
+}
