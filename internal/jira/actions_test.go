@@ -19,7 +19,7 @@ func TestActionsListsMovesAndPendingApprovals(t *testing.T) {
 			   "resolution":{"required":true,"name":"해결책","hasDefaultValue":false},
 			   "comment":{"required":false,"name":"댓글"}}}]}`)
 		case r.URL.Path == "/rest/api/3/field":
-			io.WriteString(w, `[{"id":"summary","name":"요약"},{"id":"customfield_10102","name":"Approvals","schema":{"custom":"com.atlassian.servicedesk:sd-approvals"}}]`)
+			io.WriteString(w, `[{"id":"summary","name":"요약"},{"id":"customfield_10102","name":"Approvals","schema":{"custom":"com.atlassian.servicedesk.approvals-plugin:sd-approvals"}}]`)
 		case r.URL.Path == "/rest/api/3/issue/A-1":
 			if got := r.URL.Query().Get("fields"); got != "project,customfield_10102" {
 				t.Errorf("fields = %q", got)
@@ -59,7 +59,7 @@ func TestActionsWithoutApprovalsField(t *testing.T) {
 		}
 	})
 	a, err := c.Actions(context.Background(), "A-1")
-	if err != nil || a.ApprovalsError != "" || !a.ServiceDesk || len(a.Approvals) != 0 {
+	if err != nil || a.ApprovalsError == "" || !a.ServiceDesk || len(a.Approvals) != 0 {
 		t.Fatalf("a = %+v, err = %v", a, err)
 	}
 }

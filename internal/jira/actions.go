@@ -110,6 +110,10 @@ func (c *Client) Actions(ctx context.Context, key string) (*Actions, error) {
 	}
 	_ = json.Unmarshal(issue.Fields["project"], &project)
 	out.ServiceDesk = project.Type == "service_desk"
+	if field == "" {
+		out.ApprovalsError = "이 Jira 사이트에서 승인(Approvals) 필드를 찾지 못했습니다"
+		return out, nil
+	}
 
 	var approvals []struct {
 		ID                string `json:"id"`
@@ -157,7 +161,9 @@ func (c *Client) approvalsFieldID(ctx context.Context) (string, error) {
 		return "", err
 	}
 	for _, f := range fields {
-		if f.Schema.Custom == "com.atlassian.servicedesk:sd-approvals" {
+		// "com.atlassian.servicedesk.approvals-plugin:sd-approvals"; matched by
+		// its last part so a renamed plugin key does not hide it.
+		if strings.HasSuffix(f.Schema.Custom, ":sd-approvals") {
 			id = f.ID
 			break
 		}
