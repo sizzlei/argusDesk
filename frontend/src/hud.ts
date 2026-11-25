@@ -1,0 +1,96 @@
+// The bar above the room: what is loaded, how full each zone is, and the
+// few commands the app has.
+
+import type { Backend } from './backend';
+import type { AppState, Snapshot } from './types';
+import { clock, fill, h, toast } from './ui';
+
+export interface HudHooks {
+  refresh(): void;
+  reloadConfig(): void;
+  chooseConfig(): void;
+  checkUpdate(): void;
+  logout(): void;
+  setSpace(index: number): void;
+}
+
+let menuOpen = false;
+
+export function renderHud(state: AppState, snap: Snapshot | null, space: number, lastError: string, backend: Backend, hooks: HudHooks) {
+  const hud = document.getElementById('hud')!;
+  const zones = snap?.spaces[space]?.zones ?? [];
+  const item = (label: string, run: () => void) =>
+    h('button', { role: 'menuitem', onclick: () => ((menuOpen = false), run()) }, label);
+
+  fill(
+    hud,
+    h(
+      'div',
+      { class: 'title' },
+      h('strong', {}, snap?.name ?? state.configName ?? 'ArgusDesk'),
+      h('span', { class: 'quiet', title: state.configPath }, `설정 ${state.configVersion || '?'}`),
+      backend.mock ? h('span', { class: 'chip' }, '가짜 데이터') : null,
+      state.usingLastGood ? h('span', { class: 'chip warn', title: state.configError }, '이전 설정으로 실행 중') : null,
+    ),
+    snap && snap.spaces.length > 1
+      ? h(
+          'nav',
+          { class: 'spaces', 'aria-label': '공간' },
+          ...snap.spaces.map((s, i) =>
+            h('button', { class: i === space ? 'on' : '', onclick: () => hooks.setSpace(i) }, s.name),
+          ),
+        )
+      : null,
+    h(
+      'ul',
+      { class: 'zones', 'aria-label': '구역별 상자 수' },
+      ...zones.map((z) =>
+        h(
+          'li',
+          { class: `kind-${z.kind}` },
+          h('span', {}, z.name),
+          h('b', {}, String(z.count)),
+          z.staleCount ? h('em', { title: '묵은 상자' }, String(z.staleCount)) : null,
+        ),
+      ),
+    ),
+    h(
+      'div',
+      { class: 'tools' },
+      lastError ? h('span', { class: 'chip warn', title: lastError }, '갱신 실패') : null,
+      snap?.warnings.length
+        ? h(
+            'button',
+            { class: 'chip warn', onclick: () => snap.warnings.forEach((w) => toast(w, 'error')) },
+            `경고 ${snap.warnings.length}건`,
+          )
+        : null,
+      h('span', { class: 'quiet' }, snap ? `${clock(snap.fetchedAt)} 갱신` : '불러오는 중'),
+      h('button', { onclick: hooks.refresh, title: '지금 Jira에서 다시 읽기' }, '새로 고침'),
+      h(
+        'div',
+        { class: 'menu' },
+        h(
+          'button',
+          {
+            'aria-haspopup': 'menu',
+            'aria-expanded': String(menuOpen),
+            onclick: () => ((menuOpen = !menuOpen), renderHud(state, snap, space, lastError, backend, hooks)),
+          },
+          state.me || '메뉴',
+        ),
+        menuOpen
+          ? h(
+              'div',
+              { class: 'menu-list', role: 'menu' },
+              item('설정 다시 읽기', hooks.reloadConfig),
+              item('설정 파일 바꾸기', hooks.chooseConfig),
+              item('업데이트 확인', hooks.checkUpdate),
+              item('로그아웃', hooks.logout),
+              h('p', { class: 'quiet' }, `ArgusDesk v${state.version}`),
+            )
+          : null,
+      ),
+    ),
+  );
+}

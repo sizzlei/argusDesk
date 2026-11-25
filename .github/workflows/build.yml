@@ -1,0 +1,149 @@
+# Builds ArgusDesk for macOS (universal) and Windows (amd64).
+# - Every push / pull request: tests + build, binaries attached as workflow artifacts.
+# - Tags "v*" (e.g. v0.1.0): also publishes a GitHub Release with the binaries,
+#   which the app's self-update reads.
+name: build
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write # needed to create releases on tags
+
+env:
+  WAILS_VERSION: v3.1.0
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            task: darwin:package:universal
+            artifact: ArgusDesk-macos-universal.zip
+          - os: windows-latest
+            task: windows:build
+            artifact: ArgusDesk-windows-amd64.zip
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      # The app compares its own Version with the latest release tag, so a
+      # release whose tag and version.go disagree would never stop updating.
+      - name: Tag matches version.go
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          v=$(sed -n 's/^const Version = "\(.*\)"/\1/p' version.go)
+          if [ "v$v" != "$GITHUB_REF_NAME" ]; then
+            echo "version.go says $v but the tag is $GITHUB_REF_NAME"; exit 1
+          fi
+
+      - name: Install Wails CLI
+        run: go install github.com/wailsapp/wails/v3/cmd/wails3@${{ env.WAILS_VERSION }}
+
+      - name: Go tests
+        run: go test ./internal/...
+
+      # tsc runs as part of the build, so type errors fail here.
+      - name: Frontend build
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+
+      - name: Build
+        run: wails3 task ${{ matrix.task }}
+
+      # Sign the whole bundle with one fixed identity. macOS privacy (TCC)
+      # remembers folder permissions per signing identity: the settings file
+      # usually lives in Downloads or Documents and is read on every start, so
+      # with a different signature per version macOS would ask again after
+      # each update.
+      # - Secrets MACOS_CERT_P12 (base64 .p12) + MACOS_CERT_PASSWORD set: signed
+      #   with that certificate (a self-signed one is enough).
+      # - Otherwise ad-hoc: permissions are remembered until the next version.
+      - name: Sign (macOS)
+        if: runner.os == 'macOS'
+        env:
+          MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
+          MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+        run: |
+          APP=bin/ArgusDesk.app
+          IDENTITY=-
+          if [ -n "$MACOS_CERT_P12" ]; then
+            KC="$RUNNER_TEMP/sign.keychain-db"
+            security create-keychain -p ci "$KC"
+            security set-keychain-settings -lut 21600 "$KC"
+            security unlock-keychain -p ci "$KC"
+            echo "$MACOS_CERT_P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+            security import "$RUNNER_TEMP/cert.p12" -k "$KC" -P "$MACOS_CERT_PASSWORD" -T /usr/bin/codesign
+            security set-key-partition-list -S apple-tool:,apple: -s -k ci "$KC" > /dev/null
+            security list-keychains -d user -s "$KC" $(security list-keychains -d user | tr -d '"')
+            IDENTITY=$(security find-identity -p codesigning "$KC" | awk -F'"' '/"/ {print $2; exit}')
+            echo "Signing with: $IDENTITY"
+          else
+            echo "MACOS_CERT_P12 not set: ad-hoc signing"
+          fi
+          codesign --force --deep --sign "$IDENTITY" "$APP"
+          codesign --verify --deep --verbose=2 "$APP"
+          codesign -dv "$APP" 2>&1 | grep -E 'Identifier|Authority|Signature' || true
+
+      - name: Package (macOS)
+        if: runner.os == 'macOS'
+        run: ditto -c -k --keepParent bin/ArgusDesk.app ${{ matrix.artifact }}
+
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Compress-Archive -Path bin/ArgusDesk.exe -DestinationPath ${{ matrix.artifact }}
+
+      # Checksum next to each archive: the in-app updater verifies downloads
+      # with it when the GitHub API (which also lists digests) is rate limited.
+      - name: Checksum
+        shell: bash
+        run: |
+          if command -v sha256sum > /dev/null; then sha256sum "${{ matrix.artifact }}" > "${{ matrix.artifact }}.sha256"
+          else shasum -a 256 "${{ matrix.artifact }}" > "${{ matrix.artifact }}.sha256"; fi
+          cat "${{ matrix.artifact }}.sha256"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.artifact }}
+
+      # release-notes/<tag>.md becomes the release body (shown in the app after
+      # an update); without it GitHub's generated change list is used.
+      - name: Release notes
+        id: notes
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          f="release-notes/${GITHUB_REF_NAME}.md"
+          if [ -f "$f" ]; then echo "path=$f" >> "$GITHUB_OUTPUT"; echo "using $f"; fi
+
+      - name: Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            ${{ matrix.artifact }}
+            ${{ matrix.artifact }}.sha256
+          body_path: ${{ steps.notes.outputs.path }}
+          generate_release_notes: ${{ steps.notes.outputs.path == '' }}

@@ -1,0 +1,79 @@
+# argusDesk 설정 예시.
+#
+# 이 파일의 이름과 ID는 모두 가짜입니다. 실제 설정 파일에는 사내 Jira의
+# 유형, 상태, 승인 단계가 들어가므로 저장소에 올리지 않습니다.
+# (실제 파일 이름은 .gitignore에 들어 있습니다.)
+
+version: "2026-11-25.1" # 앱 화면 구석에 표시됩니다. 바꿀 때마다 올리세요.
+name: 요청 센터
+site: example.atlassian.net
+timezone: Asia/Seoul # 날짜만 있는 필드를 읽는 시간대
+poll_seconds: 60
+
+spaces:
+  - id: requests
+    name: 요청 센터
+    project: REQ
+
+    # 구역은 적힌 순서대로 배치됩니다. 윗줄 왼쪽에서 오른쪽으로 세 개,
+    # 아랫줄 오른쪽에서 왼쪽으로 세 개.
+    # kind: wait(팀 밖에서 결정) | work(팀이 처리) | desk(담당자 책상) |
+    #       done(오늘 완료) | returned(반려·취소)
+    zones:
+      - { id: lobby, name: 접수 로비, kind: wait }
+      - { id: review, name: 검토실, kind: work, stale: { after: 3h, from: zone_entered } }
+      - { id: approval, name: 승인 데스크, kind: work, stale: { after: 3h, from: zone_entered } }
+      - { id: work, name: 작업장, kind: desk, stale: { after: 5d, from: type_field } }
+      - { id: dock, name: 출고 도크, kind: done }
+      - { id: returns, name: 반송함, kind: returned }
+
+    # 상태 ID -> 구역. 이름은 Jira에서 바뀔 수 있어 ID로 적고 주석을 답니다.
+    status_zones:
+      "10001": lobby # 요청 부서 승인 대기
+      "10002": review # 검토 중
+      "10003": approval # 승인 대기
+      "10004": work # 작업 대기
+      "10005": dock # 완료
+      "10006": returns # 반려
+      "10007": returns # 요청 취소
+
+    # 워크플로우별 경로. 송장의 경로 칸을 그리는 데만 씁니다.
+    # 실제로 옮길 수 있는지는 Jira가 알려주는 전환 목록을 따릅니다.
+    workflows:
+      standard:
+        start: "10001"
+        paths:
+          "10001": ["10002"]
+          "10002": ["10003"]
+          "10003": ["10004", "10006"]
+          "10004": ["10005"]
+        from_any: ["10007"]
+      simple:
+        start: "10002"
+        paths:
+          "10002": ["10003", "10005"]
+          "10003": ["10004", "10006"]
+          "10004": ["10005"]
+        from_any: ["10007"]
+
+    # 유형 이름 -> 워크플로우, 송장 태그 색, 작업장의 묵은 상자 기준 필드.
+    # tag: orange | purple | blue | green | teal | pink | yellow | navy | gray
+    # stale_field: created | duedate | 사용자 정의 필드 이름
+    types:
+      "[REQ] 스키마 변경":
+        workflow: standard
+        tag: green
+        stale_field: 작업 완료 요청일시
+        unscheduled: { unless_checked: 배포 일정 확정, label: 일정 미정 }
+      "[REQ] 계정 요청":
+        workflow: standard
+        tag: orange
+        stale_field: created
+      "[REQ] 데이터 추출":
+        workflow: standard
+        tag: purple
+        stale_field: duedate
+      "[REQ] 기타":
+        workflow: simple
+        tag: gray
+        stale_field: 작업 완료 요청일시
