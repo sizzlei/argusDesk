@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { box, snapshot } from './testing';
-import { NO_FILTER, applyFilter, extraCount, filtering, typesIn } from './view';
+import { NO_FILTER, applyFilter, extraCount, filtering, typesIn, unassigned } from './view';
 
 const snap = snapshot([
   box({ key: 'REQ-1', mine: true, assigneeId: 'me', stale: true }),
@@ -24,6 +24,13 @@ describe('applyFilter', () => {
 
   it('keeps boxes nobody holds', () => {
     expect(keys({ scope: 'unassigned' })).toEqual(['REQ-4', 'INT-1']);
+  });
+
+  it('leaves finished boxes out of the unassigned ones', () => {
+    const s2 = { ...snap, spaces: snap.spaces.map((sp) => ({ ...sp, zones: sp.zones.map((z) => (z.id === 'wait' ? { ...z, kind: 'done' as const } : z)) })) };
+    expect(applyFilter(s2, { ...NO_FILTER, scope: 'unassigned' }).snap.boxes.map((b) => b.key)).toEqual(['REQ-4']);
+    expect(unassigned(s2)).toEqual({ count: 1, stale: 1 });
+    expect(unassigned(snap)).toEqual({ count: 2, stale: 1 });
   });
 
   it('combines the conditions', () => {

@@ -76,6 +76,19 @@ export function floorPoly(gx: number, gy: number, w: number, d: number) {
   return [iso(gx, gy), iso(gx + w, gy), iso(gx + w, gy + d), iso(gx, gy + d)].flatMap((q) => [q.x, q.y]);
 }
 
+/** Floor marking for boxes nobody holds: a yellow frame with warning stripes. */
+export function hatch(g: Graphics, gx: number, gy: number, w: number, d: number) {
+  const YELLOW = 0xe2a800;
+  g.poly(floorPoly(gx, gy, w, d)).fill({ color: 0xffd84d, alpha: 0.22 });
+  for (let t = 0.5; t < w + d; t += 0.5) {
+    // diagonal stripes, clipped to the patch
+    const a = iso(gx + Math.min(t, w), gy + Math.max(0, t - w));
+    const b = iso(gx + Math.max(0, t - d), gy + Math.min(t, d));
+    g.moveTo(a.x, a.y).lineTo(b.x, b.y).stroke({ width: 2, color: YELLOW, alpha: 0.35 });
+  }
+  g.poly(floorPoly(gx, gy, w, d)).stroke({ width: 2, color: YELLOW, alpha: 0.9 });
+}
+
 /** A potted plant, for corners. */
 export function plant(g: Graphics, gx: number, gy: number) {
   shadow(g, gx, gy, 0.4, 0.4);

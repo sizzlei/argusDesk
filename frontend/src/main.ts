@@ -11,7 +11,7 @@ import type { AppState, Box, Change, GameStats, Snapshot } from './types';
 import { checkForUpdates, initUpdates } from './update';
 import { openAvatarPicker, openVacation } from './vacation';
 import { errText, toast } from './ui';
-import { type Filter, applyFilter, loadFilter, saveFilter } from './view';
+import { type Filter, applyFilter, loadFilter, saveFilter, unassigned } from './view';
 
 async function boot() {
   const backend = await connect();
@@ -107,6 +107,7 @@ async function boot() {
         hud();
       },
       search: openFinder,
+      unassigned: unassigned(snap),
       notices: {
         ...noticeCount(snap),
         open: noticesOpen(),

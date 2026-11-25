@@ -171,6 +171,12 @@ function seed(now: number): Box[] {
       b.note = '일정 미정';
     }
   });
+  // Reviews and approvals are mostly held by someone; a few wait for a taker.
+  boxes.filter((b) => b.zone === 'review' || b.zone === 'approval').forEach((b, i) => {
+    if (i % 3 === 2) return;
+    [b.assigneeId, b.assignee] = people[i % people.length];
+    b.mine = b.assigneeId === 'u1';
+  });
   // the second space
   const inner: [string, number, number][] = [['i-wait', 30, 0], ['i-wait', 200, 1], ['i-approval', 5, 2], ['i-work', 50, 0], ['i-work', 90, 1], ['i-work', 20, 0], ['i-done', 2, 2]];
   inner.forEach(([zone, hours, t], i) => {

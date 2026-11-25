@@ -23,6 +23,7 @@ export interface HudHooks {
   filtersOpen: boolean;
   toggleFilters(): void;
   search(): void;
+  unassigned: { count: number; stale: number }; // open boxes nobody holds
   notices: { approvals: number; unread: number; open: boolean; toggle(): void };
   closeWindows(): void;
   setSpace(index: number): void;
@@ -149,7 +150,12 @@ export function renderHud(state: AppState, snap: Snapshot | null, space: number,
             'div',
             { class: 'scope', role: 'group', 'aria-label': '보이는 작업' },
             ...SCOPES.map(([scope, text, tip]) =>
-              h('button', { class: hooks.filter.scope === scope ? 'on' : '', 'aria-pressed': String(hooks.filter.scope === scope), title: tip, onclick: () => hooks.filter.scope !== scope && hooks.setFilter({ ...hooks.filter, scope }) }, text),
+              h('button', { class: hooks.filter.scope === scope ? 'on' : '', 'aria-pressed': String(hooks.filter.scope === scope), title: tip, onclick: () => hooks.filter.scope !== scope && hooks.setFilter({ ...hooks.filter, scope }) },
+                text,
+                scope === 'unassigned' && hooks.unassigned.count
+                  ? h('span', { class: `n${hooks.unassigned.stale ? ' old' : ''}`, title: hooks.unassigned.stale ? `묵은 미배정 ${hooks.unassigned.stale}건` : '' }, String(hooks.unassigned.count))
+                  : null,
+              ),
             ),
           )
         : null,

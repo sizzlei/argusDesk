@@ -41,6 +41,21 @@ export function saveFilter(f: Filter) {
 /** Mine: I hold it, or it waits for my approval. */
 export const isMine = (b: Box) => b.mine || !!b.myApproval;
 
+/** Zones whose boxes are finished: nobody needs to pick those up. */
+function closedZones(snap: Snapshot) {
+  const out = new Set<string>();
+  for (const sp of snap.spaces) for (const z of sp.zones) if (z.kind === 'done' || z.kind === 'returned') out.add(`${sp.id}/${z.id}`);
+  return out;
+}
+
+/** Open boxes nobody holds, and how many of them are past their limit. */
+export function unassigned(snap: Snapshot | null) {
+  if (!snap) return { count: 0, stale: 0 };
+  const closed = closedZones(snap);
+  const loose = snap.boxes.filter((b) => !b.assigneeId && !closed.has(`${b.space}/${b.zone}`));
+  return { count: loose.length, stale: loose.filter((b) => b.stale).length };
+}
+
 /** How many conditions beyond the scope are on (shown on the filter button). */
 export const extraCount = (f: Filter) => Number(f.staleOnly) + f.types.length;
 
@@ -63,8 +78,9 @@ export function applyFilter(snap: Snapshot, f: Filter): { snap: Snapshot; hidden
   if (!filtering(f)) return { snap, hidden };
   const chosen = new Set(f.types);
   const typed = new Set(snap.boxes.filter((b) => chosen.has(b.type)).map((b) => b.space)); // floors the type filter applies to
+  const closed = closedZones(snap);
   const keep = (b: Box) =>
-    (f.scope === 'all' || (f.scope === 'mine' ? isMine(b) : !b.assigneeId)) &&
+    (f.scope === 'all' || (f.scope === 'mine' ? isMine(b) : !b.assigneeId && !closed.has(`${b.space}/${b.zone}`))) &&
     (!f.staleOnly || b.stale) &&
     (!typed.has(b.space) || chosen.has(b.type));
   const boxes = snap.boxes.filter((b) => keep(b) || (hidden.add(b.key), false));

@@ -14,8 +14,31 @@ export const LANE_TOP = 1.2; // first row of a desk room
 export const LANE_LEN = 6; // boxes side by side before they stack
 export const lanePitch = (lanes: number, depth: number) => Math.min(1.7, (depth - LANE_TOP - 0.5) / Math.max(1, lanes - 1 || 1));
 
-/** Where each box of a room stands, relative to the room's origin. */
-export function slots(zone: ZoneView, boxes: Box[], lanes: string[], depth: number): Map<string, Slot> {
+const GRID = { gx: 1.3, gy: 2.6, dx: 1.32, dy: 1.3, cols: 5, rows: 3 }; // a waiting room's floor grid
+
+/** How many of the grid's columns the pallet takes: a share like that of the boxes nobody holds. */
+export function palletCols(loose: number, total: number) {
+  if (!loose) return 0;
+  if (loose >= total) return GRID.cols;
+  return Math.max(1, Math.min(GRID.cols - 1, Math.round((GRID.cols * loose) / total)));
+}
+
+/** The pallet for boxes nobody holds: a marked patch of floor over the grid's last columns, relative to the room. */
+export function pallet(cols: number) {
+  return {
+    gx: GRID.gx + (GRID.cols - cols) * GRID.dx - 0.6,
+    gy: GRID.gy - 0.6,
+    w: (cols - 1) * GRID.dx + 1.2,
+    d: (GRID.rows - 1) * GRID.dy + 1.2,
+  };
+}
+
+/**
+ * Where each box of a room stands, relative to the room's origin. With
+ * `keep`, boxes nobody holds stand apart on the pallet and the rest keep
+ * to the columns beside it.
+ */
+export function slots(zone: ZoneView, boxes: Box[], lanes: string[], depth: number, keep = false): Map<string, Slot> {
   const out = new Map<string, Slot>();
   if (zone.kind === 'desk') {
     // One row per assignee: the desk on the left, that person's boxes lined up
@@ -30,11 +53,14 @@ export function slots(zone: ZoneView, boxes: Box[], lanes: string[], depth: numb
     }
     return out;
   }
-  const cols = 5;
-  const rows = 3;
-  boxes.forEach((b, i) => {
-    const at = i % (cols * rows);
-    out.set(b.key, { gx: 1.3 + (at % cols) * 1.32, gy: 2.6 + Math.floor(at / cols) * 1.3, level: Math.floor(i / (cols * rows)) });
-  });
+  const place = (list: Box[], first: number, cols: number) =>
+    list.forEach((b, i) => {
+      const at = i % (cols * GRID.rows);
+      out.set(b.key, { gx: GRID.gx + (first + (at % cols)) * GRID.dx, gy: GRID.gy + Math.floor(at / cols) * GRID.dy, level: Math.floor(i / (cols * GRID.rows)) });
+    });
+  const loose = keep ? boxes.filter((b) => !b.assigneeId) : [];
+  const cols = palletCols(loose.length, boxes.length);
+  if (cols < GRID.cols) place(boxes.filter((b) => !loose.includes(b)), 0, GRID.cols - cols);
+  if (cols) place(loose, GRID.cols - cols, cols);
   return out;
 }

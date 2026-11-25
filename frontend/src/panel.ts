@@ -21,6 +21,7 @@ interface Win {
   actionsEl: HTMLElement | null;
   detailEl: HTMLElement | null;
   cancelEl: HTMLElement | null; // top of the window: where a request is cancelled
+  claimEl: HTMLElement | null; // top of the window: taking a box nobody holds
   min: boolean; // minimised: shrunk to its title bar, still where it was put
   size: { w: string; h: string }; // its size before it was minimised
   text: HTMLTextAreaElement | null; // the comment box's text area
@@ -287,6 +288,16 @@ function renderActions(w: Win, snap: Snapshot, backend: Backend) {
     );
   }
 
+  // A box nobody holds says so at the top, with the one button that takes it.
+  if (w.claimEl) {
+    w.claimEl.hidden = !!b.assigneeId;
+    fill(
+      w.claimEl,
+      h('span', {}, '담당자가 없는 상자입니다.'),
+      h('button', { class: 'primary', disabled: off, onclick: () => void act(w, '나에게 배정했습니다.', () => backend.assignTicket(b.key, 'me'), redraw) }, '내가 담당'),
+    );
+  }
+
   // moves
   const moves = (a?.transitions ?? []).filter((t) => !decide.includes(t) && !cancels.includes(t)).map((t) =>
     t.needs.length
@@ -487,6 +498,7 @@ function draw(w: Win, snap: Snapshot, backend: Backend) {
   w.detailEl = h('div', { class: 'tw-detail' });
   w.actionsEl = h('section', { class: 'tw-actions' });
   w.cancelEl = h('span', { class: 'tw-cancel' });
+  w.claimEl = h('div', { class: 'tw-claim', hidden: !!b.assigneeId });
   // Minimised, the title bar shows the type as a colour only, then the number and the summary.
   w.el.querySelector('.tw-title')!.replaceChildren(
     h('span', { class: `tag tag-${b.tag || 'gray'}`, title: b.type }, h('span', { class: 'tag-name' }, b.type)),
@@ -505,6 +517,7 @@ function draw(w: Win, snap: Snapshot, backend: Backend) {
       w.cancelEl,
     ),
     h('h2', {}, b.summary),
+    w.claimEl,
     h(
       'dl',
       {},
@@ -606,7 +619,7 @@ export function openTicket(b: Box, snap: Snapshot, backend: Backend, hooks: Tick
   const head = h('header', { class: 'tw-head' }, title, h('span', { class: 'tw-buttons' }, fold, shut));
   const body = h('div', { class: 'tw-body' });
   const el = h('section', { class: 'tw', role: 'dialog', 'aria-label': `${b.key} ${b.summary}` }, head, body);
-  const win: Win = { key: b.key, box: b, el, body, actionsEl: null, detailEl: null, cancelEl: null, min: false, size: { w: '', h: '' }, text: null, commentBox: null, busy: false, pending: null };
+  const win: Win = { key: b.key, box: b, el, body, actionsEl: null, detailEl: null, cancelEl: null, claimEl: null, min: false, size: { w: '', h: '' }, text: null, commentBox: null, busy: false, pending: null };
   w = win;
   wins.set(b.key, win);
 

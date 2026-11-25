@@ -10,8 +10,8 @@ import { lookOf } from './avatars';
 import type { Away, Box, Change, Member, Snapshot, SpaceView, ZoneView } from './types';
 import { TW, TH, ZW, ZH, COL_GAP, ROW_GAP, ATRIUM_GAP, grid, COLS, PAD, WALL_H, STOREY, iso, DESK_EXTRA, rowY, roomOrigin } from './scene/grid';
 import { INK, QUIET, ACCENT, FLOOR, AGE, shade, ageStep, shortAge, shortName } from './scene/palette';
-import { label, block, BOX, BOX_H, drawBox, floorPoly, tree, hedge, purifier, cooler, bench, sofa, dbTank, Lamp, rack, chiller, desk, person, truck, decorate, furnish } from './scene/props';
-import { LANE_TOP, lanePitch, slots } from './scene/layout';
+import { hatch, label, block, BOX, BOX_H, drawBox, floorPoly, tree, hedge, purifier, cooler, bench, sofa, dbTank, Lamp, rack, chiller, desk, person, truck, decorate, furnish } from './scene/props';
+import { LANE_LEN, LANE_TOP, lanePitch, pallet, palletCols, slots } from './scene/layout';
 import { Sprite, Leg, BeltTile, Belt, BELT_SPEED, BELT_UP, CALM, easeInOut, SQUASH } from './scene/parts';
 import { drawBuilding, beltTile } from './scene/building';
 import { drawLodge } from './scene/lodge';
@@ -371,11 +371,28 @@ export class Scene {
           const gy = o.gy + LANE_TOP + li * pitch;
           const who = here.find((m) => m.id === id);
           prop(gx, gy, (g) => desk(g, gx, gy, id === '' ? 'shelf' : who?.me ? 'mine' : 'desk'));
-          if (id === '') this.tag('공용 선반', gx, gy, 38, false);
+          if (id === '') {
+            const n = inZone.filter((b) => !b.assigneeId).length;
+            this.tag(n ? `미배정 ${n}` : '미배정', gx, gy, 38, false);
+            const mark = new Graphics();
+            hatch(mark, o.gx + 1.75, gy - 0.5, Math.min(LANE_LEN, Math.max(1, n)) + 0.1, 1);
+            this.ground.addChild(mark);
+          }
         });
       }
 
-      const where = slots(zone, inZone, lanes, o.d);
+      // Boxes nobody holds stand apart on a marked pallet. Not in the first
+      // room, where everything has just arrived and nothing is held yet.
+      const loose = zone.kind !== 'desk' && zone.kind !== 'done' && zi > 0 ? inZone.filter((b) => !b.assigneeId).length : 0;
+      if (loose) {
+        const at = pallet(palletCols(loose, inZone.length));
+        const mark = new Graphics();
+        hatch(mark, o.gx + at.gx, o.gy + at.gy, at.w, at.d);
+        this.ground.addChild(mark);
+        this.tag(`미배정 ${loose}`, o.gx + at.gx + at.w / 2, o.gy + at.gy + at.d + 0.35, 9, false); // on the floor before the pallet
+      }
+
+      const where = slots(zone, inZone, lanes, o.d, loose > 0);
       for (const b of inZone) {
         const s = where.get(b.key)!;
         const p = iso(o.gx + s.gx, o.gy + s.gy);
