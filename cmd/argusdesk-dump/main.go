@@ -129,6 +129,12 @@ func printTicket(ctx context.Context, client *jira.Client, key string) {
 	if a.ApprovalsError != "" {
 		fmt.Println("\n승인 정보를 읽지 못했습니다:", a.ApprovalsError)
 	}
+	// Answering goes through this address; reading it tells whether that will work.
+	if err := client.ApprovalAPI(ctx, key); err != nil {
+		fmt.Println("\n승인 API: 이 티켓에는 쓸 수 없음 →", err)
+	} else {
+		fmt.Println("\n승인 API: 사용 가능")
+	}
 	for _, ap := range a.Approvals {
 		can := "내가 답할 수 없음"
 		if ap.CanAnswer {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
@@ -79,37 +80,57 @@ func (c *Client) Actions(ctx context.Context, key string) (*Actions, error) {
 		out.Transitions = append(out.Transitions, Transition{ID: t.ID, Name: t.Name, ToID: t.To.ID, ToName: t.To.Name, Needs: needs})
 	}
 
-	var ap struct {
-		Values []struct {
-			ID                string `json:"id"`
-			Name              string `json:"name"`
-			FinalDecision     string `json:"finalDecision"`
-			CanAnswerApproval bool   `json:"canAnswerApproval"`
-			Approvers         []struct {
-				Approver struct {
-					AccountID   string `json:"accountId"`
-					DisplayName string `json:"displayName"`
-				} `json:"approver"`
-				ApproverDecision string `json:"approverDecision"`
-			} `json:"approvers"`
-		} `json:"values"`
-	}
-	if err := c.do(ctx, http.MethodGet, "/rest/servicedeskapi/request/"+url.PathEscape(key)+"/approval?limit=50", nil, &ap); err != nil {
+	// Approvals live in the site's "Approvals" field. Reading them from the
+	// ticket works for service desk requests and for ordinary projects that
+	// use Jira's approval step alike.
+	field, err := c.approvalsFieldID(ctx)
+	if err != nil {
 		if errors.Is(err, ErrUnauthorized) {
 			return nil, err
 		}
-		// A ticket of an ordinary project is not a service desk request: it
-		// simply has no approvals. Anything else is reported, not fatal.
-		var he *HTTPError
-		if errors.As(err, &he) && he.Code == http.StatusNotFound {
-			return out, nil
-		}
-		out.ServiceDesk = true
 		out.ApprovalsError = err.Error()
 		return out, nil
 	}
-	out.ServiceDesk = true
-	for _, v := range ap.Values {
+	names := "project"
+	if field != "" {
+		names += "," + field
+	}
+	var issue struct {
+		Fields map[string]json.RawMessage `json:"fields"`
+	}
+	if err := c.do(ctx, http.MethodGet, "/rest/api/3/issue/"+url.PathEscape(key)+"?fields="+names, nil, &issue); err != nil {
+		if errors.Is(err, ErrUnauthorized) {
+			return nil, err
+		}
+		out.ApprovalsError = err.Error()
+		return out, nil
+	}
+	var project struct {
+		Type string `json:"projectTypeKey"`
+	}
+	_ = json.Unmarshal(issue.Fields["project"], &project)
+	out.ServiceDesk = project.Type == "service_desk"
+
+	var approvals []struct {
+		ID                string `json:"id"`
+		Name              string `json:"name"`
+		FinalDecision     string `json:"finalDecision"`
+		CanAnswerApproval bool   `json:"canAnswerApproval"`
+		Approvers         []struct {
+			Approver struct {
+				AccountID   string `json:"accountId"`
+				DisplayName string `json:"displayName"`
+			} `json:"approver"`
+			ApproverDecision string `json:"approverDecision"`
+		} `json:"approvers"`
+	}
+	if raw := issue.Fields[field]; field != "" && len(raw) > 0 && string(raw) != "null" {
+		if err := json.Unmarshal(raw, &approvals); err != nil {
+			out.ApprovalsError = "승인 정보를 읽을 수 없습니다: " + err.Error()
+			return out, nil
+		}
+	}
+	for _, v := range approvals {
 		if !strings.EqualFold(v.FinalDecision, "pending") {
 			continue
 		}
@@ -120,6 +141,37 @@ func (c *Client) Actions(ctx context.Context, key string) (*Actions, error) {
 		out.Approvals = append(out.Approvals, a)
 	}
 	return out, nil
+}
+
+// approvalsFieldID finds the site's "Approvals" field once; "" when the site
+// has none.
+func (c *Client) approvalsFieldID(ctx context.Context) (string, error) {
+	c.mu.Lock()
+	id, read := c.approvalsField, c.approvalsFieldRead
+	c.mu.Unlock()
+	if read {
+		return id, nil
+	}
+	fields, err := c.Fields(ctx)
+	if err != nil {
+		return "", err
+	}
+	for _, f := range fields {
+		if f.Schema.Custom == "com.atlassian.servicedesk:sd-approvals" {
+			id = f.ID
+			break
+		}
+	}
+	c.mu.Lock()
+	c.approvalsField, c.approvalsFieldRead = id, true
+	c.mu.Unlock()
+	return id, nil
+}
+
+// ApprovalAPI checks whether the approval can be answered through the API for
+// this ticket: it reads the same address an answer is sent to. nil means yes.
+func (c *Client) ApprovalAPI(ctx context.Context, key string) error {
+	return c.do(ctx, http.MethodGet, "/rest/servicedeskapi/request/"+url.PathEscape(key)+"/approval?limit=1", nil, nil)
 }
 
 // DoTransition moves a ticket along one of its transitions.
@@ -144,7 +196,12 @@ func (c *Client) AnswerApproval(ctx context.Context, key, approvalID string, app
 		decision = "approve"
 	}
 	path := "/rest/servicedeskapi/request/" + url.PathEscape(key) + "/approval/" + url.PathEscape(approvalID)
-	return c.do(ctx, http.MethodPost, path, map[string]string{"decision": decision}, nil)
+	err := c.do(ctx, http.MethodPost, path, map[string]string{"decision": decision}, nil)
+	var he *HTTPError
+	if errors.As(err, &he) && he.Code == http.StatusNotFound {
+		return fmt.Errorf("이 티켓의 승인은 앱에서 처리할 수 없습니다. Jira에서 승인해 주세요 (%w)", err)
+	}
+	return err
 }
 
 // Where a comment goes.

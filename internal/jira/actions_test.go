@@ -18,11 +18,16 @@ func TestActionsListsMovesAndPendingApprovals(t *testing.T) {
 			 {"id":"21","name":"반려","to":{"id":"9","name":"반려"},"fields":{
 			   "resolution":{"required":true,"name":"해결책","hasDefaultValue":false},
 			   "comment":{"required":false,"name":"댓글"}}}]}`)
-		case strings.HasSuffix(r.URL.Path, "/approval"):
-			io.WriteString(w, `{"values":[
+		case r.URL.Path == "/rest/api/3/field":
+			io.WriteString(w, `[{"id":"summary","name":"요약"},{"id":"customfield_10102","name":"Approvals","schema":{"custom":"com.atlassian.servicedesk:sd-approvals"}}]`)
+		case r.URL.Path == "/rest/api/3/issue/A-1":
+			if got := r.URL.Query().Get("fields"); got != "project,customfield_10102" {
+				t.Errorf("fields = %q", got)
+			}
+			io.WriteString(w, `{"fields":{"project":{"projectTypeKey":"software"},"customfield_10102":[
 			 {"id":"1","name":"부서 승인","finalDecision":"approved","canAnswerApproval":false,"approvers":[]},
 			 {"id":"2","name":"DBA 승인","finalDecision":"pending","canAnswerApproval":true,"approvers":[
-			   {"approver":{"accountId":"u1","displayName":"김하늘"},"approverDecision":"pending"}]}]}`)
+			   {"approver":{"accountId":"u1","displayName":"김하늘"},"approverDecision":"pending"}]}]}}`)
 		default:
 			t.Errorf("unexpected %s", r.URL.Path)
 		}
@@ -37,21 +42,24 @@ func TestActionsListsMovesAndPendingApprovals(t *testing.T) {
 	if n := a.Transitions[1].Needs; len(n) != 1 || n[0] != "해결책" {
 		t.Fatalf("needs = %v", n)
 	}
-	if !a.ServiceDesk || len(a.Approvals) != 1 || a.Approvals[0].ID != "2" || !a.Approvals[0].CanAnswer || a.Approvals[0].Approvers[0].Name != "김하늘" {
+	if a.ServiceDesk || len(a.Approvals) != 1 || a.Approvals[0].ID != "2" || !a.Approvals[0].CanAnswer || a.Approvals[0].Approvers[0].Name != "김하늘" {
 		t.Fatalf("approvals = %+v", a.Approvals)
 	}
 }
 
-func TestActionsSurvivesMissingApprovals(t *testing.T) {
+func TestActionsWithoutApprovalsField(t *testing.T) {
 	c := server(t, func(w http.ResponseWriter, r *http.Request) {
-		if strings.HasSuffix(r.URL.Path, "/approval") {
-			http.Error(w, "not a request", http.StatusNotFound)
-			return
+		switch {
+		case r.URL.Path == "/rest/api/3/field":
+			io.WriteString(w, `[{"id":"summary","name":"요약"}]`)
+		case r.URL.Path == "/rest/api/3/issue/A-1":
+			io.WriteString(w, `{"fields":{"project":{"projectTypeKey":"service_desk"}}}`)
+		default:
+			io.WriteString(w, `{"transitions":[]}`)
 		}
-		io.WriteString(w, `{"transitions":[]}`)
 	})
 	a, err := c.Actions(context.Background(), "A-1")
-	if err != nil || a.ApprovalsError != "" || a.ServiceDesk || len(a.Approvals) != 0 {
+	if err != nil || a.ApprovalsError != "" || !a.ServiceDesk || len(a.Approvals) != 0 {
 		t.Fatalf("a = %+v, err = %v", a, err)
 	}
 }

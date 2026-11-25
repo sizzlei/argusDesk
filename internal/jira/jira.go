@@ -46,6 +46,9 @@ type Client struct {
 
 	mu      sync.Mutex
 	cloudID string // looked up once, on first use
+
+	approvalsField     string // id of the site's "Approvals" field
+	approvalsFieldRead bool
 }
 
 // New makes a client for a site ("example.atlassian.net" or a full URL).
@@ -132,8 +135,11 @@ func (c *Client) Myself(ctx context.Context) (*User, error) {
 
 // Field is a Jira field definition.
 type Field struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
+	ID     string `json:"id"`
+	Name   string `json:"name"`
+	Schema struct {
+		Custom string `json:"custom"` // the kind of a custom field
+	} `json:"schema"`
 }
 
 // Fields lists every field of the site (custom fields included).

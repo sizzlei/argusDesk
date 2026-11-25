@@ -23,11 +23,17 @@ const STOREY = 34; // height of a floor below the one shown, on screen
 
 const iso = (gx: number, gy: number) => ({ x: ((gx - gy) * TW) / 2, y: ((gx + gy) * TH) / 2 });
 
+// A row that holds a desk room is deeper, so every teammate's row of boxes has
+// space. Set from the zones each time the building is drawn.
+let rowDepths: number[] = [];
+const DESK_EXTRA = 3;
+const rowY = (row: number) => rowDepths.slice(0, row).reduce((sum, d) => sum + d + ROW_GAP, 0);
+
 /** Rooms snake through the building: left to right, then back. */
 function roomOrigin(index: number) {
   const row = Math.floor(index / COLS);
   const col = row % 2 === 0 ? index % COLS : COLS - 1 - (index % COLS);
-  return { gx: col * (ZW + COL_GAP), gy: row * (ZH + ROW_GAP), col, row };
+  return { gx: col * (ZW + COL_GAP), gy: rowY(row), col, row, d: rowDepths[row] ?? ZH };
 }
 
 // ---- colours ----------------------------------------------------------------
@@ -253,22 +259,22 @@ interface Slot {
 }
 
 const LANE_TOP = 1.2; // first row of a desk room
-const LANE_LEN = 5; // boxes side by side before they stack
-const lanePitch = (lanes: number) => Math.min(1.4, (ZH - LANE_TOP - 0.45) / Math.max(1, lanes - 1 || 1));
+const LANE_LEN = 6; // boxes side by side before they stack
+const lanePitch = (lanes: number, depth: number) => Math.min(1.7, (depth - LANE_TOP - 0.5) / Math.max(1, lanes - 1 || 1));
 
 /** Where each box of a room stands, relative to the room's origin. */
-function slots(zone: ZoneView, boxes: Box[], lanes: string[]): Map<string, Slot> {
+function slots(zone: ZoneView, boxes: Box[], lanes: string[], depth: number): Map<string, Slot> {
   const out = new Map<string, Slot>();
   if (zone.kind === 'desk') {
     // One row per assignee: the desk on the left, that person's boxes lined up
     // beside it. The last row is the shared shelf for unassigned boxes.
-    const pitch = lanePitch(lanes.length);
+    const pitch = lanePitch(lanes.length, depth);
     const perLane = new Map<string, number>();
     for (const b of boxes) {
       const lane = Math.max(0, lanes.indexOf(b.assigneeId));
       const n = perLane.get(b.assigneeId) ?? 0;
       perLane.set(b.assigneeId, n + 1);
-      out.set(b.key, { gx: 2.35 + (n % LANE_LEN) * 1.12, gy: LANE_TOP + lane * pitch, level: Math.floor(n / LANE_LEN) });
+      out.set(b.key, { gx: 2.3 + (n % LANE_LEN) * 1.0, gy: LANE_TOP + lane * pitch, level: Math.floor(n / LANE_LEN) });
     }
     return out;
   }
@@ -316,6 +322,9 @@ export class Scene {
   private selected = '';
   private inset = 0; // screen width kept free on the right (the ticket panel)
   private drag: { x: number; y: number; moved: boolean } | null = null;
+  private held = false; // the user zoomed or moved the view: leave it alone
+  private push = 0; // how far the view has slid aside for the panel
+  private pushTo = 0;
 
   constructor(
     private host: HTMLElement,
@@ -352,6 +361,7 @@ export class Scene {
       if (!this.drag.moved && Math.hypot(dx, dy) < 4) return;
       this.world.position.set(this.world.x + dx, this.world.y + dy);
       this.drag = { x: e.global.x, y: e.global.y, moved: true };
+      this.held = true;
     });
     this.app.stage.on('pointerupoutside', () => (this.drag = null));
     this.app.canvas.addEventListener(
@@ -366,12 +376,16 @@ export class Scene {
         // keep the point under the cursor where it is
         this.world.position.set(cx - ((cx - this.world.x) * next) / old, cy - ((cy - this.world.y) * next) / old);
         this.world.scale.set(next);
+        this.held = true;
       },
       { passive: false },
     );
-    this.app.canvas.addEventListener('dblclick', () => this.fit());
+    this.app.canvas.addEventListener('dblclick', () => {
+      this.held = false;
+      this.fit();
+    });
     this.app.ticker.add((t) => this.animate(t.deltaMS));
-    this.app.renderer.on('resize', () => this.fit());
+    this.app.renderer.on('resize', () => this.refit());
   }
 
   /** Spaces are floors of one building: the first space is the ground floor. */
@@ -380,6 +394,7 @@ export class Scene {
       // Going up, the new floor comes down into view; going down, it rises.
       this.lift.y = index > this.space ? -70 : 70;
       this.lift.alpha = 0;
+      this.held = false; // another floor: start from the whole view
     }
     this.space = index;
     this.sprites.forEach((s) => s.root.destroy({ children: true }));
@@ -387,11 +402,27 @@ export class Scene {
     if (this.snap) this.update(this.snap, []);
   }
 
-  /** Keeps the room clear of a panel covering the right side of the window. */
+  /** Tells the scene how much of the right side the open panel covers. */
   setInset(px: number) {
-    if (px === this.inset) return;
     this.inset = px;
-    this.fit();
+    this.reveal();
+  }
+
+  /**
+   * The panel lies over the right side of the room. The view keeps its zoom
+   * and place; it only slides aside when the chosen box would be hidden under
+   * the panel, and slides back when the panel closes.
+   */
+  private reveal() {
+    const sp = this.sprites.get(this.selected);
+    if (!this.inset || !sp) {
+      this.pushTo = 0;
+      return;
+    }
+    const x = this.world.x + sp.tx * this.world.scale.x; // where the box is on screen now
+    const limit = this.app.screen.width - this.inset - 70;
+    const rest = x - this.push; // where it would be with no slide at all
+    this.pushTo = rest > limit ? limit - rest : 0;
   }
 
   select(key: string) {
@@ -417,7 +448,10 @@ export class Scene {
     const rows = Math.ceil(space.zones.length / COLS);
     const cols = Math.min(COLS, space.zones.length);
     const width = cols * ZW + (cols - 1) * COL_GAP;
-    const depth = rows * ZH + (rows - 1) * ROW_GAP;
+    rowDepths = Array.from({ length: rows }, (_, r) =>
+      space.zones.some((z, i) => Math.floor(i / COLS) === r && z.kind === 'desk') ? ZH + DESK_EXTRA : ZH,
+    );
+    const depth = rowY(rows - 1) + rowDepths[rows - 1];
     this.drawBuilding(width, depth, rows, cols, snap.spaces.indexOf(space), space.name, snap.spaces.length);
 
     const prop = (gx: number, gy: number, draw: (g: Graphics) => void, bias = 0) => {
@@ -434,13 +468,13 @@ export class Scene {
       const o = roomOrigin(zi);
 
       const floor = new Graphics();
-      floor.poly(floorPoly(o.gx, o.gy, ZW, ZH)).fill(FLOOR[zone.kind]);
+      floor.poly(floorPoly(o.gx, o.gy, ZW, o.d)).fill(FLOOR[zone.kind]);
       for (let i = 1; i < ZW; i++) {
         const s = iso(o.gx + i, o.gy);
-        const e = iso(o.gx + i, o.gy + ZH);
+        const e = iso(o.gx + i, o.gy + o.d);
         floor.moveTo(s.x, s.y).lineTo(e.x, e.y).stroke({ width: 1, color: shade(FLOOR[zone.kind], 0.5), alpha: 0.1 });
       }
-      for (let j = 1; j < ZH; j++) {
+      for (let j = 1; j < o.d; j++) {
         const s = iso(o.gx, o.gy + j);
         const e = iso(o.gx + ZW, o.gy + j);
         floor.moveTo(s.x, s.y).lineTo(e.x, e.y).stroke({ width: 1, color: shade(FLOOR[zone.kind], 0.5), alpha: 0.1 });
@@ -449,7 +483,7 @@ export class Scene {
 
       if (zone.kind !== 'desk') prop(o.gx + 3, o.gy + 0.8, (g) => furnish(g, zone.kind, o.gx, o.gy), -50);
       // The truck waits outside the building when the dock is in the front row.
-      if (zone.kind === 'done' && o.row === rows - 1 && snap.spaces.indexOf(space) === 0) prop(o.gx + 4, o.gy + ZH + 2, (g) => truck(g, o.gx + 3.2, o.gy + ZH + PAD + 0.5));
+      if (zone.kind === 'done' && o.row === rows - 1 && snap.spaces.indexOf(space) === 0) prop(o.gx + 4, o.gy + o.d + 2, (g) => truck(g, o.gx + 3.2, o.gy + o.d + PAD + 0.5));
 
       this.sign(zone, o.gx, o.gy);
 
@@ -461,7 +495,7 @@ export class Scene {
         here.sort((a, b) => Number(b.me) - Number(a.me) || a.name.localeCompare(b.name, 'ko'));
         here.forEach((m) => lanes.push(m.id));
         lanes.push(''); // shelf
-        const pitch = lanePitch(lanes.length);
+        const pitch = lanePitch(lanes.length, o.d);
         lanes.forEach((id, li) => {
           const gx = o.gx + 1.3;
           const gy = o.gy + LANE_TOP + li * pitch;
@@ -471,7 +505,7 @@ export class Scene {
         });
       }
 
-      const where = slots(zone, inZone, lanes);
+      const where = slots(zone, inZone, lanes, o.d);
       for (const b of inZone) {
         alive.add(b.key);
         const s = where.get(b.key)!;
@@ -500,7 +534,7 @@ export class Scene {
           const lane = lanes.indexOf(m.id);
           const atDesk = zone.kind === 'desk' && lane >= 0;
           const gx = atDesk ? o.gx + 0.55 : o.gx + ZW - 0.8;
-          const gy = atDesk ? o.gy + LANE_TOP + lane * lanePitch(lanes.length) : o.gy + 2.2 + mi * 1.1;
+          const gy = atDesk ? o.gy + LANE_TOP + lane * lanePitch(lanes.length, o.d) : o.gy + 2.2 + mi * 1.1;
           const p = iso(gx, gy);
           const g = prop(gx, gy, (pg) => person(pg, AVATARS[snap.members.indexOf(m) % AVATARS.length], m.me), 1);
           g.position.set(p.x, p.y);
@@ -519,7 +553,7 @@ export class Scene {
     const xs = corners.map((c) => c.x);
     const ys = corners.map((c) => c.y);
     this.bounds = { x: Math.min(...xs), y: Math.min(...ys) - WALL_H - 46, w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys) + WALL_H + 60 + snap.spaces.indexOf(space) * STOREY };
-    this.fit();
+    this.refit();
   }
 
   /** The floor slab, the two back walls, the room partitions and the conveyor. */
@@ -587,19 +621,20 @@ export class Scene {
       this.things.addChild(pg);
     };
     for (let r = 0; r < rows; r++) {
-      const gy0 = r * (ZH + ROW_GAP);
+      const gy0 = rowY(r);
+      const d = rowDepths[r];
       // between rooms of a row, with a doorway in the middle
       for (let c = 1; c < cols; c++) {
         const gx = c * (ZW + COL_GAP) - COL_GAP / 2 - 0.09;
-        for (let j = 0; j < ZH; j++) {
-          if (j === 3) continue;
+        for (let j = 0; j < d; j++) {
+          if (j === Math.floor(d / 2)) continue;
           piece(gx, gy0 + j + 0.5, (pg) => block(pg, gx, gy0 + j, 0.18, 1, 13, PARTITION));
         }
       }
       // along the corridor, with a doorway per room
       if (r < rows - 1) {
-        const mid = gy0 + ZH + ROW_GAP / 2;
-        for (const gy of [gy0 + ZH + 0.05, gy0 + ZH + ROW_GAP - 0.23]) {
+        const mid = gy0 + d + ROW_GAP / 2;
+        for (const gy of [gy0 + d + 0.05, gy0 + d + ROW_GAP - 0.23]) {
           for (let i = 0; i < Math.ceil(width); i++) {
             const inRoom = i % (ZW + COL_GAP);
             if (inRoom >= 3 && inRoom < 5) continue; // doorway
@@ -728,18 +763,28 @@ export class Scene {
     return sp;
   }
 
-  /** Scales and centres the building in the part of the canvas the panel leaves free. */
+  /** Scales and centres the building in the window. */
+  /** Fits again unless the user has set the view themselves. */
+  private refit() {
+    if (!this.held) this.fit();
+  }
+
   private fit() {
     const { width, height } = this.app.screen;
-    const free = Math.max(320, width - this.inset);
+    const free = width;
+    this.push = 0;
     const s = Math.min((free - 32) / this.bounds.w, (height - 24) / this.bounds.h, 1.5);
     this.world.scale.set(s);
     this.world.position.set((free - this.bounds.w * s) / 2 - this.bounds.x * s, (height - this.bounds.h * s) / 2 - this.bounds.y * s);
     this.app.stage.hitArea = this.app.screen;
+    this.reveal();
   }
 
   private animate(ms: number) {
     const k = 1 - Math.pow(0.002, ms / 1000); // frame-rate independent easing
+    const slide = (this.pushTo - this.push) * k;
+    this.world.x += slide;
+    this.push += slide;
     this.lift.y += (0 - this.lift.y) * k;
     if (Math.abs(this.lift.y) < 0.3) this.lift.y = 0;
     if (this.lift.alpha < 1) this.lift.alpha = Math.min(1, this.lift.alpha + ms / 260);
