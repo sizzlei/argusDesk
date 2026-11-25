@@ -21,7 +21,8 @@ interface Win {
   actionsEl: HTMLElement | null;
   detailEl: HTMLElement | null;
   cancelEl: HTMLElement | null; // top of the window: where a request is cancelled
-  min: boolean; // minimised: out of sight, still in the dock
+  min: boolean; // minimised: shrunk to its title bar, still where it was put
+  size: { w: string; h: string }; // its size before it was minimised
   text: HTMLTextAreaElement | null; // the comment box's text area
   commentBox: HTMLElement | null; // built with the actions, shown with the comments
   busy: boolean; // a change is on its way to Jira
@@ -550,7 +551,7 @@ function dock(hooks: TicketHooks) {
       h(
         'span',
         { class: `win${w.key === frontKey ? ' on' : ''}${w.min ? ' min' : ''}` },
-        h('button', { class: 'open', title: `${w.key} · ${w.box.summary}${w.min ? ' (최소화됨)' : ''}`, onclick: () => front(w, hooks) }, `${w.key.split('-').pop()} · ${w.box.summary}`),
+        h('button', { class: 'open', title: `${w.key} · ${w.box.summary}${w.min ? ' (최소화됨)' : ''}`, onclick: () => (setMin(w, false, hooks), front(w, hooks)) }, `${w.key.split('-').pop()} · ${w.box.summary}`),
         h('button', { class: 'x', 'aria-label': `${w.key} 창 닫기`, onclick: () => close(w, hooks) }, '×'),
       ),
     ),
@@ -558,9 +559,27 @@ function dock(hooks: TicketHooks) {
   );
 }
 
+/** Shrinks a window to its title bar, or opens it out again at the size it had. */
+function setMin(w: Win, min: boolean, hooks: TicketHooks) {
+  if (w.min === min) return;
+  w.min = min;
+  if (min) {
+    w.size = { w: w.el.style.width, h: w.el.style.height };
+    w.el.style.width = '';
+    w.el.style.height = '';
+  } else {
+    w.el.style.width = w.size.w;
+    w.el.style.height = w.size.h;
+  }
+  w.el.classList.toggle('mini', min);
+  const fold = w.el.querySelector<HTMLElement>('.fold')!;
+  fold.textContent = min ? '▢' : '–';
+  fold.title = min ? '펼치기' : '최소화';
+  fold.setAttribute('aria-label', `${w.key} 창 ${min ? '펼치기' : '최소화'}`);
+  dock(hooks);
+}
+
 function front(w: Win, hooks: TicketHooks) {
-  w.min = false;
-  w.el.hidden = false;
   w.el.style.zIndex = String(++top);
   // A window dragged out of sight comes back when it is asked for.
   const host = w.el.parentElement;
@@ -591,6 +610,7 @@ export function openTicket(b: Box, snap: Snapshot, backend: Backend, hooks: Tick
   let w = wins.get(b.key);
   if (w) {
     w.box = b;
+    setMin(w, false, hooks);
     front(w, hooks);
     draw(w, snap, backend);
     return;
@@ -604,7 +624,7 @@ export function openTicket(b: Box, snap: Snapshot, backend: Backend, hooks: Tick
   const head = h('header', { class: 'tw-head' }, title, h('span', { class: 'tw-buttons' }, fold, shut));
   const body = h('div', { class: 'tw-body' });
   const el = h('section', { class: 'tw', role: 'dialog', 'aria-label': `${b.key} ${b.summary}` }, head, body);
-  const win: Win = { key: b.key, box: b, el, body, actionsEl: null, detailEl: null, cancelEl: null, min: false, text: null, commentBox: null, busy: false, pending: null };
+  const win: Win = { key: b.key, box: b, el, body, actionsEl: null, detailEl: null, cancelEl: null, min: false, size: { w: '', h: '' }, text: null, commentBox: null, busy: false, pending: null };
   w = win;
   wins.set(b.key, win);
 
@@ -616,15 +636,10 @@ export function openTicket(b: Box, snap: Snapshot, backend: Backend, hooks: Tick
   el.style.top = `${66 + n * 30}px`;
 
   shut.addEventListener('click', () => close(win, hooks));
-  // Minimised: the window goes out of sight and waits in the dock.
-  fold.addEventListener('click', () => {
-    win.min = true;
-    el.hidden = true;
-    if (frontKey === win.key) {
-      frontKey = '';
-      hooks.onFocus('');
-    }
-    dock(hooks);
+  // Minimised, a window is just its title bar: small, and still movable.
+  fold.addEventListener('click', () => setMin(win, !win.min, hooks));
+  head.addEventListener('dblclick', (e) => {
+    if (!(e.target as HTMLElement).closest('button')) setMin(win, !win.min, hooks);
   });
   el.addEventListener(
     'pointerdown',

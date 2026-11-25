@@ -30,7 +30,7 @@ const TIRED = ['여유', '피곤', '지침'];
  * The team at a glance: one avatar each, ringed by how worn they are. No
  * names: the picture is enough among four people. Mine comes first, with a bar.
  */
-function team(snap: Snapshot | null, game: GameStats | null) {
+function team(snap: Snapshot | null, game: GameStats | null, menuOpen: boolean, toggleMenu: () => void) {
   if (!snap || !game) return null;
   const seen = new Set<string>();
   const people = snap.members.filter((m) => !seen.has(m.id) && seen.add(m.id)).sort((a, b) => Number(b.me) - Number(a.me));
@@ -42,12 +42,19 @@ function team(snap: Snapshot | null, game: GameStats | null) {
     ...people.map((m) => {
       const lv = game.fatigue[m.id] ?? 0;
       const state = away.has(m.id) ? '휴가 중' : TIRED[lv];
-      return h(
-        'span',
-        { class: `member lv${lv}${m.me ? ' me' : ''}${away.has(m.id) ? ' away' : ''}`, role: 'listitem', title: m.me ? `나 · ${state} (${game.myFatigue}%)` : state, 'aria-label': m.me ? `나, ${state}` : state },
-        avatarIcon(lookOf(m.id, game.avatars), 26),
-        m.me ? h('span', { class: 'meter' }, h('i', { style: `width:${Math.min(100, game.myFatigue)}%` })) : null,
-      );
+      const cls = `member lv${lv}${m.me ? ' me' : ''}${away.has(m.id) ? ' away' : ''}`;
+      const icon = avatarIcon(lookOf(m.id, game.avatars), 26);
+      // My own avatar is also the way into the menu, and shows my fatigue as a number.
+      if (m.me) {
+        return h(
+          'button',
+          { class: cls, role: 'listitem', 'aria-haspopup': 'menu', 'aria-expanded': String(menuOpen), 'aria-label': `내 메뉴 · 피로도 ${game.myFatigue}% (${state})`, title: `피로도 ${game.myFatigue}% · ${state} · 눌러서 메뉴 열기`, onclick: toggleMenu },
+          icon,
+          h('span', { class: 'meter' }, h('i', { style: `width:${Math.min(100, game.myFatigue)}%` })),
+          h('span', { class: 'pct' }, `${game.myFatigue}%`),
+        );
+      }
+      return h('span', { class: cls, role: 'listitem', title: state, 'aria-label': state }, icon);
     }),
   );
 }
@@ -90,6 +97,9 @@ export function renderHud(state: AppState, snap: Snapshot | null, space: number,
   );
 
   renderGame(hooks.game, hooks.gameOpen, hooks.toggleGame);
+  const toggleMenu = () => ((menuOpen = !menuOpen), renderHud(state, snap, space, lastError, backend, hooks));
+  // With the team strip showing, my avatar opens the menu and the name is not shown.
+  const strip = team(snap, hooks.game, menuOpen, toggleMenu);
 
   fill(
     hud,
@@ -118,7 +128,7 @@ export function renderHud(state: AppState, snap: Snapshot | null, space: number,
     h(
       'div',
       { class: 'tools' },
-      team(snap, hooks.game),
+      strip,
       lastError ? h('span', { class: 'chip warn', title: lastError }, '갱신 실패') : null,
       snap?.warnings.length
         ? h(
@@ -131,16 +141,8 @@ export function renderHud(state: AppState, snap: Snapshot | null, space: number,
       h('button', { onclick: hooks.refresh, title: '지금 Jira에서 다시 읽기' }, '새로 고침'),
       h(
         'div',
-        { class: 'menu' },
-        h(
-          'button',
-          {
-            'aria-haspopup': 'menu',
-            'aria-expanded': String(menuOpen),
-            onclick: () => ((menuOpen = !menuOpen), renderHud(state, snap, space, lastError, backend, hooks)),
-          },
-          state.me || '메뉴',
-        ),
+        { class: strip ? 'menu bare' : 'menu' },
+        strip ? null : h('button', { 'aria-haspopup': 'menu', 'aria-expanded': String(menuOpen), onclick: toggleMenu }, state.me || '메뉴'),
         menuOpen
           ? h(
               'div',

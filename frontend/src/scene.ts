@@ -909,11 +909,13 @@ export class Scene {
           const gx = rest ? rest.gx : atDesk ? o.gx + 0.55 : o.gx + ZW - 0.8;
           const gy = rest ? rest.gy : atDesk ? o.gy + LANE_TOP + lane * lanePitch(lanes.length, o.d) : o.gy + 2.2 + mi * 1.1;
           const p = iso(gx, gy);
-          const g = prop(gx, gy, (pg) => person(pg, lookOf(m.id, this.looks), m.me, rest ? 2 : tired ? 1 : 0), 1);
-          g.position.set(p.x, p.y);
-          this.people.push({ g, y: p.y, phase: mi * 1.7 + zi, slow: tired > 0 });
+          // Someone resting sits on top of the bench: drawn after it, and raised to the seat.
+          const g = prop(gx, gy, (pg) => person(pg, lookOf(m.id, this.looks), m.me, rest ? 2 : tired ? 1 : 0), rest ? 120 : 1);
+          const py = rest ? p.y - 4 : p.y;
+          g.position.set(p.x, py);
+          this.people.push({ g, y: py, phase: mi * 1.7 + zi, slow: tired > 0 });
           const name = m.count ? `${shortName(m.name)} ${m.count}` : shortName(m.name);
-          this.tag(name, gx, gy, m.me ? 78 : 62, m.me);
+          this.tag(name, gx, gy, (m.me ? 78 : 62) + (rest ? 4 : 0), m.me);
         });
     });
 

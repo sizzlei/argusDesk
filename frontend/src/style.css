@@ -1576,3 +1576,65 @@ dialog.avatars .looks button.on {
   border-style: dashed;
   color: var(--quiet);
 }
+
+/* My avatar in the team strip is the menu button. */
+.team button.member {
+  background: none;
+  cursor: pointer;
+}
+
+.team button.member:hover,
+.team button.member[aria-expanded='true'] {
+  background: var(--paper);
+}
+
+.team .pct {
+  min-width: 2.6em;
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.menu.bare {
+  position: static;
+}
+
+.menu.bare .menu-list {
+  top: calc(100% + 6px);
+  right: 0;
+}
+
+#hud .tools {
+  position: relative;
+}
+
+/* A minimised window: only its title bar, small, to be put wherever it suits. */
+.tw.mini {
+  height: auto;
+  min-width: 0;
+  min-height: 0;
+  resize: none;
+  border-radius: 10px;
+}
+
+.tw.mini .tw-body {
+  display: none;
+}
+
+.tw.mini .tw-head {
+  gap: 4px;
+  padding: 4px 4px 4px 8px;
+  border-bottom: 0;
+  font-size: 12px;
+}
+
+.tw.mini .tag {
+  padding: 1px 6px;
+  font-size: 11px;
+}
+
+.tw.mini button.close {
+  padding: 0 5px;
+  font-size: 15px;
+}
