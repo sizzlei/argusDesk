@@ -28,6 +28,14 @@ func (e *RateLimitError) Error() string {
 	return fmt.Sprintf("Jira 요청이 너무 많습니다. %s 뒤에 다시 시도합니다", e.RetryAfter.Round(time.Second))
 }
 
+// HTTPError is any other refusal from Jira, with its status code.
+type HTTPError struct {
+	Code int
+	text string
+}
+
+func (e *HTTPError) Error() string { return e.text }
+
 // Client calls one Jira site as one user.
 type Client struct {
 	base      string // "https://example.atlassian.net"
@@ -96,7 +104,7 @@ func (c *Client) request(ctx context.Context, method, target string, body, out a
 		return &RateLimitError{RetryAfter: wait}
 	case res.StatusCode < 200 || res.StatusCode > 299:
 		msg, _ := io.ReadAll(io.LimitReader(res.Body, 2048))
-		return fmt.Errorf("Jira 요청 실패 (HTTP %d %s): %s", res.StatusCode, path, strings.TrimSpace(string(msg)))
+		return &HTTPError{Code: res.StatusCode, text: fmt.Sprintf("Jira 요청 실패 (HTTP %d %s): %s", res.StatusCode, path, strings.TrimSpace(string(msg)))}
 	}
 	if out == nil {
 		return nil

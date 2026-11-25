@@ -23,6 +23,28 @@ const statusOf: Record<string, [string, string]> = {
   dock: ['10005', '완료'],
   returns: ['10006', '반려'],
 };
+// A second space: the team's own work, in an ordinary (non service desk) project.
+const zones2: Omit<ZoneView, 'count' | 'staleCount'>[] = [
+  { id: 'i-wait', name: '대기함', kind: 'wait' },
+  { id: 'i-approval', name: '승인 데스크', kind: 'work' },
+  { id: 'i-work', name: '작업장', kind: 'desk' },
+  { id: 'i-done', name: '완료함', kind: 'done' },
+  { id: 'i-returns', name: '취소함', kind: 'returned' },
+];
+Object.assign(statusOf, {
+  'i-wait': ['20001', '열림'],
+  'i-approval': ['20002', '승인 대기'],
+  'i-work': ['20003', '업무 진행'],
+  'i-done': ['20004', '업무 완료'],
+  'i-returns': ['20005', '업무 취소'],
+});
+const order2 = ['i-wait', 'i-approval', 'i-work', 'i-done'];
+const types2: [string, string][] = [
+  ['[INT] 내부 업무', 'navy'],
+  ['[INT] 작업 계획', 'teal'],
+  ['[INT] 정책 승인', 'pink'],
+];
+
 const order = ['lobby', 'review', 'approval', 'work', 'dock'];
 
 const types: [string, string][] = [
@@ -142,25 +164,48 @@ function seed(now: number): Box[] {
       b.note = '일정 미정';
     }
   });
+  // the second space
+  const inner: [string, number, number][] = [['i-wait', 30, 0], ['i-wait', 200, 1], ['i-approval', 5, 2], ['i-work', 50, 0], ['i-work', 90, 1], ['i-work', 20, 0], ['i-done', 2, 2]];
+  inner.forEach(([zone, hours, t], i) => {
+    const b = make(zone, hours, now);
+    b.space = 'internal';
+    b.key = b.key.replace('REQ', 'INT');
+    b.url = b.url.replace('REQ', 'INT');
+    [b.type, b.tag] = types2[t];
+    b.workflow = 'internal';
+    b.path = order2.slice(0, order2.indexOf(zone) + 1).map((z, n, all) => ({ statusId: statusOf[z][0], name: statusOf[z][1], state: n === all.length - 1 ? 'current' : 'done' }));
+    if (zone === 'i-work') [b.assigneeId, b.assignee] = people[i % people.length];
+    b.mine = b.assigneeId === 'u1';
+    boxes.push(b);
+  });
   return boxes;
 }
 
 function snapshot(boxes: Box[], now: number): Snapshot {
   boxes.forEach((b) => age(b, now));
-  const zv: ZoneView[] = zones.map((z) => ({
-    ...z,
-    count: boxes.filter((b) => b.zone === z.id).length,
-    staleCount: boxes.filter((b) => b.zone === z.id && b.stale).length,
-  }));
-  const members: Member[] = people.map(([id, name]) => {
+  const view = (list: typeof zones): ZoneView[] =>
+    list.map((z) => ({
+      ...z,
+      count: boxes.filter((b) => b.zone === z.id).length,
+      staleCount: boxes.filter((b) => b.zone === z.id && b.stale).length,
+    }));
+  const zv = view(zones);
+  const members: Member[] = people.flatMap(([id, name]) => {
     const own = boxes.filter((b) => b.assigneeId === id && b.zone === 'work');
-    return { id, name, space: 'requests', zone: own.length ? 'work' : 'review', count: own.length, me: id === 'u1' };
+    const inner = boxes.filter((b) => b.assigneeId === id && b.zone === 'i-work');
+    return [
+      { id, name, space: 'requests', zone: own.length ? 'work' : 'review', count: own.length, me: id === 'u1' },
+      { id, name, space: 'internal', zone: inner.length ? 'i-work' : 'i-wait', count: inner.length, me: id === 'u1' },
+    ];
   });
   return {
     name: '요청 센터 (프로토타입)',
     configVersion: '2026-11-25.1',
     fetchedAt: new Date(now).toISOString(),
-    spaces: [{ id: 'requests', name: '요청 센터', zones: zv }],
+    spaces: [
+      { id: 'requests', name: '요청 센터', zones: zv },
+      { id: 'internal', name: '내부 사무동', zones: view(zones2) },
+    ],
     boxes: boxes.map((b) => ({ ...b })),
     members,
     warnings: [],
@@ -284,6 +329,11 @@ export function mockBackend(): Backend {
       const b = find(key);
       const at = order.indexOf(b.zone);
       const transitions = [];
+      const at2 = order2.indexOf(b.zone);
+      if (at2 >= 0 && at2 + 1 < order2.length) {
+        const [id, name] = statusOf[order2[at2 + 1]];
+        transitions.push({ id: `to-${id}`, name, toId: id, toName: name, needs: [] });
+      }
       if (at >= 0 && at + 1 < order.length && b.zone !== 'approval') {
         const [id, name] = statusOf[order[at + 1]];
         transitions.push({ id: `to-${id}`, name: `${name}(으)로`, toId: id, toName: name, needs: [] });
@@ -294,7 +344,7 @@ export function mockBackend(): Backend {
         b.zone === 'approval'
           ? [{ id: 'a1', name: 'DBA 승인', canAnswer: true, approvers: [{ id: 'u1', name: '김하늘', decision: 'pending' }, { id: 'u3', name: '박서준', decision: 'pending' }] }]
           : [];
-      return { key, transitions, approvals, approvalsError: '' };
+      return { key, transitions, approvals, serviceDesk: b.space === 'requests', approvalsError: '' };
     },
     moveTicket: async (key, id) => {
       await pause();
@@ -313,12 +363,12 @@ export function mockBackend(): Backend {
       await pause();
       move(find(key), approve ? 'work' : 'returns');
     },
-    addComment: async (key, text, isPublic) => {
+    addComment: async (key, text, mode) => {
       await pause();
       const b = find(key);
       const body = document.createElement('p');
       body.textContent = text;
-      written.set(key, [...(written.get(key) ?? []), { author: '김하늘', created: new Date(now).toISOString(), bodyHtml: body.outerHTML, internal: !isPublic }]);
+      written.set(key, [...(written.get(key) ?? []), { author: '김하늘', created: new Date(now).toISOString(), bodyHtml: body.outerHTML, internal: mode === 'internal' }]);
       b.updated = new Date(now + ++stamp).toISOString();
       publish([{ kind: 'updated', key }]);
     },

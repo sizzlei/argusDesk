@@ -178,5 +178,6 @@ export interface TicketActions {
   key: string;
   transitions: Transition[];
   approvals: Approval[];
+  serviceDesk: boolean; // comments are internal or public; otherwise plain
   approvalsError: string;
 }

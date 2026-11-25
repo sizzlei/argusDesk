@@ -22,7 +22,8 @@ export interface Backend {
   /** account: an account id, "me", or "" to leave the ticket unassigned */
   assignTicket(key: string, account: string): Promise<void>;
   answerApproval(key: string, approvalId: string, approve: boolean): Promise<void>;
-  addComment(key: string, text: string, isPublic: boolean): Promise<void>;
+  /** mode: internal / public for a service desk request, plain elsewhere */
+  addComment(key: string, text: string, mode: 'internal' | 'public' | 'plain'): Promise<void>;
   openUrl(url: string): void;
   onBoard(cb: (ev: BoardEvent) => void): void;
   onError(cb: (err: BoardError) => void): void;
@@ -53,7 +54,7 @@ async function real(): Promise<Backend> {
     moveTicket: (key, id) => call('MoveTicket', key, id),
     assignTicket: (key, account) => call('AssignTicket', key, account),
     answerApproval: (key, id, approve) => call('AnswerApproval', key, id, approve),
-    addComment: (key, text, isPublic) => call('AddComment', key, text, isPublic),
+    addComment: (key, text, mode) => call('AddComment', key, text, mode),
     openUrl: (url) => void Browser.OpenURL(url),
     onBoard: (cb) => void Events.On('board:snapshot', (ev: { data: BoardEvent }) => cb(ev.data)),
     onError: (cb) => void Events.On('board:error', (ev: { data: BoardError }) => cb(ev.data)),

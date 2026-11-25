@@ -37,7 +37,14 @@ export function renderHud(state: AppState, snap: Snapshot | null, space: number,
           'nav',
           { class: 'spaces', 'aria-label': '공간' },
           ...snap.spaces.map((s, i) =>
-            h('button', { class: i === space ? 'on' : '', onclick: () => hooks.setSpace(i) }, s.name),
+            h(
+              'button',
+              { class: i === space ? 'on' : '', onclick: () => hooks.setSpace(i) },
+              s.name,
+              // open boxes in that space, so the other side is visible from here
+              h('span', { class: 'count' }, String(s.zones.filter((z) => z.kind !== 'done' && z.kind !== 'returned').reduce((n, z) => n + z.count, 0))),
+              s.zones.some((z) => z.staleCount) ? h('span', { class: 'old-dot', title: '묵은 상자 있음' }) : null,
+            ),
           ),
         )
       : null,

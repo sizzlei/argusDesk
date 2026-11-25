@@ -40,6 +40,7 @@ type Actions struct {
 	Key            string       `json:"key"`
 	Transitions    []Transition `json:"transitions"`
 	Approvals      []Approval   `json:"approvals"`      // pending ones only
+	ServiceDesk    bool         `json:"serviceDesk"`    // a service desk request: comments are internal or public
 	ApprovalsError string       `json:"approvalsError"` // why approvals could not be read ("" = fine)
 }
 
@@ -92,14 +93,21 @@ func (c *Client) Actions(ctx context.Context, key string) (*Actions, error) {
 			} `json:"approvers"`
 		} `json:"values"`
 	}
-	// A ticket outside a service desk has no approvals: that is reported, not fatal.
 	if err := c.do(ctx, http.MethodGet, "/rest/servicedeskapi/request/"+url.PathEscape(key)+"/approval?limit=50", nil, &ap); err != nil {
 		if errors.Is(err, ErrUnauthorized) {
 			return nil, err
 		}
+		// A ticket of an ordinary project is not a service desk request: it
+		// simply has no approvals. Anything else is reported, not fatal.
+		var he *HTTPError
+		if errors.As(err, &he) && he.Code == http.StatusNotFound {
+			return out, nil
+		}
+		out.ServiceDesk = true
 		out.ApprovalsError = err.Error()
 		return out, nil
 	}
+	out.ServiceDesk = true
 	for _, v := range ap.Values {
 		if !strings.EqualFold(v.FinalDecision, "pending") {
 			continue
@@ -138,9 +146,31 @@ func (c *Client) AnswerApproval(ctx context.Context, key, approvalID string, app
 	return c.do(ctx, http.MethodPost, path, map[string]string{"decision": decision}, nil)
 }
 
-// AddComment writes a comment. A public comment is shown to the requester;
-// otherwise it is an internal note only the team sees.
-func (c *Client) AddComment(ctx context.Context, key, text string, public bool) error {
-	body := map[string]any{"body": text, "public": public}
-	return c.do(ctx, http.MethodPost, "/rest/servicedeskapi/request/"+url.PathEscape(key)+"/comment", body, nil)
+// Where a comment goes.
+const (
+	CommentInternal = "internal" // service desk: a note only the team sees
+	CommentPublic   = "public"   // service desk: shown to the requester
+	CommentPlain    = "plain"    // an ordinary project: a normal comment
+)
+
+// AddComment writes a comment in one of the three ways above.
+func (c *Client) AddComment(ctx context.Context, key, text, mode string) error {
+	switch mode {
+	case CommentInternal, CommentPublic:
+		body := map[string]any{"body": text, "public": mode == CommentPublic}
+		return c.do(ctx, http.MethodPost, "/rest/servicedeskapi/request/"+url.PathEscape(key)+"/comment", body, nil)
+	case CommentPlain:
+		// The platform API takes a document: one paragraph per line of text.
+		paragraphs := []any{}
+		for _, line := range strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n") {
+			p := map[string]any{"type": "paragraph"}
+			if line != "" {
+				p["content"] = []any{map[string]any{"type": "text", "text": line}}
+			}
+			paragraphs = append(paragraphs, p)
+		}
+		body := map[string]any{"body": map[string]any{"type": "doc", "version": 1, "content": paragraphs}}
+		return c.do(ctx, http.MethodPost, "/rest/api/3/issue/"+url.PathEscape(key)+"/comment", body, nil)
+	}
+	return errors.New("알 수 없는 댓글 종류: " + mode)
 }

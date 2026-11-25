@@ -224,37 +224,41 @@ function renderActions(host: HTMLElement, b: Box, snap: Snapshot, backend: Backe
         ),
   );
 
-  // comment
+  // comment: a service desk request takes internal notes and public answers,
+  // a ticket of an ordinary project takes plain comments
+  const desk = a?.serviceDesk ?? true;
   const draft = drafts.get(b.key) ?? { text: '', isPublic: false };
   const old = document.getElementById('comment-text') as HTMLTextAreaElement | null;
   const focused = old && document.activeElement === old ? [old.selectionStart, old.selectionEnd] : null;
   const text = h('textarea', { id: 'comment-text', rows: '3', placeholder: '댓글 쓰기', disabled: off });
   text.value = draft.text;
-  const send = h('button', { class: 'primary', disabled: off || !draft.text.trim() || undefined }, draft.isPublic ? '요청자에게 답변' : '내부 메모 남기기');
+  const send = h('button', { class: 'primary' });
   const audience = h('select', { 'aria-label': '댓글 공개 범위', disabled: off },
     h('option', { value: 'internal' }, '내부 메모 (팀만 봄)'),
     h('option', { value: 'public' }, '요청자에게 답변 (공개)'),
   );
   audience.value = draft.isPublic ? 'public' : 'internal';
+  const mode = () => (!desk ? 'plain' : audience.value === 'public' ? 'public' : 'internal');
   const keep = () => {
     drafts.set(b.key, { text: text.value, isPublic: audience.value === 'public' });
-    send.disabled = busy || !text.value.trim();
-    send.textContent = audience.value === 'public' ? '요청자에게 답변' : '내부 메모 남기기';
+    send.disabled = busy || !a || !text.value.trim(); // not before Jira said what kind of ticket this is
+    send.textContent = { plain: '댓글 등록', public: '요청자에게 답변', internal: '내부 메모 남기기' }[mode()];
   };
+  keep();
   text.addEventListener('input', keep);
   text.addEventListener('blur', flush);
   audience.addEventListener('change', keep);
   send.addEventListener('click', async () => {
     const body = text.value.trim();
-    const isPublic = audience.value === 'public';
+    const how = mode();
     if (!body) return;
     // A public comment reaches the requester, so it is confirmed first.
-    if (isPublic && !(await confirmAction('요청자에게 답변', `${b.reporter} 님에게 보이는 공개 댓글로 등록합니다.`, '등록'))) return;
+    if (how === 'public' && !(await confirmAction('요청자에게 답변', `${b.reporter} 님에게 보이는 공개 댓글로 등록합니다.`, '등록'))) return;
     void act(
       b,
-      isPublic ? '답변을 등록했습니다.' : '내부 메모를 남겼습니다.',
+      { plain: '댓글을 등록했습니다.', public: '답변을 등록했습니다.', internal: '내부 메모를 남겼습니다.' }[how],
       async () => {
-        await backend.addComment(b.key, body, isPublic);
+        await backend.addComment(b.key, body, how);
         drafts.delete(b.key);
       },
       redraw,
@@ -273,7 +277,7 @@ function renderActions(host: HTMLElement, b: Box, snap: Snapshot, backend: Backe
       : a
         ? h('div', { class: 'act' }, h('span', { class: 'act-name' }, '이동'), moves.length ? h('div', { class: 'act-row' }, ...moves) : h('span', { class: 'quiet' }, '지금 옮길 수 있는 상태가 없습니다.'))
         : null,
-    h('div', { class: 'comment-box' }, text, h('div', { class: 'act-row' }, audience, send)),
+    h('div', { class: 'comment-box' }, text, h('div', { class: 'act-row' }, desk ? audience : null, send)),
   );
   if (focused) {
     text.focus();

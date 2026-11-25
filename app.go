@@ -349,14 +349,15 @@ func (a *App) AnswerApproval(key, approvalID string, approve bool) error {
 	})
 }
 
-// AddComment writes a comment; public ones are shown to the requester.
-func (a *App) AddComment(key, text string, public bool) error {
+// AddComment writes a comment. mode is "internal" or "public" for a service
+// desk request (public ones are shown to the requester) and "plain" elsewhere.
+func (a *App) AddComment(key, text, mode string) error {
 	text = strings.TrimSpace(text)
 	if text == "" {
 		return errors.New("댓글 내용을 입력해 주세요")
 	}
 	return a.write(func(ctx context.Context, c *jira.Client, _ *jira.User) error {
-		return c.AddComment(ctx, key, text, public)
+		return c.AddComment(ctx, key, text, mode)
 	})
 }
 

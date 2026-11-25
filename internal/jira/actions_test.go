@@ -37,7 +37,7 @@ func TestActionsListsMovesAndPendingApprovals(t *testing.T) {
 	if n := a.Transitions[1].Needs; len(n) != 1 || n[0] != "해결책" {
 		t.Fatalf("needs = %v", n)
 	}
-	if len(a.Approvals) != 1 || a.Approvals[0].ID != "2" || !a.Approvals[0].CanAnswer || a.Approvals[0].Approvers[0].Name != "김하늘" {
+	if !a.ServiceDesk || len(a.Approvals) != 1 || a.Approvals[0].ID != "2" || !a.Approvals[0].CanAnswer || a.Approvals[0].Approvers[0].Name != "김하늘" {
 		t.Fatalf("approvals = %+v", a.Approvals)
 	}
 }
@@ -51,7 +51,7 @@ func TestActionsSurvivesMissingApprovals(t *testing.T) {
 		io.WriteString(w, `{"transitions":[]}`)
 	})
 	a, err := c.Actions(context.Background(), "A-1")
-	if err != nil || a.ApprovalsError == "" || len(a.Approvals) != 0 {
+	if err != nil || a.ApprovalsError != "" || a.ServiceDesk || len(a.Approvals) != 0 {
 		t.Fatalf("a = %+v, err = %v", a, err)
 	}
 }
@@ -76,7 +76,8 @@ func TestWritesSendWhatJiraExpects(t *testing.T) {
 		c.Assign(ctx, "A-1", ""),
 		c.AnswerApproval(ctx, "A-1", "2", true),
 		c.AnswerApproval(ctx, "A-1", "2", false),
-		c.AddComment(ctx, "A-1", "확인했습니다", false),
+		c.AddComment(ctx, "A-1", "확인했습니다", CommentInternal),
+		c.AddComment(ctx, "A-1", "첫 줄\n둘째 줄", CommentPlain),
 	} {
 		if err != nil {
 			t.Fatal(err)
@@ -89,6 +90,7 @@ func TestWritesSendWhatJiraExpects(t *testing.T) {
 		{"POST", "/rest/servicedeskapi/request/A-1/approval/2", nil},
 		{"POST", "/rest/servicedeskapi/request/A-1/approval/2", nil},
 		{"POST", "/rest/servicedeskapi/request/A-1/comment", nil},
+		{"POST", "/rest/api/3/issue/A-1/comment", nil},
 	}
 	if len(got) != len(want) {
 		t.Fatalf("%d calls", len(got))
@@ -112,5 +114,16 @@ func TestWritesSendWhatJiraExpects(t *testing.T) {
 	}
 	if got[5].body["body"] != "확인했습니다" || got[5].body["public"] != false {
 		t.Errorf("comment body = %v", got[5].body)
+	}
+	doc, _ := got[6].body["body"].(map[string]any)
+	if lines, _ := doc["content"].([]any); doc["type"] != "doc" || len(lines) != 2 {
+		t.Errorf("plain comment body = %v", got[6].body)
+	}
+}
+
+func TestAddCommentRefusesUnknownMode(t *testing.T) {
+	c := server(t, func(http.ResponseWriter, *http.Request) { t.Error("nothing should be sent") })
+	if err := c.AddComment(context.Background(), "A-1", "x", "everyone"); err == nil {
+		t.Fatal("want an error")
 	}
 }

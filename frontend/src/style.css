@@ -942,3 +942,25 @@ dialog.confirm .buttons {
   justify-content: flex-end;
   gap: 8px;
 }
+
+#hud .spaces button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+#hud .spaces .count {
+  padding: 0 6px;
+  border-radius: 9px;
+  background: var(--paper);
+  color: var(--ink);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+#hud .spaces .old-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--old);
+}
