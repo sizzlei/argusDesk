@@ -66,6 +66,7 @@ type ZoneView struct {
 	Count      int    `json:"count"`
 	StaleCount int    `json:"staleCount"`
 	StaleAfter string `json:"staleAfter,omitempty"` // "3h", "5d"
+	Approval   bool   `json:"approval,omitempty"`   // boxes here wait for an approving move
 }
 
 // SpaceView is one space (a Jira project) and its zones, in layout order.

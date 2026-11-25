@@ -67,6 +67,9 @@ type Zone struct {
 	Name  string `yaml:"name"`
 	Kind  string `yaml:"kind"`
 	Stale *Stale `yaml:"stale"`
+	// Approval marks a zone where boxes wait for someone to approve them by
+	// moving them on (a workflow step, not a service desk approval).
+	Approval bool `yaml:"approval"`
 }
 
 // Stale says when a box in a zone counts as old.

@@ -22,6 +22,26 @@ export function renderHud(state: AppState, snap: Snapshot | null, space: number,
   const item = (label: string, run: () => void) =>
     h('button', { role: 'menuitem', onclick: () => ((menuOpen = false), run()) }, label);
 
+  // Spaces are floors of one building: the floor buttons stand beside it,
+  // highest floor on top, each with its open boxes.
+  const floors = document.getElementById('floors')!;
+  floors.hidden = !snap || snap.spaces.length < 2;
+  fill(
+    floors,
+    ...(snap?.spaces ?? [])
+      .map((s, i) =>
+        h(
+          'button',
+          { class: i === space ? 'on' : '', 'aria-pressed': String(i === space), onclick: () => hooks.setSpace(i) },
+          h('b', {}, `${i + 1}F`),
+          h('span', { class: 'name' }, s.name),
+          h('span', { class: 'count' }, String(s.zones.filter((z) => z.kind !== 'done' && z.kind !== 'returned').reduce((n, z) => n + z.count, 0))),
+          s.zones.some((z) => z.staleCount) ? h('span', { class: 'old-dot', title: '묵은 상자 있음' }) : null,
+        ),
+      )
+      .reverse(),
+  );
+
   fill(
     hud,
     h(
@@ -32,22 +52,6 @@ export function renderHud(state: AppState, snap: Snapshot | null, space: number,
       backend.mock ? h('span', { class: 'chip' }, '가짜 데이터') : null,
       state.usingLastGood ? h('span', { class: 'chip warn', title: state.configError }, '이전 설정으로 실행 중') : null,
     ),
-    snap && snap.spaces.length > 1
-      ? h(
-          'nav',
-          { class: 'spaces', 'aria-label': '공간' },
-          ...snap.spaces.map((s, i) =>
-            h(
-              'button',
-              { class: i === space ? 'on' : '', onclick: () => hooks.setSpace(i) },
-              s.name,
-              // open boxes in that space, so the other side is visible from here
-              h('span', { class: 'count' }, String(s.zones.filter((z) => z.kind !== 'done' && z.kind !== 'returned').reduce((n, z) => n + z.count, 0))),
-              s.zones.some((z) => z.staleCount) ? h('span', { class: 'old-dot', title: '묵은 상자 있음' }) : null,
-            ),
-          ),
-        )
-      : null,
     h(
       'ul',
       { class: 'zones', 'aria-label': '구역별 상자 수' },

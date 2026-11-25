@@ -19,6 +19,7 @@ const ROW_GAP = 2.4; // corridor between rows (holds the conveyor)
 const COLS = 3; // rooms per row
 const PAD = 0.7; // floor slab around the rooms
 const WALL_H = 58; // outer wall height on screen
+const STOREY = 34; // height of a floor below the one shown, on screen
 
 const iso = (gx: number, gy: number) => ({ x: ((gx - gy) * TW) / 2, y: ((gx + gy) * TH) / 2 });
 
@@ -303,6 +304,7 @@ export interface SceneHooks {
 
 export class Scene {
   private app = new Application();
+  private lift = new Container(); // slides when the floor changes
   private world = new Container();
   private ground = new Container(); // slab, walls, room floors
   private things = new Container(); // furniture, boxes and people, depth-sorted
@@ -331,7 +333,8 @@ export class Scene {
     this.host.appendChild(this.app.canvas);
     this.world.addChild(this.ground, this.things, this.signs);
     this.things.sortableChildren = true;
-    this.app.stage.addChild(this.world);
+    this.lift.addChild(this.world);
+    this.app.stage.addChild(this.lift);
     this.app.stage.eventMode = 'static';
     this.app.stage.hitArea = this.app.screen;
     this.app.stage.on('pointertap', (e) => {
@@ -371,7 +374,13 @@ export class Scene {
     this.app.renderer.on('resize', () => this.fit());
   }
 
+  /** Spaces are floors of one building: the first space is the ground floor. */
   setSpace(index: number) {
+    if (index !== this.space) {
+      // Going up, the new floor comes down into view; going down, it rises.
+      this.lift.y = index > this.space ? -70 : 70;
+      this.lift.alpha = 0;
+    }
     this.space = index;
     this.sprites.forEach((s) => s.root.destroy({ children: true }));
     this.sprites.clear();
@@ -409,7 +418,7 @@ export class Scene {
     const cols = Math.min(COLS, space.zones.length);
     const width = cols * ZW + (cols - 1) * COL_GAP;
     const depth = rows * ZH + (rows - 1) * ROW_GAP;
-    this.drawBuilding(width, depth, rows, cols);
+    this.drawBuilding(width, depth, rows, cols, snap.spaces.indexOf(space), space.name, snap.spaces.length);
 
     const prop = (gx: number, gy: number, draw: (g: Graphics) => void, bias = 0) => {
       const g = new Graphics();
@@ -440,7 +449,7 @@ export class Scene {
 
       if (zone.kind !== 'desk') prop(o.gx + 3, o.gy + 0.8, (g) => furnish(g, zone.kind, o.gx, o.gy), -50);
       // The truck waits outside the building when the dock is in the front row.
-      if (zone.kind === 'done' && o.row === rows - 1) prop(o.gx + 4, o.gy + ZH + 2, (g) => truck(g, o.gx + 3.2, o.gy + ZH + PAD + 0.5));
+      if (zone.kind === 'done' && o.row === rows - 1 && snap.spaces.indexOf(space) === 0) prop(o.gx + 4, o.gy + ZH + 2, (g) => truck(g, o.gx + 3.2, o.gy + ZH + PAD + 0.5));
 
       this.sign(zone, o.gx, o.gy);
 
@@ -509,12 +518,12 @@ export class Scene {
     const corners = [iso(-PAD, -PAD), iso(width + PAD, -PAD), iso(width + PAD, depth + PAD + 2.4), iso(-PAD, depth + PAD + 2.4)];
     const xs = corners.map((c) => c.x);
     const ys = corners.map((c) => c.y);
-    this.bounds = { x: Math.min(...xs), y: Math.min(...ys) - WALL_H - 46, w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys) + WALL_H + 60 };
+    this.bounds = { x: Math.min(...xs), y: Math.min(...ys) - WALL_H - 46, w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys) + WALL_H + 60 + snap.spaces.indexOf(space) * STOREY };
     this.fit();
   }
 
   /** The floor slab, the two back walls, the room partitions and the conveyor. */
-  private drawBuilding(width: number, depth: number, rows: number, cols: number) {
+  private drawBuilding(width: number, depth: number, rows: number, cols: number, floor: number, name: string, floors: number) {
     const g = new Graphics();
     const x0 = -PAD;
     const y0 = -PAD;
@@ -525,6 +534,18 @@ export class Scene {
     const fl = iso(x0, y1);
     const fr = iso(x1, y1);
     const rr = iso(x1, y0);
+    // The floors under this one show as the building's outer walls below the slab.
+    for (let k = floor; k >= 1; k--) {
+      const top = 12 + (k - 1) * STOREY;
+      g.poly([fl.x, fl.y + top, fr.x, fr.y + top, fr.x, fr.y + top + STOREY, fl.x, fl.y + top + STOREY]).fill(shade(WALL, 0.16));
+      g.poly([fr.x, fr.y + top, rr.x, rr.y + top, rr.x, rr.y + top + STOREY, fr.x, fr.y + top + STOREY]).fill(shade(WALL, 0.3));
+      // a band of windows and the slab line of the floor below
+      for (const [p, q] of [[fl, fr], [fr, rr]] as const) {
+        const at = (t: number, dy: number) => [p.x + (q.x - p.x) * t, p.y + (q.y - p.y) * t + top + dy];
+        for (let t = 0.06; t < 0.9; t += 0.115) g.poly([...at(t, 8), ...at(t + 0.07, 8), ...at(t + 0.07, STOREY - 12), ...at(t, STOREY - 12)]).fill({ color: 0xcfe1f7, alpha: 0.75 });
+        g.poly([...at(0, STOREY - 5), ...at(1, STOREY - 5), ...at(1, STOREY), ...at(0, STOREY)]).fill(shade(SLAB, 0.3));
+      }
+    }
     g.poly([fl.x, fl.y, fr.x, fr.y, fr.x, fr.y + 12, fl.x, fl.y + 12]).fill(shade(SLAB, 0.14));
     g.poly([fr.x, fr.y, rr.x, rr.y, rr.x, rr.y + 12, fr.x, fr.y + 12]).fill(shade(SLAB, 0.28));
     g.poly(floorPoly(x0, y0, x1 - x0, y1 - y0)).fill(SLAB);
@@ -546,6 +567,16 @@ export class Scene {
     const t = 0.18;
     g.poly([...Object.values(iso(x0, y0)), ...Object.values(iso(x1, y0)), ...Object.values(iso(x1, y0 + t)), ...Object.values(iso(x0 + t, y0 + t)), ...Object.values(iso(x0 + t, y1)), ...Object.values(iso(x0, y1))].map((v, i) => (i % 2 ? v - WALL_H : v))).fill(tint(WALL, 0.5));
     this.ground.addChild(g);
+    if (floors > 1) {
+      // which floor this is, on the front corner of the slab
+      const t = label(`${floor + 1}F  ${name}`, 13, INK, '700');
+      const pill = new Graphics().roundRect(0, 0, t.width + 20, 26, 13).fill(0xffffff).stroke({ width: 1, color: 0xcfd6e2 });
+      t.position.set(10, (26 - t.height) / 2);
+      const tagBox = new Container();
+      tagBox.addChild(pill, t);
+      tagBox.position.set(fl.x + 26, fl.y - 4);
+      this.signs.addChild(tagBox);
+    }
 
     // Partitions and the conveyor sit among the furniture so boxes sort around them.
     const piece = (gx: number, gy: number, draw: (pg: Graphics) => void) => {
@@ -709,6 +740,9 @@ export class Scene {
 
   private animate(ms: number) {
     const k = 1 - Math.pow(0.002, ms / 1000); // frame-rate independent easing
+    this.lift.y += (0 - this.lift.y) * k;
+    if (Math.abs(this.lift.y) < 0.3) this.lift.y = 0;
+    if (this.lift.alpha < 1) this.lift.alpha = Math.min(1, this.lift.alpha + ms / 260);
     this.sprites.forEach((s, key) => {
       const r = s.root;
       if (s.leaving) {

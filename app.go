@@ -321,7 +321,33 @@ func (a *App) TicketActions(key string) (*jira.Actions, error) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
-	return c.Actions(ctx, key)
+	acts, err := c.Actions(ctx, key)
+	if err != nil {
+		return nil, err
+	}
+	// Say where each move leads in the centre, so the screen can tell an
+	// approving move from a rejecting one.
+	a.mu.Lock()
+	cfg, engine := a.cfg, a.engine
+	a.mu.Unlock()
+	if cfg != nil && engine != nil {
+		if snap := engine.Last(); snap != nil {
+			for _, b := range snap.Boxes {
+				if b.Key != key {
+					continue
+				}
+				if sp := cfg.Space(b.Space); sp != nil {
+					for i, t := range acts.Transitions {
+						if z := sp.Zone(sp.StatusZones[t.ToID]); z != nil {
+							acts.Transitions[i].ToKind = z.Kind
+						}
+					}
+				}
+				break
+			}
+		}
+	}
+	return acts, nil
 }
 
 // MoveTicket makes one of the ticket's transitions.

@@ -26,7 +26,7 @@ const statusOf: Record<string, [string, string]> = {
 // A second space: the team's own work, in an ordinary (non service desk) project.
 const zones2: Omit<ZoneView, 'count' | 'staleCount'>[] = [
   { id: 'i-wait', name: '대기함', kind: 'wait' },
-  { id: 'i-approval', name: '승인 데스크', kind: 'work' },
+  { id: 'i-approval', name: '승인 데스크', kind: 'work', approval: true },
   { id: 'i-work', name: '작업장', kind: 'desk' },
   { id: 'i-done', name: '완료함', kind: 'done' },
   { id: 'i-returns', name: '취소함', kind: 'returned' },
@@ -332,14 +332,15 @@ export function mockBackend(): Backend {
       const at2 = order2.indexOf(b.zone);
       if (at2 >= 0 && at2 + 1 < order2.length) {
         const [id, name] = statusOf[order2[at2 + 1]];
-        transitions.push({ id: `to-${id}`, name, toId: id, toName: name, needs: [] });
+        transitions.push({ id: `to-${id}`, name: b.zone === 'i-approval' ? '내부업무 승인' : name, toId: id, toName: name, toKind: 'work', needs: [] });
+        if (b.zone === 'i-approval') transitions.push({ id: 'to-20005', name: '승인 취소', toId: '20005', toName: '업무 취소', toKind: 'returned', needs: [] });
       }
       if (at >= 0 && at + 1 < order.length && b.zone !== 'approval') {
         const [id, name] = statusOf[order[at + 1]];
-        transitions.push({ id: `to-${id}`, name: `${name}(으)로`, toId: id, toName: name, needs: [] });
+        transitions.push({ id: `to-${id}`, name: `${name}(으)로`, toId: id, toName: name, toKind: '', needs: [] });
       }
-      if (b.zone === 'review') transitions.push({ id: 'to-10006', name: '반려', toId: '10006', toName: '반려', needs: ['반려 사유'] });
-      if (b.zone === 'lobby') transitions.push({ id: 'to-10006', name: '요청 취소', toId: '10006', toName: '반려', needs: [] });
+      if (b.zone === 'review') transitions.push({ id: 'to-10006', name: '반려', toId: '10006', toName: '반려', toKind: 'returned', needs: ['반려 사유'] });
+      if (b.zone === 'lobby') transitions.push({ id: 'to-10006', name: '요청 취소', toId: '10006', toName: '반려', toKind: '', needs: [] });
       const approvals =
         b.zone === 'approval'
           ? [{ id: 'a1', name: 'DBA 승인', canAnswer: true, approvers: [{ id: 'u1', name: '김하늘', decision: 'pending' }, { id: 'u3', name: '박서준', decision: 'pending' }] }]

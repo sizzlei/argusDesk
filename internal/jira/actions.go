@@ -15,6 +15,7 @@ type Transition struct {
 	Name   string `json:"name"`
 	ToID   string `json:"toId"`
 	ToName string `json:"toName"`
+	ToKind string `json:"toKind"` // kind of the zone it leads to, filled in by the app ("" = unknown)
 	// Needs lists fields Jira insists on for this move. A move with such
 	// fields has to be made in Jira, where its screen asks for them.
 	Needs []string `json:"needs"`

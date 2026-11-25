@@ -943,22 +943,56 @@ dialog.confirm .buttons {
   gap: 8px;
 }
 
-#hud .spaces button {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
+/* ---- floors: one per space ---- */
+
+#floors {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  z-index: 5;
+  display: grid;
+  gap: 4px;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
 }
 
-#hud .spaces .count {
-  padding: 0 6px;
+#floors button {
+  display: grid;
+  grid-template-columns: 28px 1fr auto 8px;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-color: transparent;
+  background: none;
+  text-align: left;
+}
+
+#floors button:hover {
+  background: var(--paper);
+}
+
+#floors button.on {
+  border-color: var(--ink);
+  background: var(--surface);
+  font-weight: 600;
+}
+
+#floors b {
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+#floors .count {
+  padding: 0 7px;
   border-radius: 9px;
   background: var(--paper);
-  color: var(--ink);
   font-size: 12px;
   font-variant-numeric: tabular-nums;
 }
 
-#hud .spaces .old-dot {
+#floors .old-dot {
   width: 7px;
   height: 7px;
   border-radius: 50%;

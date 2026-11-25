@@ -203,8 +203,44 @@ function renderActions(host: HTMLElement, b: Box, snap: Snapshot, backend: Backe
     ),
   );
 
+  // An approval made by moving the box on (a workflow step, where there is no
+  // service desk approval): the moves are shown as approve / reject. Jira lists
+  // only the moves this user may make, so an empty list means it is not my call.
+  const zone = snap.spaces.find((s) => s.id === b.space)?.zones.find((z) => z.id === b.zone);
+  const byMove = !!zone?.approval && approvals.length === 0 && !!a;
+  const decide = byMove ? (a?.transitions ?? []).filter((t) => !t.needs.length) : [];
+  const stepApproval = byMove
+    ? h(
+        'div',
+        { class: 'approval' },
+        h('p', {}, h('b', {}, b.status), ' · 승인 대기 중'),
+        decide.length
+          ? h(
+              'div',
+              { class: 'act-row' },
+              ...decide.map((t) => {
+                const reject = t.toKind === 'returned';
+                return h(
+                  'button',
+                  {
+                    class: reject ? 'danger' : 'primary',
+                    disabled: off,
+                    onclick: async () => {
+                      const what = reject ? '반려(취소)' : '승인';
+                      if (await confirmAction(what, `${b.key} "${b.summary}"을(를) "${t.toName}"(으)로 옮깁니다. Jira에 바로 반영됩니다.`, t.name, reject))
+                        void act(b, `"${t.toName}"(으)로 옮겼습니다.`, () => backend.moveTicket(b.key, t.id), redraw);
+                    },
+                  },
+                  t.name,
+                );
+              }),
+            )
+          : h('p', { class: 'quiet' }, '내가 승인할 수 있는 단계가 아닙니다. 승인자가 처리하면 상자가 움직입니다.'),
+      )
+    : null;
+
   // moves
-  const moves = (a?.transitions ?? []).map((t) =>
+  const moves = (a?.transitions ?? []).filter((t) => !decide.includes(t)).map((t) =>
     t.needs.length
       ? h(
           'button',
@@ -270,12 +306,13 @@ function renderActions(host: HTMLElement, b: Box, snap: Snapshot, backend: Backe
     h('h3', {}, '처리', busy ? h('span', { class: 'chip' }, 'Jira에 반영 중') : null),
     h('div', { class: 'act' }, h('span', { class: 'act-name' }, '담당자'), assign),
     ...approvals,
+    stepApproval,
     a?.approvalsError ? h('p', { class: 'quiet' }, `승인 정보를 읽지 못했습니다: ${a.approvalsError}`) : null,
     error ? h('p', { class: 'error' }, `가능한 처리를 불러오지 못했습니다: ${error}`) : null,
     !a && !error
       ? h('p', { class: 'quiet' }, '가능한 처리를 불러오는 중입니다.')
       : a
-        ? h('div', { class: 'act' }, h('span', { class: 'act-name' }, '이동'), moves.length ? h('div', { class: 'act-row' }, ...moves) : h('span', { class: 'quiet' }, '지금 옮길 수 있는 상태가 없습니다.'))
+        ? h('div', { class: 'act' }, h('span', { class: 'act-name' }, '이동'), moves.length ? h('div', { class: 'act-row' }, ...moves) : h('span', { class: 'quiet' }, byMove && decide.length ? '위의 승인 단계에서 처리합니다.' : '지금 옮길 수 있는 상태가 없습니다.'))
         : null,
     h('div', { class: 'comment-box' }, text, h('div', { class: 'act-row' }, desk ? audience : null, send)),
   );

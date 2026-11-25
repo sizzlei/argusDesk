@@ -49,7 +49,7 @@ func Assemble(in Input) *model.Snapshot {
 		view := model.SpaceView{ID: sp.ID, Name: sp.Name}
 		index := map[string]int{}
 		for _, z := range sp.Zones {
-			zv := model.ZoneView{ID: z.ID, Name: z.Name, Kind: z.Kind}
+			zv := model.ZoneView{ID: z.ID, Name: z.Name, Kind: z.Kind, Approval: z.Approval}
 			if z.Stale != nil {
 				zv.StaleAfter = z.Stale.After
 			}

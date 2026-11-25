@@ -41,6 +41,7 @@ export interface ZoneView {
   count: number;
   staleCount: number;
   staleAfter?: string;
+  approval?: boolean; // boxes here wait for an approving move
 }
 
 export interface SpaceView {
@@ -156,6 +157,7 @@ export interface Transition {
   name: string;
   toId: string;
   toName: string;
+  toKind: string; // kind of the zone it leads to ("" = unknown)
   needs: string[]; // fields Jira insists on: such a move is made in Jira
 }
 

@@ -22,6 +22,7 @@ spaces:
     zones:
       - { id: lobby, name: 접수 로비, kind: wait }
       - { id: review, name: 검토실, kind: work, stale: { after: 3h, from: zone_entered } }
+      # approval: true 는 서비스 데스크 승인 기능이 아니라 상태 이동으로 승인하는 구역에 붙입니다.
       - { id: approval, name: 승인 데스크, kind: work, stale: { after: 3h, from: zone_entered } }
       - { id: work, name: 작업장, kind: desk, stale: { after: 5d, from: type_field } }
       - { id: dock, name: 출고 도크, kind: done }
