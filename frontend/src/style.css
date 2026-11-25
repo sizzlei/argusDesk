@@ -1538,3 +1538,41 @@ dialog.avatars .looks button.on {
   border-radius: 999px;
   font-size: 12px;
 }
+
+/* ---- minimise, and the cancel button kept apart at the top ---- */
+
+.tw-buttons {
+  display: inline-flex;
+  flex: none;
+}
+
+.tw[hidden] {
+  display: none;
+}
+
+.tw .key {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 0;
+}
+
+.tw-cancel {
+  display: inline-flex;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.tw-cancel button.copy {
+  margin-left: 0;
+}
+
+.tw-cancel button.danger {
+  border-color: #e7b9b6;
+  color: var(--old);
+}
+
+#dock .win.min {
+  border-style: dashed;
+  color: var(--quiet);
+}

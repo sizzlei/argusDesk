@@ -20,6 +20,8 @@ interface Win {
   body: HTMLElement; // the scrolling part
   actionsEl: HTMLElement | null;
   detailEl: HTMLElement | null;
+  cancelEl: HTMLElement | null; // top of the window: where a request is cancelled
+  min: boolean; // minimised: out of sight, still in the dock
   text: HTMLTextAreaElement | null; // the comment box's text area
   commentBox: HTMLElement | null; // built with the actions, shown with the comments
   busy: boolean; // a change is on its way to Jira
@@ -259,8 +261,33 @@ function renderActions(w: Win, snap: Snapshot, backend: Backend) {
       )
     : null;
 
+  // Cancelling a request is kept away from the other moves, at the top of the
+  // window, so that it is not pressed by mistake.
+  const cancels = (a?.transitions ?? []).filter((t) => t.toKind === 'returned' && !decide.includes(t));
+  if (w.cancelEl) {
+    fill(
+      w.cancelEl,
+      ...cancels.map((t) =>
+        t.needs.length
+          ? h('button', { class: 'copy', disabled: true, title: `필수 입력(${t.needs.join(', ')})이 있어 Jira에서 진행해야 합니다.` }, `${t.name} · Jira에서`)
+          : h(
+              'button',
+              {
+                class: 'copy danger',
+                disabled: off,
+                onclick: async () => {
+                  if (await confirmAction(t.name, `${b.key} "${b.summary}"을(를) "${t.toName}"(으)로 옮깁니다. 요청이 취소되며 Jira에 바로 반영됩니다.`, t.name, true))
+                    void act(w, `"${t.toName}"(으)로 옮겼습니다.`, () => backend.moveTicket(b.key, t.id), redraw);
+                },
+              },
+              t.name,
+            ),
+      ),
+    );
+  }
+
   // moves
-  const moves = (a?.transitions ?? []).filter((t) => !decide.includes(t)).map((t) =>
+  const moves = (a?.transitions ?? []).filter((t) => !decide.includes(t) && !cancels.includes(t)).map((t) =>
     t.needs.length
       ? h(
           'button',
@@ -457,6 +484,7 @@ function draw(w: Win, snap: Snapshot, backend: Backend) {
   const zone = snap.spaces.find((s) => s.id === b.space)?.zones.find((z) => z.id === b.zone);
   w.detailEl = h('div', { class: 'tw-detail' });
   w.actionsEl = h('section', { class: 'tw-actions' });
+  w.cancelEl = h('span', { class: 'tw-cancel' });
   w.el.querySelector('.tw-title')!.replaceChildren(h('span', { class: `tag tag-${b.tag || 'gray'}` }, b.type), h('b', {}, b.key));
   fill(
     w.body,
@@ -467,6 +495,7 @@ function draw(w: Win, snap: Snapshot, backend: Backend) {
       copyButton(() => b.key),
       copyButton(() => b.url, '링크 복사'),
       h('button', { class: 'copy', type: 'button', onclick: () => backend.openUrl(b.url) }, 'Jira에서 열기'),
+      w.cancelEl,
     ),
     h('h2', {}, b.summary),
     h(
@@ -520,8 +549,8 @@ function dock(hooks: TicketHooks) {
     ...[...wins.values()].map((w) =>
       h(
         'span',
-        { class: w.key === frontKey ? 'win on' : 'win' },
-        h('button', { class: 'open', title: `${w.key} · ${w.box.summary}`, onclick: () => front(w, hooks) }, `${w.key.split('-').pop()} · ${w.box.summary}`),
+        { class: `win${w.key === frontKey ? ' on' : ''}${w.min ? ' min' : ''}` },
+        h('button', { class: 'open', title: `${w.key} · ${w.box.summary}${w.min ? ' (최소화됨)' : ''}`, onclick: () => front(w, hooks) }, `${w.key.split('-').pop()} · ${w.box.summary}`),
         h('button', { class: 'x', 'aria-label': `${w.key} 창 닫기`, onclick: () => close(w, hooks) }, '×'),
       ),
     ),
@@ -530,6 +559,8 @@ function dock(hooks: TicketHooks) {
 }
 
 function front(w: Win, hooks: TicketHooks) {
+  w.min = false;
+  w.el.hidden = false;
   w.el.style.zIndex = String(++top);
   // A window dragged out of sight comes back when it is asked for.
   const host = w.el.parentElement;
@@ -569,10 +600,11 @@ export function openTicket(b: Box, snap: Snapshot, backend: Backend, hooks: Tick
 
   const title = h('div', { class: 'tw-title' });
   const shut = h('button', { class: 'close', 'aria-label': `${b.key} 창 닫기` }, '×');
-  const head = h('header', { class: 'tw-head' }, title, shut);
+  const fold = h('button', { class: 'close fold', 'aria-label': `${b.key} 창 최소화`, title: '최소화' }, '–');
+  const head = h('header', { class: 'tw-head' }, title, h('span', { class: 'tw-buttons' }, fold, shut));
   const body = h('div', { class: 'tw-body' });
   const el = h('section', { class: 'tw', role: 'dialog', 'aria-label': `${b.key} ${b.summary}` }, head, body);
-  const win: Win = { key: b.key, box: b, el, body, actionsEl: null, detailEl: null, text: null, commentBox: null, busy: false, pending: null };
+  const win: Win = { key: b.key, box: b, el, body, actionsEl: null, detailEl: null, cancelEl: null, min: false, text: null, commentBox: null, busy: false, pending: null };
   w = win;
   wins.set(b.key, win);
 
@@ -584,7 +616,23 @@ export function openTicket(b: Box, snap: Snapshot, backend: Backend, hooks: Tick
   el.style.top = `${66 + n * 30}px`;
 
   shut.addEventListener('click', () => close(win, hooks));
-  el.addEventListener('pointerdown', () => front(win, hooks), true);
+  // Minimised: the window goes out of sight and waits in the dock.
+  fold.addEventListener('click', () => {
+    win.min = true;
+    el.hidden = true;
+    if (frontKey === win.key) {
+      frontKey = '';
+      hooks.onFocus('');
+    }
+    dock(hooks);
+  });
+  el.addEventListener(
+    'pointerdown',
+    (e) => {
+      if (!(e.target as HTMLElement).closest('.tw-buttons')) front(win, hooks);
+    },
+    true,
+  );
   el.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && !typing(win)) close(win, hooks);
   });

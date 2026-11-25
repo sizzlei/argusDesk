@@ -419,7 +419,10 @@ export function mockBackend(): Backend {
         transitions.push({ id: `to-${id}`, name: `${name}(으)로`, toId: id, toName: name, toKind: '', needs: [] });
       }
       if (b.zone === 'review') transitions.push({ id: 'to-10006', name: '반려', toId: '10006', toName: '반려', toKind: 'returned', needs: ['반려 사유'] });
-      if (b.zone === 'lobby') transitions.push({ id: 'to-10006', name: '요청 취소', toId: '10006', toName: '반려', toKind: '', needs: [] });
+      if (b.zone === 'lobby') transitions.push({ id: 'to-10006', name: '요청 취소', toId: '10006', toName: '반려', toKind: 'returned', needs: [] });
+      if (b.zone !== 'lobby' && b.zone !== 'dock' && b.zone !== 'returns' && b.space === 'requests' && !transitions.some((t) => t.toKind === 'returned')) {
+        transitions.push({ id: 'to-10006', name: '작업 요청 취소', toId: '10006', toName: '반려', toKind: 'returned', needs: [] });
+      }
       const approvals =
         b.zone === 'approval'
           ? [{ id: 'a1', name: 'DBA 승인', canAnswer: true, approvers: [{ id: 'u1', name: '김하늘', decision: 'pending' }, { id: 'u3', name: '박서준', decision: 'pending' }] }]
