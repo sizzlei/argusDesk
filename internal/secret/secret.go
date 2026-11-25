@@ -54,6 +54,7 @@ type Prefs struct {
 	NotifyOff       bool   `json:"notifyOff"`       // the user turned notifications off
 	VacationFrom    string `json:"vacationFrom"`    // own holiday, "2026-12-01"; used when the team has no shared ticket
 	VacationTo      string `json:"vacationTo"`
+	Avatar          int    `json:"avatar"` // chosen look + 1; 0 = not chosen
 }
 
 // Dir is the folder argusDesk keeps its own files in.

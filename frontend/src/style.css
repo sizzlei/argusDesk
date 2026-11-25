@@ -1333,3 +1333,208 @@ dialog.vacation p.error:empty {
   color: var(--quiet);
   font-size: 12px;
 }
+
+/* ---- avatars: small pictures of a look ---- */
+
+.avatar {
+  position: relative;
+  display: inline-block;
+  width: var(--size);
+  height: var(--size);
+  overflow: hidden;
+  border-radius: 50%;
+  background: #e6ebf3;
+  flex: none;
+}
+
+.avatar i {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.avatar .a-body {
+  bottom: -8%;
+  width: 78%;
+  height: 34%;
+  border-radius: 40% 40% 0 0;
+  background: var(--body);
+}
+
+.avatar .a-face {
+  top: 26%;
+  width: 46%;
+  height: 42%;
+  border-radius: 28%;
+  background: #f3d2b3;
+}
+
+.avatar .a-hair {
+  top: 14%;
+  z-index: 1;
+  width: 52%;
+  height: 22%;
+  border-radius: 40% 40% 12% 12%;
+  background: var(--hair);
+}
+
+.avatar.hair-tall .a-hair {
+  top: 6%;
+  height: 30%;
+}
+
+.avatar.hair-side .a-hair {
+  width: 60%;
+  height: 46%;
+  border-radius: 40% 40% 20% 20%;
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 82% 100%, 82% 44%, 18% 44%, 18% 100%, 0 100%);
+}
+
+.avatar.hair-cap .a-hair {
+  width: 62%;
+  height: 20%;
+  border-radius: 50% 50% 0 0;
+  box-shadow: 0 2px 0 0 var(--hair);
+}
+
+/* ---- the team strip in the HUD: avatars ringed by how worn they are ---- */
+
+.team {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-right: 10px;
+  border-right: 1px solid var(--line);
+}
+
+.team .member {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px;
+  border: 2px solid #3fb37f;
+  border-radius: 999px;
+}
+
+.team .member.lv1 {
+  border-color: #e9a23b;
+}
+
+.team .member.lv2 {
+  border-color: var(--old);
+}
+
+.team .member.away {
+  border-style: dashed;
+  border-color: var(--line);
+  opacity: 0.55;
+}
+
+.team .member.me {
+  padding-right: 8px;
+}
+
+.team .meter {
+  width: 44px;
+  height: 6px;
+  overflow: hidden;
+  border-radius: 3px;
+  background: var(--line);
+}
+
+.team .meter i {
+  display: block;
+  height: 100%;
+  background: #3fb37f;
+  transition: width 0.6s ease;
+}
+
+.team .member.lv1 .meter i {
+  background: #e9a23b;
+}
+
+.team .member.lv2 .meter i {
+  background: var(--old);
+}
+
+/* ---- avatar picker ---- */
+
+dialog.avatars .looks {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 8px;
+  margin: 12px 0;
+}
+
+dialog.avatars .looks button {
+  display: grid;
+  place-items: center;
+  padding: 6px;
+  border-radius: 12px;
+}
+
+dialog.avatars .looks button.on {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
+/* ---- the dock: open ticket windows, and closing them all ---- */
+
+#dock {
+  position: absolute;
+  bottom: 16px;
+  left: 92px;
+  z-index: 11;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  max-width: calc(100% - 420px);
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--surface) 94%, transparent);
+  box-shadow: 0 4px 14px rgb(31 42 68 / 10%);
+}
+
+#dock .win {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 220px;
+  padding: 3px 4px 3px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  font-size: 12px;
+}
+
+#dock .win.on {
+  border-color: var(--ink);
+  font-weight: 600;
+}
+
+#dock .win .open {
+  overflow: hidden;
+  padding: 0;
+  border: 0;
+  background: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#dock .win .x {
+  padding: 0 6px;
+  border: 0;
+  background: none;
+  font-size: 15px;
+  line-height: 1;
+  color: var(--quiet);
+}
+
+#dock .all {
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+}

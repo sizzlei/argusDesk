@@ -2,6 +2,7 @@
 // few commands the app has.
 
 import type { Backend } from './backend';
+import { avatarIcon, lookOf } from './avatars';
 import { gameChip, renderGame } from './game';
 import type { AppState, GameStats, Snapshot } from './types';
 import { clock, fill, h, toast } from './ui';
@@ -14,6 +15,7 @@ export interface HudHooks {
   logout(): void;
   setNotify(on: boolean): void;
   vacation(): void;
+  avatar(): void;
   setSpace(index: number): void;
   game: GameStats | null;
   gameOpen: boolean;
@@ -21,6 +23,34 @@ export interface HudHooks {
 }
 
 let menuOpen = false;
+
+const TIRED = ['여유', '피곤', '지침'];
+
+/**
+ * The team at a glance: one avatar each, ringed by how worn they are. No
+ * names: the picture is enough among four people. Mine comes first, with a bar.
+ */
+function team(snap: Snapshot | null, game: GameStats | null) {
+  if (!snap || !game) return null;
+  const seen = new Set<string>();
+  const people = snap.members.filter((m) => !seen.has(m.id) && seen.add(m.id)).sort((a, b) => Number(b.me) - Number(a.me));
+  if (!people.length) return null;
+  const away = new Set(game.away.filter((a) => a.active).map((a) => a.id));
+  return h(
+    'div',
+    { class: 'team', role: 'list', 'aria-label': '팀 피로도' },
+    ...people.map((m) => {
+      const lv = game.fatigue[m.id] ?? 0;
+      const state = away.has(m.id) ? '휴가 중' : TIRED[lv];
+      return h(
+        'span',
+        { class: `member lv${lv}${m.me ? ' me' : ''}${away.has(m.id) ? ' away' : ''}`, role: 'listitem', title: m.me ? `나 · ${state} (${game.myFatigue}%)` : state, 'aria-label': m.me ? `나, ${state}` : state },
+        avatarIcon(lookOf(m.id, game.avatars), 26),
+        m.me ? h('span', { class: 'meter' }, h('i', { style: `width:${Math.min(100, game.myFatigue)}%` })) : null,
+      );
+    }),
+  );
+}
 
 export function renderHud(state: AppState, snap: Snapshot | null, space: number, lastError: string, backend: Backend, hooks: HudHooks) {
   const hud = document.getElementById('hud')!;
@@ -88,6 +118,7 @@ export function renderHud(state: AppState, snap: Snapshot | null, space: number,
     h(
       'div',
       { class: 'tools' },
+      team(snap, hooks.game),
       lastError ? h('span', { class: 'chip warn', title: lastError }, '갱신 실패') : null,
       snap?.warnings.length
         ? h(
@@ -116,6 +147,7 @@ export function renderHud(state: AppState, snap: Snapshot | null, space: number,
               { class: 'menu-list', role: 'menu' },
               item('설정 다시 읽기', hooks.reloadConfig),
               item('설정 파일 바꾸기', hooks.chooseConfig),
+              item('아바타 선택', hooks.avatar),
               item('휴가 등록', hooks.vacation),
               item(state.notify ? '알림 끄기' : '알림 켜기', () => hooks.setNotify(!state.notify)),
               state.notify && state.notifyProblem ? h('p', { class: 'quiet' }, `알림을 보낼 수 없습니다: ${state.notifyProblem}`) : null,

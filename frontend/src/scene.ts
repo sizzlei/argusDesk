@@ -6,6 +6,7 @@
 // content security policy); it has no effect elsewhere.
 import 'pixi.js/unsafe-eval';
 import { Application, Container, Graphics, Polygon, Text } from 'pixi.js';
+import { type Look, lookOf } from './avatars';
 import type { Away, Box, Change, Member, Snapshot, SpaceView, ZoneKind, ZoneView } from './types';
 
 // ---- isometric grid ---------------------------------------------------------
@@ -68,7 +69,6 @@ const CARDBOARD = 0xd9a866;
 /** Box colour by how old it is: fresh, nearing the limit, then three steps past it. */
 export const AGE = [CARDBOARD, 0xe9a23b, 0xe56b3c, 0xc7352f, 0x8a1c2c];
 const UNSCHEDULED = 0xcfd5de;
-const AVATARS = [0x4f6fd6, 0xe0704f, 0x3f9c63, 0xa85fc4, 0xc79a2a, 0x2f9a9a];
 const SKIN = 0xf3d2b3;
 
 function mix(a: number, b: number, t: number) {
@@ -323,21 +323,36 @@ function desk(g: Graphics, gx: number, gy: number, kind: 'desk' | 'shelf' | 'min
 }
 
 /** A person: body, head and hair as three blocks. */
-function person(g: Graphics, colour: number, me: boolean, mood = 0) {
+function person(g: Graphics, look: Look, me: boolean, mood = 0) {
+  const colour = look.body;
   g.ellipse(0, 1, 11, 5.5).fill({ color: 0x1b2233, alpha: 0.14 });
-  const sit = mood === 2 ? 7 : 0; // resting: seated on a bench, so everything sits lower and the body is shorter
-  if (sit) block(g, -0.17, 0.02, 0.34, 0.3, 5, shade(colour, 0.3), 7); // legs forward
+  const sit = mood === 2 ? 7 : 0; // resting: seated on a bench, so the body is shorter and the legs point forward
+  if (sit) block(g, -0.17, 0.02, 0.34, 0.3, 5, shade(colour, 0.3), 7);
   block(g, -0.17, -0.17, 0.34, 0.34, sit ? 13 : 20, colour, sit);
-  const neck = sit ? 20 : 20;
-  block(g, -0.14, -0.14, 0.28, 0.28, 12, SKIN, neck);
-  block(g, -0.15, -0.15, 0.3, 0.3, 4, shade(colour, 0.55), neck + 12);
+  block(g, -0.14, -0.14, 0.28, 0.28, 12, SKIN, 20);
+  // hair: four shapes, so two teammates in the same colour still differ
+  switch (look.style) {
+    case 'tall':
+      block(g, -0.15, -0.15, 0.3, 0.3, 8, look.hair, 32);
+      break;
+    case 'side':
+      block(g, -0.15, -0.15, 0.3, 0.3, 4, look.hair, 32);
+      block(g, -0.16, -0.16, 0.32, 0.1, 9, look.hair, 25); // falls down the back
+      break;
+    case 'cap':
+      block(g, -0.15, -0.15, 0.3, 0.3, 5, look.hair, 32);
+      block(g, -0.15, 0.13, 0.3, 0.12, 2, look.hair, 32); // the brim
+      break;
+    default:
+      block(g, -0.15, -0.15, 0.3, 0.3, 4, look.hair, 32);
+  }
   if (mood >= 1) {
     // tired: drops of sweat beside the head
     for (const [dx, dy] of mood === 2 ? [[-13, -34], [13, -30], [-10, -24]] : [[-13, -32], [12, -27]]) {
       g.poly([dx, dy - 5, dx + 2.6, dy, dx, dy + 2.6, dx - 2.6, dy]).fill(0x6fb1e6);
     }
   }
-  if (me) g.poly([0, -52, 6, -46, 0, -40, -6, -46]).fill(ACCENT); // marker above my head
+  if (me) g.poly([0, -56, 6, -50, 0, -44, -6, -50]).fill(ACCENT); // marker above my head
 }
 
 /** A bed in the lodge, with someone asleep in it or neatly made. */
@@ -574,6 +589,7 @@ export class Scene {
   private bits: { g: Graphics; vx: number; vy: number; spin: number; life: number }[] = [];
   private fatigue: Record<string, number> = {};
   private away: Away[] = [];
+  private looks: Record<string, number> = {};
   private held = false; // the user zoomed or moved the view: leave it alone
   private push = 0; // how far the view has slid aside for the panel
   private pushTo = 0;
@@ -657,10 +673,11 @@ export class Scene {
   }
 
   /** Takes how tired each teammate is and who is on holiday. */
-  setTeam(fatigue: Record<string, number>, away: Away[]) {
-    const same = JSON.stringify([fatigue, away]) === JSON.stringify([this.fatigue, this.away]);
+  setTeam(fatigue: Record<string, number>, away: Away[], looks: Record<string, number>) {
+    const same = JSON.stringify([fatigue, away, looks]) === JSON.stringify([this.fatigue, this.away, this.looks]);
     this.fatigue = fatigue;
     this.away = away;
+    this.looks = looks;
     if (!same && this.snap) this.update(this.snap, []);
   }
 
@@ -892,11 +909,11 @@ export class Scene {
           const gx = rest ? rest.gx : atDesk ? o.gx + 0.55 : o.gx + ZW - 0.8;
           const gy = rest ? rest.gy : atDesk ? o.gy + LANE_TOP + lane * lanePitch(lanes.length, o.d) : o.gy + 2.2 + mi * 1.1;
           const p = iso(gx, gy);
-          const g = prop(gx, gy, (pg) => person(pg, AVATARS[snap.members.indexOf(m) % AVATARS.length], m.me, rest ? 2 : tired ? 1 : 0), 1);
+          const g = prop(gx, gy, (pg) => person(pg, lookOf(m.id, this.looks), m.me, rest ? 2 : tired ? 1 : 0), 1);
           g.position.set(p.x, p.y);
           this.people.push({ g, y: p.y, phase: mi * 1.7 + zi, slow: tired > 0 });
           const name = m.count ? `${shortName(m.name)} ${m.count}` : shortName(m.name);
-          this.tag(rest ? `${name} · 휴식 중` : tired ? `${name} · 피곤` : name, gx, gy, m.me ? 74 : 60, m.me);
+          this.tag(name, gx, gy, m.me ? 78 : 62, m.me);
         });
     });
 
@@ -1158,12 +1175,10 @@ export class Scene {
       g.zIndex = (gx + gy) * 100;
       this.things.addChild(g);
     };
-    const members = this.snap?.members ?? [];
     for (let i = 0; i < beds; i++) {
       const who = here[i];
       const gx = 0.7 + i * 1.7;
-      const index = who ? members.findIndex((m) => m.id === who.id) : -1;
-      prop(gx + 0.5, 1.2, (g) => bed(g, gx, 0.5, who ? AVATARS[(index < 0 ? i : index) % AVATARS.length] : null));
+      prop(gx + 0.5, 1.2, (g) => bed(g, gx, 0.5, who ? lookOf(who.id, this.looks).body : null));
       if (who) {
         const [, mo, dd] = who.to.split('-').map(Number);
         this.tag(`${shortName(who.name)} · ~${mo}/${dd}`, gx + 0.5, 0.9, 56, who.me);

@@ -215,6 +215,8 @@ export interface GameStats {
   badges: Badge[];
   fatigue: Record<string, number>; // by account id: 0 fresh, 1 tired, 2 resting
   away: Away[]; // holidays, current and coming
+  myFatigue: number; // own fatigue, percent of the point where one rests
+  avatars: Record<string, number>; // chosen look by account id
 }
 
 /** One teammate's holiday. */

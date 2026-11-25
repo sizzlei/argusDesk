@@ -54,6 +54,11 @@ type Stats struct {
 	// 1 tired, 2 resting. Only the level is given, never the count behind it.
 	Fatigue map[string]int `json:"fatigue"`
 	Away    []Away         `json:"away"` // holidays, current and coming
+	// MyFatigue is the user's own fatigue as a share of the point where one
+	// has to rest, in percent (100 = resting). Only one's own is given as a number.
+	MyFatigue int `json:"myFatigue"`
+	// Avatars is the look each teammate chose, by account id.
+	Avatars map[string]int `json:"avatars"`
 }
 
 // Away is one teammate's holiday.
@@ -66,10 +71,10 @@ type Away struct {
 	Me     bool   `json:"me"`
 }
 
-// Fatigue works out how worn each assignee is. Every ticket finished in the
-// last week adds one point, and a point fades by half every two days, so a
-// heavy run shows for a while and a quiet spell lets it wear off.
-func Fatigue(dones []Done, now time.Time, tired, exhausted float64) map[string]int {
+// FatigueScores works out how worn each assignee is. Every ticket finished
+// in the last week adds one point, and a point fades by half every two days,
+// so a heavy run shows for a while and a quiet spell lets it wear off.
+func FatigueScores(dones []Done, now time.Time) map[string]float64 {
 	score := map[string]float64{}
 	for _, d := range dones {
 		age := now.Sub(d.At)
@@ -78,8 +83,13 @@ func Fatigue(dones []Done, now time.Time, tired, exhausted float64) map[string]i
 		}
 		score[d.AssigneeID] += math.Pow(0.5, age.Hours()/48)
 	}
+	return score
+}
+
+// Fatigue turns the scores into levels: 0 fresh, 1 tired, 2 resting.
+func Fatigue(dones []Done, now time.Time, tired, exhausted float64) map[string]int {
 	out := map[string]int{}
-	for id, s := range score {
+	for id, s := range FatigueScores(dones, now) {
 		switch {
 		case s >= exhausted:
 			out[id] = 2

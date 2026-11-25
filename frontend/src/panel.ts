@@ -509,16 +509,45 @@ export interface TicketHooks {
   onClose(key: string): void;
 }
 
+let frontKey = '';
+
+/** The dock lists the open windows: one press brings a window forward, and one closes them all. */
+function dock(hooks: TicketHooks) {
+  const el = document.getElementById('dock')!;
+  el.hidden = wins.size === 0;
+  fill(
+    el,
+    ...[...wins.values()].map((w) =>
+      h(
+        'span',
+        { class: w.key === frontKey ? 'win on' : 'win' },
+        h('button', { class: 'open', title: `${w.key} · ${w.box.summary}`, onclick: () => front(w, hooks) }, `${w.key.split('-').pop()} · ${w.box.summary}`),
+        h('button', { class: 'x', 'aria-label': `${w.key} 창 닫기`, onclick: () => close(w, hooks) }, '×'),
+      ),
+    ),
+    wins.size > 1 ? h('button', { class: 'all', onclick: () => closeTickets(hooks) }, `모두 닫기 (${wins.size})`) : null,
+  );
+}
+
 function front(w: Win, hooks: TicketHooks) {
   w.el.style.zIndex = String(++top);
+  // A window dragged out of sight comes back when it is asked for.
+  const host = w.el.parentElement;
+  if (host && (w.el.offsetLeft > host.clientWidth - 120 || w.el.offsetTop > host.clientHeight - 60 || w.el.offsetLeft + w.el.offsetWidth < 120)) {
+    w.el.style.left = `${Math.max(12, host.clientWidth - w.el.offsetWidth - 16)}px`;
+    w.el.style.top = '66px';
+  }
+  frontKey = w.key;
   wins.forEach((o) => o.el.classList.toggle('front', o === w));
   hooks.onFocus(w.key);
+  dock(hooks);
 }
 
 function close(w: Win, hooks: TicketHooks) {
   w.el.remove();
   wins.delete(w.key);
   hooks.onClose(w.key);
+  dock(hooks);
 }
 
 /**
@@ -595,7 +624,11 @@ export function syncTickets(snap: Snapshot, backend: Backend) {
   });
 }
 
-export function closeTickets() {
+export function closeTickets(hooks?: TicketHooks) {
+  const keys = [...wins.keys()];
   wins.forEach((w) => w.el.remove());
   wins.clear();
+  frontKey = '';
+  document.getElementById('dock')!.hidden = true;
+  if (hooks) keys.forEach((k) => hooks.onClose(k));
 }

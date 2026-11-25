@@ -34,6 +34,8 @@ export interface Backend {
   // the user's own holiday; empty days cancel it
   myVacation(): Promise<Vacation>;
   setVacation(from: string, to: string): Promise<Vacation>;
+  /** Chooses the look of the user's own avatar (an index into LOOKS). */
+  setAvatar(look: number): Promise<void>;
   // updates
   checkUpdate(): Promise<UpdateInfo>;
   lastUpdateCheck(): Promise<number>;
@@ -69,6 +71,7 @@ async function real(): Promise<Backend> {
     gameStats: () => call('GameStats'),
     myVacation: () => call('MyVacation'),
     setVacation: (from, to) => call('SetVacation', from, to),
+    setAvatar: (look) => call('SetAvatar', look),
     onGame: (cb) => void Events.On('game:stats', (ev: { data: GameStats }) => cb(ev.data)),
     checkUpdate: () => call('CheckUpdate'),
     lastUpdateCheck: () => call('LastUpdateCheck'),

@@ -2,6 +2,7 @@
 // basement instead of standing in the centre.
 
 import type { Backend } from './backend';
+import { avatarIcon, LOOKS } from './avatars';
 import { errText, h, toast } from './ui';
 
 const today = () => {
@@ -52,6 +53,49 @@ export async function openVacation(backend: Backend) {
       h('button', { onclick: close }, '닫기'),
       h('button', { class: 'primary', onclick: () => void save(from.value, to.value, `휴가를 등록했습니다: ${from.value} ~ ${to.value}`) }, '등록'),
     ),
+  );
+  dlg.addEventListener('cancel', (e) => (e.preventDefault(), close()));
+  document.body.append(dlg);
+  dlg.showModal();
+}
+
+/** Lets the user pick the look of their own avatar. */
+export function openAvatarPicker(backend: Backend, current: number | undefined) {
+  const dlg = h('dialog', { class: 'confirm avatars' });
+  const close = () => {
+    dlg.close();
+    dlg.remove();
+  };
+  const error = h('p', { class: 'error' });
+  dlg.append(
+    h('h3', {}, '아바타 선택'),
+    h('p', { class: 'quiet' }, '센터와 화면 위쪽에 보이는 내 모습입니다.'),
+    h(
+      'div',
+      { class: 'looks' },
+      ...LOOKS.map((look, i) =>
+        h(
+          'button',
+          {
+            class: i === current ? 'on' : '',
+            'aria-label': `아바타 ${i + 1}`,
+            'aria-pressed': String(i === current),
+            onclick: async () => {
+              try {
+                await backend.setAvatar(i);
+                close();
+                toast('아바타를 바꿨습니다.');
+              } catch (e) {
+                error.textContent = errText(e);
+              }
+            },
+          },
+          avatarIcon(look, 44),
+        ),
+      ),
+    ),
+    error,
+    h('div', { class: 'buttons' }, h('button', { onclick: close }, '닫기')),
   );
   dlg.addEventListener('cancel', (e) => (e.preventDefault(), close()));
   document.body.append(dlg);

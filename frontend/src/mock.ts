@@ -277,11 +277,14 @@ export function mockBackend(): Backend {
     if (vacation.from) list.push({ id: 'u1', name: '김하늘', from: vacation.from, to: vacation.to, active: vacation.from <= day(0) && vacation.to >= day(0), me: true });
     return list;
   };
+  const chosen: Record<string, number> = { u2: 1, u3: 4 };
   const game = (): GameStats => {
     const b = (id: string, name: string, desc: string, scope: 'me' | 'team', have: number, need: number): Badge => ({ id, name, desc, scope, have: Math.min(have, need), need, earned: have >= need });
     return {
       since: '2026-01-01T00:00:00+09:00',
-      fatigue: { u2: 1, u3: 2 }, // one teammate tired, one resting, to show both
+      fatigue: { u1: counts.meToday > 4 ? 1 : 0, u2: 1, u3: 2 }, // one teammate tired, one resting, to show both
+      myFatigue: Math.min(100, 30 + counts.meToday * 6),
+      avatars: { ...chosen },
       away: away(),
       team: tally(counts.team, counts.teamToday, 4),
       me: tally(counts.me, counts.meToday, 1),
@@ -453,6 +456,12 @@ export function mockBackend(): Backend {
     onBoard: (cb) => void listeners.push(cb),
     onError: () => {},
     gameStats: async () => game(),
+    setAvatar: async (look) => {
+      await pause();
+      chosen.u1 = look;
+      const s = game();
+      gameListeners.forEach((cb) => cb(s));
+    },
     myVacation: async () => ({ ...vacation }),
     setVacation: async (from, to) => {
       await pause();

@@ -6,7 +6,7 @@ import { AGE, Scene, TAGS } from './scene';
 import { renderSetup } from './setup';
 import type { AppState, Box, GameStats, Snapshot } from './types';
 import { checkForUpdates, initUpdates } from './update';
-import { openVacation } from './vacation';
+import { openAvatarPicker, openVacation } from './vacation';
 import { errText, toast } from './ui';
 
 async function boot() {
@@ -49,6 +49,10 @@ async function boot() {
       checkUpdate: () => void checkForUpdates(true),
       logout: () => void backend.logout().then(apply, fail),
       vacation: () => void openVacation(backend).catch(fail),
+      avatar: () => {
+        const me = snap?.members.find((m) => m.me);
+        openAvatarPicker(backend, me ? game?.avatars[me.id] : undefined);
+      },
       setNotify: (on) =>
         void backend.setNotify(on).then((next) => {
           apply(next);
@@ -112,7 +116,7 @@ async function boot() {
     if (!next) return;
     const fresh = news(game, next);
     game = next;
-    scene.setTeam(next.fatigue ?? {}, next.away ?? []);
+    scene.setTeam(next.fatigue ?? {}, next.away ?? [], next.avatars ?? {});
     hud();
     if (fresh.myLevel) {
       toast(`레벨 업! 나 Lv.${fresh.myLevel}`);

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"strings"
 	"sync"
@@ -537,7 +538,12 @@ func (a *App) refreshGame(ctx context.Context, snap *model.Snapshot, changes []m
 		}
 		stats := game.Compute(dones, me.AccountID, board.TypeNames(cfg), since, now)
 		stats.Fatigue = game.Fatigue(dones, now, cfg.Game.Tired, cfg.Game.Exhausted)
-		stats.Away = game.Holidays(a.holidays(rctx, cfg, client, me), me.AccountID, now)
+		away, avatars := a.teamState(rctx, cfg, client, me)
+		stats.Away = game.Holidays(away, me.AccountID, now)
+		stats.Avatars = avatars
+		if cfg.Game.Exhausted > 0 {
+			stats.MyFatigue = int(math.Min(100, math.Round(game.FatigueScores(dones, now)[me.AccountID]/cfg.Game.Exhausted*100)))
+		}
 		a.mu.Lock()
 		a.gameStats, a.gameAt = stats, time.Now()
 		a.mu.Unlock()
@@ -557,28 +563,74 @@ type Vacation struct {
 	Shared bool   `json:"shared"` // teammates see it (the settings name a shared ticket)
 }
 
-// holidays reads everyone's holidays from the team's shared ticket, or just
-// this user's own from this computer when the settings name no such ticket.
-func (a *App) holidays(ctx context.Context, cfg *config.Config, client *jira.Client, me *jira.User) []game.Away {
+// avatarPrefix starts the issue property that holds one person's chosen look.
+const avatarPrefix = "argusdesk.avatar."
+
+// teamState reads what the team shares through its ticket: everyone's
+// holidays and chosen avatars. Without such a ticket in the settings, or when
+// it cannot be read, only this user's own (kept on this computer) are known.
+func (a *App) teamState(ctx context.Context, cfg *config.Config, client *jira.Client, me *jira.User) ([]game.Away, map[string]int) {
 	a.mu.Lock()
 	mine := game.Away{ID: me.AccountID, Name: me.DisplayName, From: a.prefs.VacationFrom, To: a.prefs.VacationTo}
+	avatars := map[string]int{}
+	if a.prefs.Avatar > 0 {
+		avatars[me.AccountID] = a.prefs.Avatar - 1
+	}
 	a.mu.Unlock()
 	if cfg.Team.StateIssue == "" {
-		return []game.Away{mine}
+		return []game.Away{mine}, avatars
 	}
-	props, err := client.IssueProperties(ctx, cfg.Team.StateIssue, vacationPrefix)
+	props, err := client.IssueProperties(ctx, cfg.Team.StateIssue, "argusdesk.")
 	if err != nil {
-		return []game.Away{mine} // the shared ticket cannot be read: at least show my own
+		return []game.Away{mine}, avatars
 	}
-	var out []game.Away
+	var away []game.Away
 	for key, raw := range props {
-		var v game.Away
-		if json.Unmarshal(raw, &v) == nil {
-			v.ID = strings.TrimPrefix(key, vacationPrefix)
-			out = append(out, v)
+		switch {
+		case strings.HasPrefix(key, vacationPrefix):
+			var v game.Away
+			if json.Unmarshal(raw, &v) == nil {
+				v.ID = strings.TrimPrefix(key, vacationPrefix)
+				away = append(away, v)
+			}
+		case strings.HasPrefix(key, avatarPrefix):
+			var v struct {
+				Avatar int `json:"avatar"`
+			}
+			if json.Unmarshal(raw, &v) == nil {
+				avatars[strings.TrimPrefix(key, avatarPrefix)] = v.Avatar
+			}
 		}
 	}
-	return out
+	return away, avatars
+}
+
+// SetAvatar records the look the user chose for their avatar. With a shared
+// ticket in the settings it is written there, so teammates see it too.
+func (a *App) SetAvatar(n int) error {
+	if n < 0 || n > 99 {
+		return errors.New("알 수 없는 아바타입니다")
+	}
+	a.mu.Lock()
+	cfg, client, me := a.cfg, a.client, a.me
+	a.mu.Unlock()
+	if cfg != nil && cfg.Team.StateIssue != "" {
+		if client == nil || me == nil {
+			return errors.New("먼저 로그인해 주세요")
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+		defer cancel()
+		if err := client.SetIssueProperty(ctx, cfg.Team.StateIssue, avatarPrefix+me.AccountID, map[string]int{"avatar": n}); err != nil {
+			return fmt.Errorf("팀 공유 티켓(%s)에 아바타를 적지 못했습니다: %w", cfg.Team.StateIssue, err)
+		}
+	}
+	a.mu.Lock()
+	a.prefs.Avatar = n + 1
+	_ = secret.SavePrefs(a.prefs)
+	a.mu.Unlock()
+	a.gameForce.Store(true)
+	a.Refresh()
+	return nil
 }
 
 // MyVacation returns the user's own holiday.
