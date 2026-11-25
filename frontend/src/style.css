@@ -1834,3 +1834,28 @@ button.notice:disabled {
   opacity: 0.6;
   cursor: default;
 }
+
+/* all work / my work */
+.scope {
+  display: inline-flex;
+  padding: 2px;
+  border-radius: 999px;
+  background: rgba(20, 32, 48, 0.08);
+}
+
+.scope button {
+  min-height: 0;
+  padding: 3px 10px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  font-size: 12px;
+  box-shadow: none;
+}
+
+.scope button.on {
+  background: #fff;
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(20, 32, 48, 0.18);
+}

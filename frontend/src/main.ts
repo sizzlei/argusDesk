@@ -5,7 +5,7 @@ import { addNotes, noticeCount, noticesOpen, renderNotices, toggleNotices } from
 import { closeTickets, openTicket, openTickets, syncTickets } from './panel';
 import { AGE, Scene, TAGS } from './scene';
 import { renderSetup } from './setup';
-import type { AppState, Box, GameStats, Snapshot } from './types';
+import type { AppState, Box, Change, GameStats, Snapshot } from './types';
 import { checkForUpdates, initUpdates } from './update';
 import { openAvatarPicker, openVacation } from './vacation';
 import { errText, toast } from './ui';
@@ -19,6 +19,36 @@ async function boot() {
   let selected: Box | null = null;
   let game: GameStats | null = null;
   let gameOpen = false;
+  // "My work" hides everything but the boxes I hold or have to approve.
+  const MINE = 'argusdesk.mineOnly';
+  let mineOnly = false;
+  try {
+    mineOnly = localStorage.getItem(MINE) === '1';
+  } catch {
+    // no storage: the choice lasts until the app closes
+  }
+  let hidden = new Set<string>();
+  const isMine = (b: Box) => b.mine || !!b.myApproval;
+  /** The snapshot as the room and the counters show it: all of it, or my part. */
+  const view = (): Snapshot | null => {
+    hidden = new Set();
+    if (!snap || !mineOnly) return snap;
+    const boxes = snap.boxes.filter(isMine);
+    snap.boxes.forEach((b) => isMine(b) || hidden.add(b.key));
+    const spaces = snap.spaces.map((sp) => ({
+      ...sp,
+      zones: sp.zones.map((z) => {
+        const here = boxes.filter((b) => b.space === sp.id && b.zone === z.id);
+        return { ...z, count: here.length, staleCount: here.filter((b) => b.stale).length };
+      }),
+    }));
+    return { ...snap, spaces, boxes };
+  };
+  /** Draws the room from the current snapshot and filter. */
+  const draw = (changes: Change[]) => {
+    const v = view();
+    if (v) scene.update(v, changes.filter((c) => !hidden.has(c.key)), hidden);
+  };
 
   const tooltip = document.getElementById('tooltip')!;
   // Ticket windows float over the room. The window in front marks its box.
@@ -63,13 +93,26 @@ async function boot() {
   };
   const hud = () => {
     renderNotices(snap, visit, () => hud());
-    renderHud(state, snap, space, lastError, backend, {
+    renderHud(state, view(), space, lastError, backend, {
       refresh: () => void backend.refresh(),
       reloadConfig: () => void backend.reloadConfig().then(apply, fail),
       chooseConfig: () => void backend.chooseConfig().then(apply, fail),
       checkUpdate: () => void checkForUpdates(true),
       logout: () => void backend.logout().then(apply, fail),
       windows: openTickets(),
+      mineOnly,
+      setMineOnly: (on) => {
+        if (on === mineOnly) return;
+        mineOnly = on;
+        try {
+          localStorage.setItem(MINE, on ? '1' : '0');
+        } catch {
+          // not kept
+        }
+        draw([]);
+        hud();
+        legend();
+      },
       notices: {
         ...noticeCount(snap),
         open: noticesOpen(),
@@ -113,7 +156,7 @@ async function boot() {
     const el = document.getElementById('legend')!;
     const id = snap?.spaces[space]?.id;
     const types = new Map<string, string>();
-    snap?.boxes.filter((b) => b.space === id).forEach((b) => types.set(b.type, b.tag));
+    view()?.boxes.filter((b) => b.space === id).forEach((b) => types.set(b.type, b.tag));
     const toggle = document.getElementById('legend-toggle')!;
     toggle.hidden = !snap || types.size === 0;
     toggle.setAttribute('aria-expanded', String(legendOpen));
@@ -183,7 +226,7 @@ async function boot() {
   backend.onBoard((ev) => {
     snap = ev.snapshot;
     lastError = '';
-    scene.update(ev.snapshot, ev.changes);
+    draw(ev.changes);
     syncTickets(ev.snapshot, backend);
     addNotes(ev.notes, ev.snapshot.fetchedAt);
     hud();
@@ -200,7 +243,7 @@ async function boot() {
   const first = await backend.snapshot();
   if (first) {
     snap = first;
-    scene.update(first, []);
+    draw([]);
     hud();
     legend();
   }

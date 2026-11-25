@@ -578,6 +578,7 @@ export class Scene {
   private sprites = new Map<string, Sprite>();
   private space = 0;
   private snap: Snapshot | null = null;
+  private hidden: ReadonlySet<string> = new Set(); // boxes the view filter hides
   private bounds = { x: 0, y: 0, w: 1, h: 1 };
   private selected = '';
   private inset = 0; // screen width kept free on the right (the ticket panel)
@@ -736,8 +737,9 @@ export class Scene {
   }
 
   /** Redraws the building for a new snapshot; changes drive the animations. */
-  update(snap: Snapshot, changes: Change[]) {
+  update(snap: Snapshot, changes: Change[], hidden: ReadonlySet<string> = this.hidden) {
     this.snap = snap;
+    this.hidden = hidden;
     if (this.space < 0) {
       this.drawLodge();
       return;
@@ -994,6 +996,7 @@ export class Scene {
       s.leaving = true;
       s.gone = 0;
       s.legs = [];
+      if (hidden.has(key)) return; // filtered out of view, not gone: it just fades
       const nowIn = latest.get(key); // still open, but in a zone without a room
       const kind = space.zones.find((z) => z.id === (nowIn ?? s.box).zone)?.kind;
       if (CALM) return;

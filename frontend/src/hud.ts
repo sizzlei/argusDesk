@@ -17,6 +17,8 @@ export interface HudHooks {
   vacation(): void;
   avatar(): void;
   windows: number; // open ticket windows
+  mineOnly: boolean; // the room shows only my boxes
+  setMineOnly(on: boolean): void;
   notices: { approvals: number; unread: number; open: boolean; toggle(): void };
   closeWindows(): void;
   setSpace(index: number): void;
@@ -131,6 +133,14 @@ export function renderHud(state: AppState, snap: Snapshot | null, space: number,
     h(
       'div',
       { class: 'tools' },
+      snap
+        ? h(
+            'div',
+            { class: 'scope', role: 'group', 'aria-label': '보이는 작업' },
+            h('button', { class: hooks.mineOnly ? '' : 'on', 'aria-pressed': String(!hooks.mineOnly), title: '팀 전체의 상자를 봅니다', onclick: () => hooks.setMineOnly(false) }, '전체'),
+            h('button', { class: hooks.mineOnly ? 'on' : '', 'aria-pressed': String(hooks.mineOnly), title: '내가 담당하거나 내가 승인할 상자만 봅니다', onclick: () => hooks.setMineOnly(true) }, '내 작업'),
+          )
+        : null,
       strip,
       lastError ? h('span', { class: 'chip warn', title: lastError }, '갱신 실패') : null,
       snap?.warnings.length
