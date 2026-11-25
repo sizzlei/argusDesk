@@ -179,6 +179,131 @@ function plant(g: Graphics, gx: number, gy: number) {
   g.poly([c.x + 13, c.y - 9, c.x, c.y - 2, c.x, c.y - 44]).fill(0x3b8a55);
 }
 
+/** A tree in a planter: taller than the potted plant, with layered leaves. */
+function tree(g: Graphics, gx: number, gy: number) {
+  shadow(g, gx - 0.1, gy - 0.1, 0.7, 0.7);
+  block(g, gx, gy, 0.5, 0.5, 11, 0xe9e2d6);
+  block(g, gx + 0.2, gy + 0.2, 0.1, 0.1, 16, 0x8a6a4a, 11);
+  const c = iso(gx + 0.25, gy + 0.25);
+  for (const [w, up, h] of [[20, 22, 26], [16, 38, 24], [11, 54, 22]] as const) {
+    g.poly([c.x - w, c.y - up, c.x, c.y - up + 7, c.x, c.y - up - h]).fill(0x5cb37a);
+    g.poly([c.x + w, c.y - up, c.x, c.y - up + 7, c.x, c.y - up - h]).fill(0x3f9460);
+  }
+}
+
+/** A long planter of low bushes, to line a wall. */
+function hedge(g: Graphics, gx: number, gy: number, along: 'x' | 'y', len: number) {
+  const [w, d] = along === 'x' ? [len, 0.4] : [0.4, len];
+  shadow(g, gx, gy, w, d);
+  block(g, gx, gy, w, d, 8, 0xe9e2d6);
+  for (let t = 0.05; t < len - 0.3; t += 0.42) {
+    const [bx, by] = along === 'x' ? [gx + t, gy + 0.05] : [gx + 0.05, gy + t];
+    block(g, bx, by, 0.3, 0.3, 9 + ((t * 10) % 3) * 2, t % 0.84 < 0.42 ? 0x5cb37a : 0x4aa36c, 8);
+  }
+}
+
+/** An air purifier: a white tower with a grille and a status light. */
+function purifier(g: Graphics, gx: number, gy: number) {
+  shadow(g, gx, gy, 0.5, 0.5);
+  block(g, gx, gy, 0.5, 0.5, 34, 0xf4f6f9);
+  block(g, gx + 0.06, gy + 0.06, 0.38, 0.38, 3, 0x9aa3b5, 34); // outlet on top
+  // grille on the left front face
+  const l = iso(gx, gy + 0.5);
+  const r = iso(gx + 0.5, gy + 0.5);
+  for (let i = 0; i < 4; i++) {
+    const up = 8 + i * 5;
+    g.moveTo(l.x + 3, l.y + 1.5 - up).lineTo(r.x - 3, r.y - 1.5 - up).stroke({ width: 1.5, color: 0xc3cad6 });
+  }
+  g.circle((l.x + r.x) / 2, (l.y + r.y) / 2 - 29, 1.8).fill(0x3fd08a); // air is clean
+}
+
+/** A water cooler. */
+function cooler(g: Graphics, gx: number, gy: number) {
+  shadow(g, gx, gy, 0.4, 0.4);
+  block(g, gx, gy, 0.4, 0.4, 24, 0xeef1f5);
+  block(g, gx + 0.07, gy + 0.07, 0.26, 0.26, 14, 0x9fd0f5, 24);
+  block(g, gx + 0.1, gy + 0.1, 0.2, 0.2, 2, 0x6fb1e6, 38);
+}
+
+/** A bench against a wall. */
+function bench(g: Graphics, gx: number, gy: number, along: 'x' | 'y', len: number) {
+  const [w, d] = along === 'x' ? [len, 0.5] : [0.5, len];
+  shadow(g, gx, gy, w, d);
+  block(g, gx, gy, w, d, 4, 0x7f95c9, 7);
+  block(g, gx + 0.05, gy + 0.05, 0.1, 0.1, 7, 0x8a93a6);
+  block(g, gx + w - 0.15, gy + d - 0.15, 0.1, 0.1, 7, 0x8a93a6);
+}
+
+/** A sofa with its back to the far side, and a low table in front of it. */
+function sofa(g: Graphics, gx: number, gy: number) {
+  shadow(g, gx, gy, 2.2, 0.9);
+  block(g, gx, gy, 2.2, 0.3, 22, 0x6f86c9); // back
+  block(g, gx, gy + 0.3, 2.2, 0.6, 10, 0x8ea3dd); // seat
+  block(g, gx, gy + 0.3, 0.25, 0.6, 16, 0x6f86c9); // arms
+  block(g, gx + 1.95, gy + 0.3, 0.25, 0.6, 16, 0x6f86c9);
+  shadow(g, gx + 0.5, gy + 1.5, 1.2, 0.6);
+  block(g, gx + 0.5, gy + 1.5, 1.2, 0.6, 3, 0xe6d3b3, 8);
+  block(g, gx + 0.6, gy + 1.6, 0.1, 0.1, 8, 0x8a93a6);
+  block(g, gx + 1.5, gy + 1.9, 0.1, 0.1, 8, 0x8a93a6);
+  block(g, gx + 0.9, gy + 1.65, 0.16, 0.16, 5, 0xffffff, 11); // a cup
+}
+
+/** A database: the stacked-discs symbol as a tank, so the room says what it is. */
+function dbTank(g: Graphics, gx: number, gy: number) {
+  const c = iso(gx, gy);
+  g.ellipse(c.x + 3, c.y + 2, 22, 11).fill({ color: 0x1b2233, alpha: 0.12 });
+  for (let i = 0; i < 3; i++) {
+    const y = c.y - 4 - i * 15;
+    g.rect(c.x - 18, y - 12, 36, 12).fill(shade(ACCENT, 0.18));
+    g.rect(c.x - 18, y - 12, 14, 12).fill(shade(ACCENT, 0.05));
+    g.ellipse(c.x, y, 18, 9).fill(shade(ACCENT, 0.18));
+    g.ellipse(c.x, y - 12, 18, 9).fill(tint(ACCENT, 0.35));
+  }
+}
+
+interface Lamp {
+  x: number;
+  y: number;
+  colour: number;
+  phase: number;
+  rate: number;
+}
+
+/** A server rack. Its lamps are returned so they can blink. */
+function rack(g: Graphics, gx: number, gy: number, lamps: Lamp[]) {
+  const w = 1.0;
+  const d = 0.8;
+  const h = 46;
+  shadow(g, gx, gy, w, d);
+  block(g, gx, gy, w, d, h, 0x2b3550);
+  // the front (left face): shelves of equipment, each with a pair of lamps
+  const l = iso(gx, gy + d);
+  const r = iso(gx + w, gy + d);
+  const at = (t: number, up: number) => ({ x: l.x + (r.x - l.x) * t, y: l.y + (r.y - l.y) * t - up });
+  for (let i = 0; i < 5; i++) {
+    const up = 6 + i * 8;
+    const a = at(0.1, up);
+    const b = at(0.9, up);
+    g.poly([a.x, a.y, b.x, b.y, b.x, b.y - 5, a.x, a.y - 5]).fill(0x3a4668);
+    for (const t of [0.2, 0.32]) {
+      const p = at(t, up + 2.5);
+      lamps.push({ x: p.x, y: p.y, colour: (i + Math.round(t * 10)) % 5 === 0 ? 0xffc145 : 0x3fd08a, phase: Math.random() * 6, rate: 1.5 + Math.random() * 5 });
+    }
+  }
+}
+
+/** A cooling unit for the server room. */
+function chiller(g: Graphics, gx: number, gy: number) {
+  shadow(g, gx, gy, 0.8, 1.2);
+  block(g, gx, gy, 0.8, 1.2, 30, 0xe6eaf0);
+  const l = iso(gx, gy + 1.2);
+  const r = iso(gx + 0.8, gy + 1.2);
+  const cx = (l.x + r.x) / 2;
+  const cy = (l.y + r.y) / 2 - 15;
+  g.ellipse(cx, cy, 8, 9).fill(0x9aa3b5);
+  g.ellipse(cx, cy, 3, 3.5).fill(0xe6eaf0);
+}
+
 /** A desk with a monitor, seen from its side; the shelf variant is a low rack. */
 function desk(g: Graphics, gx: number, gy: number, kind: 'desk' | 'shelf' | 'mine') {
   const x = gx - 0.3;
@@ -219,13 +344,50 @@ function truck(g: Graphics, gx: number, gy: number) {
 }
 
 /** Furniture that tells the rooms apart at a glance. */
+/**
+ * Things that make a room a place rather than a store of boxes. They stand
+ * where boxes and people never do: the corners and the strips along the walls.
+ */
+function decorate(add: (gx: number, gy: number, draw: (g: Graphics) => void) => void, kind: ZoneKind, nth: number, gx: number, gy: number, d: number) {
+  const right = gx + ZW;
+  const front = gy + d;
+  switch (kind) {
+    case 'wait':
+      add(gx + 0.5, gy + 0.5, (g) => tree(g, gx + 0.25, gy + 0.25));
+      add(gx + 0.5, front - 1.6, (g) => bench(g, gx + 0.2, front - 2.4, 'y', 1.8));
+      add(right - 0.5, front - 0.5, (g) => plant(g, right - 0.7, front - 0.7));
+      break;
+    case 'work':
+      if (nth % 2 === 0) {
+        add(gx + 0.45, front - 0.5, (g) => purifier(g, gx + 0.2, front - 0.75));
+        add(gx + 0.4, gy + 0.5, (g) => plant(g, gx + 0.25, gy + 0.3));
+      } else {
+        add(gx + 0.5, front - 0.5, (g) => tree(g, gx + 0.25, front - 0.8));
+        add(gx + 0.45, gy + 0.5, (g) => cooler(g, gx + 0.25, gy + 0.3));
+      }
+      add(gx + 3.6, front - 0.3, (g) => hedge(g, gx + 2.6, front - 0.5, 'x', 2.0));
+      break;
+    case 'desk':
+      add(right - 0.5, gy + 0.4, (g) => purifier(g, right - 0.75, gy + 0.15));
+      add(right - 0.5, front - 0.5, (g) => tree(g, right - 0.8, front - 0.8));
+      add(gx + 0.45, front - 0.45, (g) => cooler(g, gx + 0.25, front - 0.65));
+      add(gx + 3.6, front - 0.3, (g) => hedge(g, gx + 2.4, front - 0.5, 'x', 2.4));
+      break;
+    case 'done':
+      add(right - 0.5, gy + 0.5, (g) => tree(g, right - 0.8, gy + 0.25));
+      add(gx + 0.4, front - 0.5, (g) => plant(g, gx + 0.25, front - 0.7));
+      break;
+    default:
+      break;
+  }
+}
+
 function furnish(g: Graphics, kind: ZoneKind, gx: number, gy: number) {
   switch (kind) {
     case 'wait': // reception counter
       shadow(g, gx + 2.6, gy + 0.5, 2.8, 0.6);
       block(g, gx + 2.6, gy + 0.5, 2.8, 0.6, 15, 0xc9a77a);
       block(g, gx + 2.6, gy + 0.5, 2.8, 0.6, 3, 0xf3ead9, 15);
-      plant(g, gx + 0.4, gy + 0.4);
       break;
     case 'work': // review table with two screens
       shadow(g, gx + 2.4, gy + 0.45, 3.2, 0.8);
@@ -369,6 +531,8 @@ export class Scene {
   private truck: { g: Graphics; x: number; y: number } | null = null;
   private truckRun = -1; // ms into the truck's round trip; -1 = parked
   private people: { g: Graphics; y: number; phase: number }[] = [];
+  private lamps: Lamp[] = [];
+  private lampLayer = new Graphics();
   private belts: BeltTile[] = [];
   private belt: Belt | null = null;
   private fx = new Container(); // confetti, in window coordinates, above everything
@@ -391,7 +555,7 @@ export class Scene {
       resolution: Math.min(2, window.devicePixelRatio || 1),
     });
     this.host.appendChild(this.app.canvas);
-    this.world.addChild(this.ground, this.things, this.signs);
+    this.world.addChild(this.ground, this.things, this.lampLayer, this.signs);
     this.things.sortableChildren = true;
     this.lift.addChild(this.world);
     this.app.stage.addChild(this.lift);
@@ -511,6 +675,7 @@ export class Scene {
     this.people = [];
     this.belts = [];
     this.belt = null;
+    this.lamps = [];
     this.drawBuilding(width, depth, rows, cols, snap.spaces.indexOf(space), space.name, snap.spaces.length);
 
     const prop = (gx: number, gy: number, draw: (g: Graphics) => void, bias = 0) => {
@@ -542,6 +707,7 @@ export class Scene {
       this.ground.addChild(floor);
 
       if (zone.kind !== 'desk') prop(o.gx + 3, o.gy + 0.8, (g) => furnish(g, zone.kind, o.gx, o.gy), -50);
+      decorate((px, py, draw) => prop(px, py, draw), zone.kind, rooms.slice(0, zi).filter((z) => z.kind === zone.kind).length, o.gx, o.gy, o.d);
       // The truck waits outside the building when the dock is in the front row.
       if (zone.kind === 'done' && o.row === rows - 1 && snap.spaces.indexOf(space) === 0) {
         const tg = prop(o.gx + 4, o.gy + o.d + 2, (g) => truck(g, o.gx + 3.2, o.gy + o.d + PAD + 0.5));
@@ -630,6 +796,51 @@ export class Scene {
           this.tag(m.count ? `${shortName(m.name)} ${m.count}` : shortName(m.name), gx, gy, m.me ? 74 : 60, m.me);
         });
     });
+
+    // Cells of the grid that hold no room are not left bare: the first becomes
+    // the server room, any others a lounge.
+    for (let i = rooms.length; i < rows * COLS && rows > 1; i++) {
+      const o = roomOrigin(i);
+      const first = i === rooms.length;
+      const floor = new Graphics();
+      const colour = first ? 0xd5dae6 : 0xefe6da;
+      floor.poly(floorPoly(o.gx, o.gy, ZW, o.d)).fill(colour);
+      for (let k = 1; k < ZW; k++) {
+        const a = iso(o.gx + k, o.gy);
+        const b = iso(o.gx + k, o.gy + o.d);
+        floor.moveTo(a.x, a.y).lineTo(b.x, b.y).stroke({ width: 1, color: shade(colour, 0.5), alpha: first ? 0.2 : 0.08 });
+      }
+      for (let k = 1; k < o.d; k++) {
+        const a = iso(o.gx, o.gy + k);
+        const b = iso(o.gx + ZW, o.gy + k);
+        floor.moveTo(a.x, a.y).lineTo(b.x, b.y).stroke({ width: 1, color: shade(colour, 0.5), alpha: first ? 0.2 : 0.08 });
+      }
+      this.ground.addChild(floor);
+      if (first) {
+        for (const ry of [1.0, 3.4]) for (const rx of [0.9, 2.3, 3.7, 5.1]) prop(o.gx + rx + 0.5, o.gy + ry + 0.4, (g) => rack(g, o.gx + rx, o.gy + ry, this.lamps));
+        prop(o.gx + 7.1, o.gy + 1.6, (g) => chiller(g, o.gx + 6.7, o.gy + 1.0));
+        prop(o.gx + 6.9, o.gy + 4.4, (g) => dbTank(g, o.gx + 6.9, o.gy + 4.4));
+        prop(o.gx + 1.6, o.gy + o.d - 0.9, (g) => desk(g, o.gx + 1.6, o.gy + o.d - 0.9, 'desk'));
+        prop(o.gx + 0.45, o.gy + o.d - 0.45, (g) => purifier(g, o.gx + 0.2, o.gy + o.d - 0.7));
+        prop(o.gx + 4.6, o.gy + o.d - 0.3, (g) => hedge(g, o.gx + 3.4, o.gy + o.d - 0.5, 'x', 2.4));
+        this.plate('서버실', o.gx + ZW / 2, o.gy + 0.15);
+      } else {
+        const rug = new Graphics();
+        rug.poly(floorPoly(o.gx + 2.2, o.gy + 1.6, 3.6, 3.0)).fill(0xd9c7b0);
+        rug.poly(floorPoly(o.gx + 2.45, o.gy + 1.85, 3.1, 2.5)).fill(0xe6d8c5);
+        this.ground.addChild(rug);
+        prop(o.gx + 4.0, o.gy + 2.4, (g) => sofa(g, o.gx + 2.9, o.gy + 1.9));
+        prop(o.gx + 0.5, o.gy + 0.5, (g) => tree(g, o.gx + 0.25, o.gy + 0.25));
+        prop(o.gx + 7.3, o.gy + 0.5, (g) => tree(g, o.gx + 7.05, o.gy + 0.25));
+        prop(o.gx + 7.4, o.gy + 3.2, (g) => cooler(g, o.gx + 7.2, o.gy + 3.0));
+        prop(o.gx + 0.45, o.gy + 3.4, (g) => bench(g, o.gx + 0.2, o.gy + 2.6, 'y', 1.8));
+        prop(o.gx + 4.2, o.gy + o.d - 0.3, (g) => hedge(g, o.gx + 2.6, o.gy + o.d - 0.5, 'x', 3.2));
+        prop(o.gx + 0.45, o.gy + o.d - 0.45, (g) => purifier(g, o.gx + 0.2, o.gy + o.d - 0.7));
+        this.plate('휴게실', o.gx + ZW / 2, o.gy + 0.15);
+      }
+    }
+    // lamps blink on their own layer, above everything in the rooms
+    this.lampLayer.clear();
 
     // Boxes that left the building: finished ones are loaded on the truck,
     // which then drives off; returned and cancelled ones fly away.
@@ -863,6 +1074,21 @@ export class Scene {
     this.signs.addChild(box);
   }
 
+  /** The name plate of a room that holds no tickets: lighter than a room's sign. */
+  private plate(text: string, gx: number, gy: number) {
+    const p = iso(gx, gy);
+    const t = label(text, 13, INK, '700');
+    const w = t.width + 20;
+    const g = new Graphics();
+    g.roundRect(0, 0, w, 26, 8).fill(0xffffff).stroke({ width: 1, color: 0xcfd6e2 });
+    g.rect(w / 2 - 1.5, 26, 3, 14).fill(0xcfd6e2);
+    t.position.set(10, (26 - t.height) / 2);
+    const box = new Container();
+    box.addChild(g, t);
+    box.position.set(p.x - w / 2, p.y - 26 - 14 - 26);
+    this.signs.addChild(box);
+  }
+
   /** A small name tag floating above something at a grid position. */
   private tag(text: string, gx: number, gy: number, up: number, strong: boolean) {
     const p = iso(gx, gy);
@@ -1077,6 +1303,12 @@ export class Scene {
     }
     // people breathe; the belt runs
     for (const p of this.people) p.g.y = p.y + Math.sin(T * 2.4 + p.phase) * 1.4;
+    // server lamps: each blinks at its own pace
+    this.lampLayer.clear();
+    for (const l of this.lamps) {
+      const on = Math.sin(T * l.rate + l.phase) > -0.3;
+      this.lampLayer.rect(l.x - 1.3, l.y - 1.3, 2.6, 2.6).fill({ color: l.colour, alpha: on ? 1 : 0.25 });
+    }
     for (const b of this.belts) this.drawBelt(b, T * 1.6);
 
     // the truck: waits for its load, drives off, comes back empty
