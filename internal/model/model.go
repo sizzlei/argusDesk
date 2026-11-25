@@ -71,9 +71,10 @@ type ZoneView struct {
 
 // SpaceView is one space (a Jira project) and its zones, in layout order.
 type SpaceView struct {
-	ID    string     `json:"id"`
-	Name  string     `json:"name"`
-	Zones []ZoneView `json:"zones"`
+	ID      string     `json:"id"`
+	Name    string     `json:"name"`
+	Project string     `json:"project"` // Jira project key, e.g. "REQ"
+	Zones   []ZoneView `json:"zones"`
 }
 
 // Member is a teammate drawn as an avatar.

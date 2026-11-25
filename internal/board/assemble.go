@@ -46,7 +46,7 @@ func Assemble(in Input) *model.Snapshot {
 
 	for si := range cfg.Spaces {
 		sp := &cfg.Spaces[si]
-		view := model.SpaceView{ID: sp.ID, Name: sp.Name}
+		view := model.SpaceView{ID: sp.ID, Name: sp.Name, Project: sp.Project}
 		index := map[string]int{}
 		for _, z := range sp.Zones {
 			zv := model.ZoneView{ID: z.ID, Name: z.Name, Kind: z.Kind, Approval: z.Approval}

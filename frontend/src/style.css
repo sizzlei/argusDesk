@@ -1688,3 +1688,16 @@ dialog.avatars .looks button.on {
 .tw button.copy {
   font-size: 10.5px;
 }
+
+/* The project key under a floor's name. */
+#floors .name {
+  display: grid;
+  line-height: 1.2;
+}
+
+#floors .name small {
+  color: var(--quiet);
+  font-size: 10px;
+  font-weight: 400;
+  letter-spacing: 0.04em;
+}

@@ -209,8 +209,8 @@ function snapshot(boxes: Box[], now: number): Snapshot {
     configVersion: '2026-11-25.1',
     fetchedAt: new Date(now).toISOString(),
     spaces: [
-      { id: 'requests', name: '요청 센터', zones: zv },
-      { id: 'internal', name: '내부 사무동', zones: view(zones2) },
+      { id: 'requests', name: '요청 센터', project: 'REQ', zones: zv },
+      { id: 'internal', name: '내부 사무동', project: 'INT', zones: view(zones2) },
     ],
     boxes: boxes.map((b) => ({ ...b })),
     members,

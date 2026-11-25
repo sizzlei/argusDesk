@@ -47,6 +47,7 @@ export interface ZoneView {
 export interface SpaceView {
   id: string;
   name: string;
+  project: string; // Jira project key
   zones: ZoneView[];
 }
 

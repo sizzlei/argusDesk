@@ -311,7 +311,8 @@ function renderActions(w: Win, snap: Snapshot, backend: Backend) {
   // comment: a service desk request takes internal notes and public answers,
   // a ticket of an ordinary project takes plain comments
   const desk = a?.serviceDesk ?? true;
-  const draft = drafts.get(b.key) ?? { text: '', isPublic: false };
+  // A comment goes to the requester unless it is switched to an internal note.
+  const draft = drafts.get(b.key) ?? { text: '', isPublic: true };
   const old = w.text;
   const focused = old && document.activeElement === old ? [old.selectionStart, old.selectionEnd] : null;
   const text = h('textarea', { class: 'comment-text', rows: '3', placeholder: '댓글 쓰기', 'aria-label': `${b.key} 댓글`, disabled: off });
@@ -319,8 +320,8 @@ function renderActions(w: Win, snap: Snapshot, backend: Backend) {
   text.value = draft.text;
   const send = h('button', { class: 'primary' });
   const audience = h('select', { 'aria-label': '댓글 공개 범위', disabled: off },
-    h('option', { value: 'internal' }, '내부 메모 (팀만 봄)'),
     h('option', { value: 'public' }, '요청자에게 답변 (공개)'),
+    h('option', { value: 'internal' }, '내부 메모 (팀만 봄)'),
   );
   audience.value = draft.isPublic ? 'public' : 'internal';
   const mode = () => (!desk ? 'plain' : audience.value === 'public' ? 'public' : 'internal');
