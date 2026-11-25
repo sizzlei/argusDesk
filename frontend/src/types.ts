@@ -149,3 +149,34 @@ export interface TicketDetail {
   forms: TicketForm[];
   formsError: string;
 }
+
+/** One move a ticket can make from its current status. */
+export interface Transition {
+  id: string;
+  name: string;
+  toId: string;
+  toName: string;
+  needs: string[]; // fields Jira insists on: such a move is made in Jira
+}
+
+export interface Approver {
+  id: string;
+  name: string;
+  decision: string; // "pending" | "approved" | "declined"
+}
+
+/** A pending Jira Service Management approval. */
+export interface Approval {
+  id: string;
+  name: string;
+  canAnswer: boolean;
+  approvers: Approver[];
+}
+
+/** What the signed-in user can do with a ticket right now. */
+export interface TicketActions {
+  key: string;
+  transitions: Transition[];
+  approvals: Approval[];
+  approvalsError: string;
+}

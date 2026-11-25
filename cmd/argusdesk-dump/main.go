@@ -23,7 +23,7 @@ import (
 func main() {
 	path := flag.String("config", "", "설정 파일 경로")
 	email := flag.String("email", "", "Jira 이메일")
-	ticket := flag.String("ticket", "", "이 티켓의 양식, 설명, 댓글을 출력")
+	ticket := flag.String("ticket", "", "이 티켓의 양식, 설명, 댓글, 가능한 처리를 출력")
 	flag.Parse()
 	token := os.Getenv("ARGUSDESK_TOKEN")
 	if *path == "" || *email == "" || token == "" {
@@ -111,4 +111,32 @@ func printTicket(ctx context.Context, client *jira.Client, key string) {
 		}
 	}
 	fmt.Printf("\n[설명] %d자 (HTML)\n[댓글] %d개\n[첨부] %d개\n", len(d.DescriptionHTML), len(d.Comments), d.Attachments)
+
+	// What the panel would offer. Reading this changes nothing in Jira.
+	a, err := client.Actions(ctx, key)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	fmt.Println("\n[가능한 이동]")
+	for _, t := range a.Transitions {
+		note := ""
+		if len(t.Needs) > 0 {
+			note = fmt.Sprintf("  (Jira에서만 가능: 필수 입력 %v)", t.Needs)
+		}
+		fmt.Printf("  %s → %s%s\n", t.Name, t.ToName, note)
+	}
+	if a.ApprovalsError != "" {
+		fmt.Println("\n승인 정보를 읽지 못했습니다:", a.ApprovalsError)
+	}
+	for _, ap := range a.Approvals {
+		can := "내가 답할 수 없음"
+		if ap.CanAnswer {
+			can = "내가 승인/반려 가능"
+		}
+		fmt.Printf("\n[대기 중인 승인] %s (%s)\n", ap.Name, can)
+		for _, p := range ap.Approvers {
+			fmt.Printf("  %s: %s\n", p.Name, p.Decision)
+		}
+	}
 }

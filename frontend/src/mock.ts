@@ -129,14 +129,14 @@ function seed(now: number): Box[] {
   const boxes: Box[] = [];
   const add = (zone: string, hours: number[]) => hours.forEach((h) => boxes.push(make(zone, h, now)));
   add('lobby', [1, 3, 6, 20, 30, 52, 70]);
-  add('review', [0.3, 1, 2.2, 3.5, 5]);
-  add('approval', [0.2, 0.8, 1.6, 2.6, 4.2, 7]);
+  add('review', [0.3, 1, 2.2, 3.5, 7, 20, 52, 400]);
+  add('approval', [0.2, 0.8, 1.6, 2.6, 4.2, 14, 75]);
   add('work', [2, 5, 9, 20, 30, 44, 60, 80, 100, 130, 150, 26, 12]);
   add('dock', [0.5, 1.5, 3, 4.5]);
   add('returns', [2, 6]);
   // The work zone ages from a date on the ticket: spread those dates out.
   boxes.filter((b) => b.zone === 'work').forEach((b, i) => {
-    b.staleFrom = new Date(now - [10, 30, 50, 70, 90, 100, 110, 118, 125, 140, 160, 60, 20][i % 13] * HOUR).toISOString();
+    b.staleFrom = new Date(now - [10, 30, 50, 70, 90, 100, 110, 118, 125, 200, 480, 60, 1500][i % 13] * HOUR).toISOString();
     if (i === 4) {
       b.staleFrom = undefined;
       b.note = '일정 미정';
@@ -185,6 +185,26 @@ export function mockBackend(): Backend {
     me: '김하늘',
     authError: '',
     pollSeconds: 60,
+  };
+
+  let stamp = 0; // makes every change from the panel a new "updated" time
+  const written = new Map<string, { author: string; created: string; bodyHtml: string; internal: boolean }[]>();
+  const zoneOfStatus = (id: string) => Object.keys(statusOf).find((z) => statusOf[z][0] === id) ?? '';
+  const find = (key: string) => {
+    const b = boxes.find((x) => x.key === key);
+    if (!b) throw new Error(`${key}: 티켓을 찾을 수 없습니다`);
+    return b;
+  };
+  const pause = () => new Promise((r) => setTimeout(r, 300));
+  /** Tells the screen about a change made from the panel. */
+  const publish = (changes: Change[]) => {
+    const snap = snapshot(boxes, now);
+    listeners.forEach((cb) => cb({ snapshot: snap, changes }));
+  };
+  const move = (b: Box, to: string) => {
+    const from = b.zone;
+    place(b, to, now);
+    publish([{ kind: 'moved', key: b.key, fromZone: from, toZone: to }]);
   };
 
   // Every few seconds something happens, as it would over a working day.
@@ -238,6 +258,7 @@ export function mockBackend(): Backend {
         comments: [
           { author: '박서준', created: new Date(now - 5 * HOUR).toISOString(), bodyHtml: '<p>영향 범위 확인 부탁드립니다.</p>', internal: false },
           { author: '김하늘', created: new Date(now - 2 * HOUR).toISOString(), bodyHtml: '<p>인덱스 크기 추정 후 진행 예정.</p>', internal: true },
+          ...(written.get(key) ?? []),
         ],
         attachments: 1,
         forms: [
@@ -257,6 +278,49 @@ export function mockBackend(): Backend {
         ],
         formsError: '',
       };
+    },
+    ticketActions: async (key) => {
+      await pause();
+      const b = find(key);
+      const at = order.indexOf(b.zone);
+      const transitions = [];
+      if (at >= 0 && at + 1 < order.length && b.zone !== 'approval') {
+        const [id, name] = statusOf[order[at + 1]];
+        transitions.push({ id: `to-${id}`, name: `${name}(으)로`, toId: id, toName: name, needs: [] });
+      }
+      if (b.zone === 'review') transitions.push({ id: 'to-10006', name: '반려', toId: '10006', toName: '반려', needs: ['반려 사유'] });
+      if (b.zone === 'lobby') transitions.push({ id: 'to-10006', name: '요청 취소', toId: '10006', toName: '반려', needs: [] });
+      const approvals =
+        b.zone === 'approval'
+          ? [{ id: 'a1', name: 'DBA 승인', canAnswer: true, approvers: [{ id: 'u1', name: '김하늘', decision: 'pending' }, { id: 'u3', name: '박서준', decision: 'pending' }] }]
+          : [];
+      return { key, transitions, approvals, approvalsError: '' };
+    },
+    moveTicket: async (key, id) => {
+      await pause();
+      move(find(key), zoneOfStatus(id.replace('to-', '')));
+    },
+    assignTicket: async (key, account) => {
+      await pause();
+      const b = find(key);
+      const id = account === 'me' ? 'u1' : account;
+      [b.assigneeId, b.assignee] = people.find((p) => p[0] === id) ?? ['', ''];
+      b.mine = b.assigneeId === 'u1';
+      b.updated = new Date(now + ++stamp).toISOString();
+      publish([{ kind: 'updated', key }]);
+    },
+    answerApproval: async (key, _id, approve) => {
+      await pause();
+      move(find(key), approve ? 'work' : 'returns');
+    },
+    addComment: async (key, text, isPublic) => {
+      await pause();
+      const b = find(key);
+      const body = document.createElement('p');
+      body.textContent = text;
+      written.set(key, [...(written.get(key) ?? []), { author: '김하늘', created: new Date(now).toISOString(), bodyHtml: body.outerHTML, internal: !isPublic }]);
+      b.updated = new Date(now + ++stamp).toISOString();
+      publish([{ kind: 'updated', key }]);
     },
     openUrl: (url) => console.info('open', url),
     onBoard: (cb) => void listeners.push(cb),

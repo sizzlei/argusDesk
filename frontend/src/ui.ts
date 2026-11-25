@@ -77,3 +77,67 @@ export function limitText(after?: string) {
 export function fill(el: Element, ...children: Child[]) {
   el.replaceChildren(...(children.filter(Boolean) as (Node | string)[]));
 }
+
+/** Puts text on the clipboard; falls back to a hidden text area where the clipboard API is refused. */
+export async function copyText(text: string) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    const area = h('textarea', { 'aria-hidden': 'true', style: 'position:fixed;opacity:0;pointer-events:none' });
+    area.value = text;
+    document.body.append(area);
+    area.select();
+    let ok = false;
+    try {
+      ok = document.execCommand('copy');
+    } catch {
+      ok = false;
+    }
+    area.remove();
+    return ok;
+  }
+}
+
+/** A small "복사" button; the text is read when it is pressed. */
+export function copyButton(text: () => string, name = '복사') {
+  const b = h('button', { class: 'copy', type: 'button' }, name);
+  b.addEventListener('click', async (e) => {
+    e.stopPropagation();
+    const ok = await copyText(text());
+    b.textContent = ok ? '복사됨' : '복사 실패';
+    b.classList.toggle('done', ok);
+    setTimeout(() => {
+      b.textContent = name;
+      b.classList.remove('done');
+    }, 1500);
+  });
+  return b;
+}
+
+/** A block of code with a copy button in its corner. */
+export function codeBlock(pre: HTMLElement) {
+  return h('div', { class: 'code' }, copyButton(() => pre.textContent ?? ''), pre);
+}
+
+/** Asks before something is changed in Jira. Resolves true when confirmed. */
+export function confirmAction(title: string, detail: string, okLabel: string, danger = false): Promise<boolean> {
+  return new Promise((resolve) => {
+    const dlg = h('dialog', { class: 'confirm' });
+    const done = (v: boolean) => {
+      dlg.close();
+      dlg.remove();
+      resolve(v);
+    };
+    const ok = h('button', { class: danger ? 'primary danger' : 'primary', onclick: () => done(true) }, okLabel);
+    dlg.append(
+      h('h3', {}, title),
+      h('p', {}, detail),
+      h('div', { class: 'buttons' }, h('button', { onclick: () => done(false) }, '취소'), ok),
+    );
+    dlg.addEventListener('cancel', (e) => (e.preventDefault(), done(false)));
+    document.body.append(dlg);
+    dlg.showModal();
+    ok.focus();
+  });
+}

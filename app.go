@@ -283,6 +283,83 @@ func (a *App) TicketDetail(key string) (*jira.Detail, error) {
 	return client.Detail(ctx, key)
 }
 
+// ---- working on a ticket ----------------------------------------------------
+//
+// Every method below changes the ticket in Jira as the signed-in user, then
+// asks for a refresh so the centre shows the result.
+
+func (a *App) jira() (*jira.Client, *jira.User, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.client == nil || a.me == nil {
+		return nil, nil, errors.New("먼저 로그인해 주세요")
+	}
+	return a.client, a.me, nil
+}
+
+// write runs one change against Jira and refreshes the centre when it worked.
+func (a *App) write(fn func(ctx context.Context, c *jira.Client, me *jira.User) error) error {
+	c, me, err := a.jira()
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if err := fn(ctx, c, me); err != nil {
+		return err
+	}
+	a.Refresh()
+	return nil
+}
+
+// TicketActions lists what the signed-in user can do with a ticket now: its
+// transitions and its pending approvals.
+func (a *App) TicketActions(key string) (*jira.Actions, error) {
+	c, _, err := a.jira()
+	if err != nil {
+		return nil, err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	return c.Actions(ctx, key)
+}
+
+// MoveTicket makes one of the ticket's transitions.
+func (a *App) MoveTicket(key, transitionID string) error {
+	return a.write(func(ctx context.Context, c *jira.Client, _ *jira.User) error {
+		return c.DoTransition(ctx, key, transitionID)
+	})
+}
+
+// AssignTicket gives the ticket to an account: "me" for the signed-in user,
+// "" to leave it unassigned.
+func (a *App) AssignTicket(key, accountID string) error {
+	return a.write(func(ctx context.Context, c *jira.Client, me *jira.User) error {
+		if accountID == "me" {
+			accountID = me.AccountID
+		}
+		return c.Assign(ctx, key, accountID)
+	})
+}
+
+// AnswerApproval approves or declines a pending approval.
+func (a *App) AnswerApproval(key, approvalID string, approve bool) error {
+	return a.write(func(ctx context.Context, c *jira.Client, _ *jira.User) error {
+		return c.AnswerApproval(ctx, key, approvalID, approve)
+	})
+}
+
+// AddComment writes a comment; public ones are shown to the requester.
+func (a *App) AddComment(key, text string, public bool) error {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return errors.New("댓글 내용을 입력해 주세요")
+	}
+	return a.write(func(ctx context.Context, c *jira.Client, _ *jira.User) error {
+		return c.AddComment(ctx, key, text, public)
+	})
+}
+
 // Refresh asks for a refresh now instead of waiting for the next tick.
 func (a *App) Refresh() {
 	select {

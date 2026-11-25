@@ -1,7 +1,7 @@
 import { connect } from './backend';
 import { renderHud } from './hud';
 import { showPanel } from './panel';
-import { Scene } from './scene';
+import { AGE, Scene, TAGS } from './scene';
 import { renderSetup } from './setup';
 import type { AppState, Box, Snapshot } from './types';
 import { checkForUpdates, initUpdates } from './update';
@@ -20,6 +20,7 @@ async function boot() {
     onSelect: (box) => {
       selected = box;
       showPanel(box, snap, backend, () => scene.select(''));
+      inset();
     },
     onHover: (box, x, y) => {
       tooltip.hidden = !box;
@@ -30,6 +31,12 @@ async function boot() {
     },
   });
   await scene.init();
+  /** Keeps the building clear of the open panel. */
+  const inset = () => {
+    const p = document.getElementById('panel')!;
+    scene.setInset(p.hidden ? 0 : p.offsetWidth + 24);
+  };
+  window.addEventListener('resize', inset);
 
   const hud = () =>
     renderHud(state, snap, space, lastError, backend, {
@@ -42,8 +49,41 @@ async function boot() {
         space = i;
         scene.setSpace(i);
         hud();
+        legend();
       },
     });
+  /** The legend lists the request types on the floor and the age colours. */
+  const legend = () => {
+    const el = document.getElementById('legend')!;
+    const id = snap?.spaces[space]?.id;
+    const types = new Map<string, string>();
+    snap?.boxes.filter((b) => b.space === id).forEach((b) => types.set(b.type, b.tag));
+    el.hidden = !snap || types.size === 0;
+    if (el.hidden) return;
+    const css = (c: number) => `#${c.toString(16).padStart(6, '0')}`;
+    const item = (cls: string, colour: number, text: string) => {
+      const span = document.createElement('span');
+      span.className = 'item';
+      const dot = document.createElement('i');
+      dot.className = cls;
+      dot.style.background = css(colour);
+      span.append(dot, text);
+      return span;
+    };
+    const row = (title: string, items: HTMLElement[]) => {
+      const div = document.createElement('div');
+      div.className = 'row';
+      const b = document.createElement('b');
+      b.textContent = title;
+      div.append(b, ...items);
+      return div;
+    };
+    const ages = ['여유', '기준 절반', '기준 초과', '3배 초과', '10배 초과'];
+    el.replaceChildren(
+      row('유형', [...types].sort().map(([name, tag]) => item('tag', TAGS[tag] ?? TAGS.gray, name.replace(/^\[[^\]]+\]\s*/, '')))),
+      row('묵음', ages.map((t, i) => item('', AGE[i], t))),
+    );
+  };
   const fail = (e: unknown) => void toast(errText(e), 'error');
 
   /** Takes a new app state: shows a setup page if something is missing. */
@@ -56,6 +96,7 @@ async function boot() {
     if (blocked) {
       snap = null;
       showPanel(null, null, backend, () => {});
+      legend();
     }
     hud();
   }
@@ -66,6 +107,7 @@ async function boot() {
     scene.update(ev.snapshot, ev.changes);
     if (selected) showPanel(ev.snapshot.boxes.find((b) => b.key === selected!.key) ?? null, snap, backend, () => scene.select(''));
     hud();
+    legend();
   });
   backend.onError((err) => {
     lastError = err.message;
@@ -79,6 +121,7 @@ async function boot() {
     snap = first;
     scene.update(first, []);
     hud();
+    legend();
   }
   initUpdates(backend);
 }
