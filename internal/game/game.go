@@ -5,6 +5,7 @@ package game
 
 import (
 	"fmt"
+	"math"
 	"sort"
 	"time"
 )
@@ -49,6 +50,44 @@ type Stats struct {
 	Team   Tally     `json:"team"`
 	Me     Tally     `json:"me"`
 	Badges []Badge   `json:"badges"`
+	// Fatigue is how worn each teammate looks, by account id: 0 fresh,
+	// 1 tired, 2 resting. Only the level is given, never the count behind it.
+	Fatigue map[string]int `json:"fatigue"`
+	Away    []Away         `json:"away"` // holidays, current and coming
+}
+
+// Away is one teammate's holiday.
+type Away struct {
+	ID     string `json:"id"`
+	Name   string `json:"name"`
+	From   string `json:"from"` // "2026-12-01"
+	To     string `json:"to"`   // last day away
+	Active bool   `json:"active"`
+	Me     bool   `json:"me"`
+}
+
+// Fatigue works out how worn each assignee is. Every ticket finished in the
+// last week adds one point, and a point fades by half every two days, so a
+// heavy run shows for a while and a quiet spell lets it wear off.
+func Fatigue(dones []Done, now time.Time, tired, exhausted float64) map[string]int {
+	score := map[string]float64{}
+	for _, d := range dones {
+		age := now.Sub(d.At)
+		if d.AssigneeID == "" || age < 0 || age > 7*24*time.Hour {
+			continue
+		}
+		score[d.AssigneeID] += math.Pow(0.5, age.Hours()/48)
+	}
+	out := map[string]int{}
+	for id, s := range score {
+		switch {
+		case s >= exhausted:
+			out[id] = 2
+		case s >= tired:
+			out[id] = 1
+		}
+	}
+	return out
 }
 
 // teamScale stretches the level steps for the team, which earns as several people.
@@ -192,4 +231,21 @@ func streak(days map[string]bool, today time.Time) int {
 		}
 	}
 	return best
+}
+
+// Holidays keeps the holidays that are on now or still to come, marks the
+// ones on today, and sorts them by start.
+func Holidays(all []Away, me string, now time.Time) []Away {
+	today := now.Format("2006-01-02")
+	out := []Away{}
+	for _, a := range all {
+		if a.From == "" || a.To == "" || a.To < today {
+			continue
+		}
+		a.Active = a.From <= today
+		a.Me = a.ID == me
+		out = append(out, a)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].From < out[j].From })
+	return out
 }

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -50,6 +51,7 @@ type App struct {
 	gameStats *game.Stats
 	gameAt    time.Time // when the statistics were last read
 	gameBusy  atomic.Bool
+	gameForce atomic.Bool // read the statistics again at the next refresh
 
 	updating atomic.Bool
 	restart  func() error
@@ -514,6 +516,9 @@ func (a *App) refreshGame(ctx context.Context, snap *model.Snapshot, changes []m
 			finished = true
 		}
 	}
+	if a.gameForce.Swap(false) {
+		finished = true
+	}
 	if !finished && time.Since(last) < 10*time.Minute {
 		return
 	}
@@ -531,11 +536,103 @@ func (a *App) refreshGame(ctx context.Context, snap *model.Snapshot, changes []m
 			return // the next round tries again; the centre itself is unaffected
 		}
 		stats := game.Compute(dones, me.AccountID, board.TypeNames(cfg), since, now)
+		stats.Fatigue = game.Fatigue(dones, now, cfg.Game.Tired, cfg.Game.Exhausted)
+		stats.Away = game.Holidays(a.holidays(rctx, cfg, client, me), me.AccountID, now)
 		a.mu.Lock()
 		a.gameStats, a.gameAt = stats, time.Now()
 		a.mu.Unlock()
 		a.app.Event.Emit(evGame, stats)
 	}()
+}
+
+// ---- holidays ---------------------------------------------------------------
+
+// vacationPrefix starts the issue property that holds one person's holiday.
+const vacationPrefix = "argusdesk.vacation."
+
+// Vacation is the signed-in user's own holiday ("" = none).
+type Vacation struct {
+	From   string `json:"from"`
+	To     string `json:"to"`
+	Shared bool   `json:"shared"` // teammates see it (the settings name a shared ticket)
+}
+
+// holidays reads everyone's holidays from the team's shared ticket, or just
+// this user's own from this computer when the settings name no such ticket.
+func (a *App) holidays(ctx context.Context, cfg *config.Config, client *jira.Client, me *jira.User) []game.Away {
+	a.mu.Lock()
+	mine := game.Away{ID: me.AccountID, Name: me.DisplayName, From: a.prefs.VacationFrom, To: a.prefs.VacationTo}
+	a.mu.Unlock()
+	if cfg.Team.StateIssue == "" {
+		return []game.Away{mine}
+	}
+	props, err := client.IssueProperties(ctx, cfg.Team.StateIssue, vacationPrefix)
+	if err != nil {
+		return []game.Away{mine} // the shared ticket cannot be read: at least show my own
+	}
+	var out []game.Away
+	for key, raw := range props {
+		var v game.Away
+		if json.Unmarshal(raw, &v) == nil {
+			v.ID = strings.TrimPrefix(key, vacationPrefix)
+			out = append(out, v)
+		}
+	}
+	return out
+}
+
+// MyVacation returns the user's own holiday.
+func (a *App) MyVacation() *Vacation {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return &Vacation{From: a.prefs.VacationFrom, To: a.prefs.VacationTo, Shared: a.cfg != nil && a.cfg.Team.StateIssue != ""}
+}
+
+// SetVacation records a holiday from one day to another, both included. Empty
+// days cancel it. With a shared ticket in the settings it is written there,
+// so the whole team sees it.
+func (a *App) SetVacation(from, to string) (*Vacation, error) {
+	from, to = strings.TrimSpace(from), strings.TrimSpace(to)
+	if (from == "") != (to == "") {
+		return nil, errors.New("시작일과 종료일을 모두 입력해 주세요")
+	}
+	if from != "" {
+		f, err1 := time.Parse("2006-01-02", from)
+		t, err2 := time.Parse("2006-01-02", to)
+		if err1 != nil || err2 != nil {
+			return nil, errors.New("날짜는 2026-12-01 형식이어야 합니다")
+		}
+		if t.Before(f) {
+			return nil, errors.New("종료일이 시작일보다 빠릅니다")
+		}
+	}
+	a.mu.Lock()
+	cfg, client, me := a.cfg, a.client, a.me
+	a.mu.Unlock()
+	if cfg != nil && cfg.Team.StateIssue != "" {
+		if client == nil || me == nil {
+			return nil, errors.New("먼저 로그인해 주세요")
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+		defer cancel()
+		prop := vacationPrefix + me.AccountID
+		var err error
+		if from == "" {
+			err = client.DeleteIssueProperty(ctx, cfg.Team.StateIssue, prop)
+		} else {
+			err = client.SetIssueProperty(ctx, cfg.Team.StateIssue, prop, map[string]string{"name": me.DisplayName, "from": from, "to": to})
+		}
+		if err != nil {
+			return nil, fmt.Errorf("팀 공유 티켓(%s)에 휴가를 적지 못했습니다: %w", cfg.Team.StateIssue, err)
+		}
+	}
+	a.mu.Lock()
+	a.prefs.VacationFrom, a.prefs.VacationTo = from, to
+	_ = secret.SavePrefs(a.prefs)
+	a.mu.Unlock()
+	a.gameForce.Store(true)
+	a.Refresh()
+	return a.MyVacation(), nil
 }
 
 func (a *App) emitError(err error) {

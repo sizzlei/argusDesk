@@ -61,3 +61,35 @@ func TestStreakSkipsWeekends(t *testing.T) {
 		t.Fatalf("empty streak = %d", n)
 	}
 }
+
+func TestFatigueFadesAndLevels(t *testing.T) {
+	now := at(25, 18)
+	var dones []Done
+	for i := 0; i < 16; i++ {
+		dones = append(dones, Done{AssigneeID: "busy", At: now.Add(-time.Duration(i) * time.Hour)}) // all today
+	}
+	for i := 0; i < 9; i++ {
+		dones = append(dones, Done{AssigneeID: "steady", At: now.Add(-time.Duration(i) * 2 * time.Hour)})
+	}
+	for i := 0; i < 16; i++ {
+		dones = append(dones, Done{AssigneeID: "rested", At: now.Add(-6 * 24 * time.Hour)}) // a heavy day, six days ago
+	}
+	dones = append(dones, Done{AssigneeID: "old", At: now.Add(-8 * 24 * time.Hour)})
+	got := Fatigue(dones, now, 8, 14)
+	if got["busy"] != 2 || got["steady"] != 1 || got["rested"] != 0 || got["old"] != 0 {
+		t.Fatalf("fatigue = %v", got)
+	}
+}
+
+func TestHolidays(t *testing.T) {
+	now := at(25, 9)
+	got := Holidays([]Away{
+		{ID: "a", From: "2026-11-20", To: "2026-11-24"},  // over
+		{ID: "b", From: "2026-12-01", To: "2026-12-03"},  // coming
+		{ID: "me", From: "2026-11-25", To: "2026-11-26"}, // on now
+		{ID: "c", From: "", To: ""},
+	}, "me", now)
+	if len(got) != 2 || got[0].ID != "me" || !got[0].Active || !got[0].Me || got[1].Active {
+		t.Fatalf("holidays = %+v", got)
+	}
+}

@@ -32,7 +32,7 @@ export interface Box {
   path?: PathStep[];
 }
 
-export type ZoneKind = 'wait' | 'work' | 'desk' | 'done' | 'returned' | 'unsorted';
+export type ZoneKind = 'siding' | 'wait' | 'work' | 'desk' | 'done' | 'returned' | 'unsorted';
 
 export interface ZoneView {
   id: string;
@@ -213,4 +213,23 @@ export interface GameStats {
   team: Tally;
   me: Tally;
   badges: Badge[];
+  fatigue: Record<string, number>; // by account id: 0 fresh, 1 tired, 2 resting
+  away: Away[]; // holidays, current and coming
+}
+
+/** One teammate's holiday. */
+export interface Away {
+  id: string;
+  name: string;
+  from: string; // "2026-12-01"
+  to: string;
+  active: boolean;
+  me: boolean;
+}
+
+/** The signed-in user's own holiday ("" = none). */
+export interface Vacation {
+  from: string;
+  to: string;
+  shared: boolean; // teammates see it
 }

@@ -6,7 +6,7 @@
 // content security policy); it has no effect elsewhere.
 import 'pixi.js/unsafe-eval';
 import { Application, Container, Graphics, Polygon, Text } from 'pixi.js';
-import type { Box, Change, Member, Snapshot, SpaceView, ZoneKind, ZoneView } from './types';
+import type { Away, Box, Change, Member, Snapshot, SpaceView, ZoneKind, ZoneView } from './types';
 
 // ---- isometric grid ---------------------------------------------------------
 
@@ -15,7 +15,7 @@ const TH = 32; // tile height on screen
 const ZW = 8; // room size in tiles
 const ZH = 7;
 const COL_GAP = 0.5; // partition between rooms of a row
-const ROW_GAP = 3.6; // corridor between rows (holds the two lanes of the conveyor)
+const ROW_GAP = 4.8; // corridor between rows (holds the two lanes of the conveyor)
 const COLS = 3; // rooms per row
 const PAD = 0.7; // floor slab around the rooms
 const WALL_H = 58; // outer wall height on screen
@@ -51,6 +51,7 @@ const FLOOR: Record<ZoneKind, number> = {
   done: 0xfbe2b4,
   returned: 0xf5d7d3,
   unsorted: 0xe4dcf5,
+  siding: 0xe9e3f2,
 };
 export const TAGS: Record<string, number> = {
   orange: 0xf08c3a,
@@ -322,12 +323,44 @@ function desk(g: Graphics, gx: number, gy: number, kind: 'desk' | 'shelf' | 'min
 }
 
 /** A person: body, head and hair as three blocks. */
-function person(g: Graphics, colour: number, me: boolean) {
+function person(g: Graphics, colour: number, me: boolean, mood = 0) {
   g.ellipse(0, 1, 11, 5.5).fill({ color: 0x1b2233, alpha: 0.14 });
-  block(g, -0.17, -0.17, 0.34, 0.34, 20, colour);
-  block(g, -0.14, -0.14, 0.28, 0.28, 12, SKIN, 20);
-  block(g, -0.15, -0.15, 0.3, 0.3, 4, shade(colour, 0.55), 32);
+  const sit = mood === 2 ? 7 : 0; // resting: seated on a bench, so everything sits lower and the body is shorter
+  if (sit) block(g, -0.17, 0.02, 0.34, 0.3, 5, shade(colour, 0.3), 7); // legs forward
+  block(g, -0.17, -0.17, 0.34, 0.34, sit ? 13 : 20, colour, sit);
+  const neck = sit ? 20 : 20;
+  block(g, -0.14, -0.14, 0.28, 0.28, 12, SKIN, neck);
+  block(g, -0.15, -0.15, 0.3, 0.3, 4, shade(colour, 0.55), neck + 12);
+  if (mood >= 1) {
+    // tired: drops of sweat beside the head
+    for (const [dx, dy] of mood === 2 ? [[-13, -34], [13, -30], [-10, -24]] : [[-13, -32], [12, -27]]) {
+      g.poly([dx, dy - 5, dx + 2.6, dy, dx, dy + 2.6, dx - 2.6, dy]).fill(0x6fb1e6);
+    }
+  }
   if (me) g.poly([0, -52, 6, -46, 0, -40, -6, -46]).fill(ACCENT); // marker above my head
+}
+
+/** A bed in the lodge, with someone asleep in it or neatly made. */
+function bed(g: Graphics, gx: number, gy: number, colour: number | null) {
+  shadow(g, gx, gy, 1.0, 1.9);
+  block(g, gx, gy, 1.0, 0.12, 16, 0xb58a55); // headboard
+  block(g, gx, gy + 0.1, 1.0, 1.8, 6, 0xf4efe6, 5); // mattress
+  block(g, gx + 0.05, gy + 0.15, 0.1, 0.1, 5, 0x8a6a4a);
+  block(g, gx + 0.85, gy + 1.75, 0.1, 0.1, 5, 0x8a6a4a);
+  block(g, gx + 0.2, gy + 0.18, 0.6, 0.36, 4, 0xffffff, 11); // pillow
+  block(g, gx, gy + 0.62, 1.0, 1.28, 5, colour ?? 0xcfd8e6, 11); // blanket
+  if (colour !== null) {
+    block(g, gx + 0.36, gy + 0.22, 0.28, 0.28, 9, SKIN, 15); // a head on the pillow
+    block(g, gx + 0.35, gy + 0.21, 0.3, 0.14, 3, shade(colour, 0.55), 24);
+    block(g, gx + 0.25, gy + 0.7, 0.5, 1.0, 4, tint(colour, 0.1), 16); // the sleeper under the blanket
+  }
+}
+
+/** A floor lamp. */
+function lamp(g: Graphics, gx: number, gy: number) {
+  shadow(g, gx, gy, 0.3, 0.3);
+  block(g, gx + 0.1, gy + 0.1, 0.1, 0.1, 30, 0x8a93a6);
+  block(g, gx, gy, 0.3, 0.3, 9, 0xffe7a3, 30);
 }
 
 /** A delivery truck parked outside the dock. */
@@ -365,13 +398,15 @@ function decorate(add: (gx: number, gy: number, draw: (g: Graphics) => void) => 
         add(gx + 0.5, front - 0.5, (g) => tree(g, gx + 0.25, front - 0.8));
         add(gx + 0.45, gy + 0.5, (g) => cooler(g, gx + 0.25, gy + 0.3));
       }
-      add(gx + 3.6, front - 0.3, (g) => hedge(g, gx + 2.6, front - 0.5, 'x', 2.0));
+      add(gx + 3.9, front - 0.3, (g) => hedge(g, gx + 2.9, front - 0.5, 'x', 2.0));
+      add(gx + 1.7, front - 0.75, (g) => bench(g, gx + 0.95, front - 1.0, 'x', 1.6));
       break;
     case 'desk':
       add(right - 0.5, gy + 0.4, (g) => purifier(g, right - 0.75, gy + 0.15));
       add(right - 0.5, front - 0.5, (g) => tree(g, right - 0.8, front - 0.8));
       add(gx + 0.45, front - 0.45, (g) => cooler(g, gx + 0.25, front - 0.65));
-      add(gx + 3.6, front - 0.3, (g) => hedge(g, gx + 2.4, front - 0.5, 'x', 2.4));
+      add(gx + 4.2, front - 0.3, (g) => hedge(g, gx + 3.0, front - 0.5, 'x', 2.4));
+      add(gx + 1.7, front - 0.75, (g) => bench(g, gx + 0.95, front - 1.0, 'x', 1.6));
       break;
     case 'done':
       add(right - 0.5, gy + 0.5, (g) => tree(g, right - 0.8, gy + 0.25));
@@ -530,13 +565,15 @@ export class Scene {
   private clock = 0; // ms since the scene started, for idle motion
   private truck: { g: Graphics; x: number; y: number } | null = null;
   private truckRun = -1; // ms into the truck's round trip; -1 = parked
-  private people: { g: Graphics; y: number; phase: number }[] = [];
+  private people: { g: Graphics; y: number; phase: number; slow?: boolean }[] = [];
   private lamps: Lamp[] = [];
   private lampLayer = new Graphics();
   private belts: BeltTile[] = [];
   private belt: Belt | null = null;
   private fx = new Container(); // confetti, in window coordinates, above everything
   private bits: { g: Graphics; vx: number; vy: number; spin: number; life: number }[] = [];
+  private fatigue: Record<string, number> = {};
+  private away: Away[] = [];
   private held = false; // the user zoomed or moved the view: leave it alone
   private push = 0; // how far the view has slid aside for the panel
   private pushTo = 0;
@@ -564,7 +601,7 @@ export class Scene {
     this.app.stage.eventMode = 'static';
     this.app.stage.hitArea = this.app.screen;
     this.app.stage.on('pointertap', (e) => {
-      if (e.target === this.app.stage && !this.drag?.moved) this.select('');
+      if (e.target === this.app.stage && !this.drag?.moved) this.mark('');
       this.drag = null;
     });
     // Drag the empty floor to move around, scroll to zoom, double-click to reset.
@@ -619,6 +656,14 @@ export class Scene {
     if (this.snap) this.update(this.snap, []);
   }
 
+  /** Takes how tired each teammate is and who is on holiday. */
+  setTeam(fatigue: Record<string, number>, away: Away[]) {
+    const same = JSON.stringify([fatigue, away]) === JSON.stringify([this.fatigue, this.away]);
+    this.fatigue = fatigue;
+    this.away = away;
+    if (!same && this.snap) this.update(this.snap, []);
+  }
+
   /** Tells the scene how much of the right side the open panel covers. */
   setInset(px: number) {
     this.inset = px;
@@ -643,18 +688,34 @@ export class Scene {
   }
 
   select(key: string) {
+    this.mark(key);
+    this.hooks.onSelect(this.sprites.get(key)?.box ?? null);
+  }
+
+  /** Marks a box as the chosen one without telling anyone (its window did). */
+  mark(key: string) {
+    if (key === this.selected) return;
     this.selected = key;
     this.sprites.forEach((s) => this.paint(s));
-    this.hooks.onSelect(this.sprites.get(key)?.box ?? null);
   }
 
   /** Redraws the building for a new snapshot; changes drive the animations. */
   update(snap: Snapshot, changes: Change[]) {
     this.snap = snap;
+    if (this.space < 0) {
+      this.drawLodge();
+      return;
+    }
     const space: SpaceView | undefined = snap.spaces[this.space] ?? snap.spaces[0];
     if (!space) return;
     // Returned boxes leave the building: their zones are not rooms.
-    const rooms = space.zones.filter((z) => z.kind !== 'returned');
+    // Zones that wait on another team are sidings off the conveyor, where
+    // there is one; on a floor too small for a conveyor they are plain rooms.
+    const inside = space.zones.filter((z) => z.kind !== 'returned');
+    const withBelt = inside.filter((z) => z.kind !== 'siding').length > COLS;
+    const rooms = withBelt ? inside.filter((z) => z.kind !== 'siding') : inside;
+    const sidings = withBelt ? inside.filter((z) => z.kind === 'siding') : [];
+    const resting = new Set(this.away.filter((a) => a.active).map((a) => a.id));
     const boxes = snap.boxes.filter((b) => b.space === space.id);
     const members = snap.members.filter((m) => m.space === space.id);
     const added = new Set(changes.filter((c) => c.kind === 'added').map((c) => c.key));
@@ -689,6 +750,72 @@ export class Scene {
 
     const alive = new Set<string>();
     const roomOf = (zoneId: string) => rooms.findIndex((z) => z.id === zoneId);
+    // sidings: short spurs between the two lanes, each branching off lane A
+    const spur = new Map<string, { x: number; mid: number }>();
+    const belt = this.belt as Belt | null;
+    if (belt) {
+      const mid = (belt.a + belt.b) / 2;
+      sidings.forEach((z, k) => spur.set(z.id, { x: Math.min(1.4 + k * 6.2, belt.end - 5), mid }));
+    }
+    const stationOf = (zoneId: string) => {
+      const sd = spur.get(zoneId);
+      return sd ? { s: sd.x } : this.station(roomOf(zoneId));
+    };
+    /** Puts a box at its place, sending it there by belt or by hop when it moved. */
+    const settle = (b: Box, x: number, y: number, depth: number, zoneId: string) => {
+      alive.add(b.key);
+      let sp = this.sprites.get(b.key);
+      if (!sp) {
+        sp = this.spawn(b);
+        sp.tx = x;
+        sp.ty = y;
+        const to = stationOf(zoneId);
+        if (!added.has(b.key)) {
+          sp.root.position.set(x, y); // already here when the app opened
+        } else if (to && !CALM) {
+          // A new box comes in on the belt and rides to its room.
+          const start = this.beltAt(-0.6);
+          sp.root.position.set(start.x, start.y);
+          sp.root.alpha = 0;
+          this.ride(sp, -0.6, to.s, x, y);
+        } else {
+          sp.root.position.set(x, y - 170); // no belt on this floor: it drops in
+          sp.root.alpha = 0;
+          this.hop(sp, 520 + Math.random() * 160, 0);
+        }
+      } else if (Math.hypot(x - sp.tx, y - sp.ty) > 1) {
+        const from = stationOf(sp.box.zone);
+        const to = stationOf(zoneId);
+        const far = Math.hypot(x - sp.root.x, y - sp.root.y);
+        sp.tx = x;
+        sp.ty = y;
+        if (from && to && sp.box.zone !== b.zone && !CALM) {
+          // To another place: out of the door, along the belt, off at the other end.
+          this.ride(sp, from.s, to.s, x, y);
+        } else {
+          this.hop(sp, Math.min(1200, 420 + far * 1.1), Math.min(90, 14 + far * 0.3));
+        }
+      }
+      sp.box = b;
+      sp.depth = depth;
+      sp.leaving = false;
+      this.paint(sp, now);
+    };
+    // draw the sidings and stand their boxes on them
+    spur.forEach((sd, id) => {
+      const zone = sidings.find((z) => z.id === id)!;
+      this.beltTile(sd.x, belt!.a + 0.4, sd.mid - 0.4 - (belt!.a + 0.4), 'y', 1);
+      for (let i = 0; i < 4; i++) this.beltTile(sd.x - 0.4 + i, sd.mid, i === 3 ? 0.6 : 1, 'x', 1);
+      prop(sd.x + 3.4, sd.mid, (g) => block(g, sd.x + 3.2, sd.mid - 0.45, 0.16, 0.9, 12, 0x8a93a6)); // buffer stop
+      const waiting = boxes.filter((b) => b.zone === id);
+      this.tag(zone.staleCount ? `${zone.name} ${zone.count} · 묵음 ${zone.staleCount}` : `${zone.name} ${zone.count}`, sd.x + 1.4, sd.mid, 62, false);
+      waiting.forEach((b, i) => {
+        const gx = sd.x + 0.35 + (i % 3) * 0.95;
+        const level = Math.floor(i / 3);
+        const p = iso(gx, sd.mid);
+        settle(b, p.x, p.y - BELT_UP - level * BOX_H, (gx + sd.mid) * 100 + 60 + level, id);
+      });
+    });
     rooms.forEach((zone, zi) => {
       const o = roomOrigin(zi);
 
@@ -737,63 +864,39 @@ export class Scene {
 
       const where = slots(zone, inZone, lanes, o.d);
       for (const b of inZone) {
-        alive.add(b.key);
         const s = where.get(b.key)!;
         const p = iso(o.gx + s.gx, o.gy + s.gy);
         const x = p.x;
         const y = p.y - s.level * BOX_H;
         const depth = (o.gx + s.gx + o.gy + s.gy) * 100 + s.level;
-        let sp = this.sprites.get(b.key);
-        if (!sp) {
-          sp = this.spawn(b);
-          sp.tx = x;
-          sp.ty = y;
-          const to = this.station(zi);
-          if (!added.has(b.key)) {
-            sp.root.position.set(x, y); // already here when the app opened
-          } else if (to && !CALM) {
-            // A new box comes in on the belt and rides to its room.
-            const start = this.beltAt(-0.6);
-            sp.root.position.set(start.x, start.y);
-            sp.root.alpha = 0;
-            this.ride(sp, -0.6, to.s, x, y);
-          } else {
-            sp.root.position.set(x, y - 170); // no belt on this floor: it drops in
-            sp.root.alpha = 0;
-            this.hop(sp, 520 + Math.random() * 160, 0);
-          }
-        } else if (Math.hypot(x - sp.tx, y - sp.ty) > 1) {
-          const from = this.station(roomOf(sp.box.zone));
-          const to = this.station(zi);
-          const far = Math.hypot(x - sp.root.x, y - sp.root.y);
-          sp.tx = x;
-          sp.ty = y;
-          if (from && to && sp.box.zone !== b.zone && !CALM) {
-            // To another room: out of the door, along the belt, in at the other door.
-            this.ride(sp, from.s, to.s, x, y);
-          } else {
-            this.hop(sp, Math.min(1200, 420 + far * 1.1), Math.min(90, 14 + far * 0.3));
-          }
-        }
-        sp.box = b;
-        sp.depth = depth;
-        sp.leaving = false;
-        this.paint(sp, now);
+        settle(b, x, y, depth, zone.id);
       }
 
       // people: behind their desk in a desk room, otherwise along the room's right side
+      let seated = 0;
       members
-        .filter((m) => m.zone === zone.id)
+        .filter((m) => m.zone === zone.id && !resting.has(m.id)) // on holiday: down in the lodge
         .forEach((m, mi) => {
           const lane = lanes.indexOf(m.id);
           const atDesk = zone.kind === 'desk' && lane >= 0;
-          const gx = atDesk ? o.gx + 0.55 : o.gx + ZW - 0.8;
-          const gy = atDesk ? o.gy + LANE_TOP + lane * lanePitch(lanes.length, o.d) : o.gy + 2.2 + mi * 1.1;
+          const tired = this.fatigue[m.id] ?? 0;
+          // Worn out: off to the room's bench to rest (rooms without one: stay put, looking tired).
+          const benchAt =
+            zone.kind === 'work' || zone.kind === 'desk'
+              ? { gx: o.gx + 1.35 + seated * 0.6, gy: o.gy + o.d - 0.75 }
+              : zone.kind === 'wait'
+                ? { gx: o.gx + 0.45, gy: o.gy + o.d - 2.0 + seated * 0.6 }
+                : null;
+          const rest = tired >= 2 && benchAt && seated < 2 ? benchAt : null;
+          if (rest) seated++;
+          const gx = rest ? rest.gx : atDesk ? o.gx + 0.55 : o.gx + ZW - 0.8;
+          const gy = rest ? rest.gy : atDesk ? o.gy + LANE_TOP + lane * lanePitch(lanes.length, o.d) : o.gy + 2.2 + mi * 1.1;
           const p = iso(gx, gy);
-          const g = prop(gx, gy, (pg) => person(pg, AVATARS[snap.members.indexOf(m) % AVATARS.length], m.me), 1);
+          const g = prop(gx, gy, (pg) => person(pg, AVATARS[snap.members.indexOf(m) % AVATARS.length], m.me, rest ? 2 : tired ? 1 : 0), 1);
           g.position.set(p.x, p.y);
-          this.people.push({ g, y: p.y, phase: mi * 1.7 + zi });
-          this.tag(m.count ? `${shortName(m.name)} ${m.count}` : shortName(m.name), gx, gy, m.me ? 74 : 60, m.me);
+          this.people.push({ g, y: p.y, phase: mi * 1.7 + zi, slow: tired > 0 });
+          const name = m.count ? `${shortName(m.name)} ${m.count}` : shortName(m.name);
+          this.tag(rest ? `${name} · 휴식 중` : tired ? `${name} · 피곤` : name, gx, gy, m.me ? 74 : 60, m.me);
         });
     });
 
@@ -871,8 +974,7 @@ export class Scene {
       const at = { x: this.world.x + parked.x * this.world.scale.x, y: this.world.y + (parked.y - 30) * this.world.scale.y };
       setTimeout(() => this.burst(at.x, at.y, 16), 600);
     }
-    if (this.selected && !alive.has(this.selected)) this.select('');
-    else if (this.selected) this.hooks.onSelect(this.sprites.get(this.selected)!.box);
+    if (this.selected && !alive.has(this.selected)) this.mark('');
 
     const corners = [iso(-PAD, -PAD), iso(width + PAD, -PAD), iso(width + PAD, depth + PAD + 2.4), iso(-PAD, depth + PAD + 2.4)];
     const xs = corners.map((c) => c.x);
@@ -928,7 +1030,7 @@ export class Scene {
     this.ground.addChild(g);
     if (floors > 1) {
       // which floor this is, on the front corner of the slab
-      const t = label(`${floor + 1}F  ${name}`, 13, INK, '700');
+      const t = label(`${floor < 0 ? "B1" : `${floor + 1}F`}  ${name}`, 13, INK, '700');
       const pill = new Graphics().roundRect(0, 0, t.width + 20, 26, 13).fill(0xffffff).stroke({ width: 1, color: 0xcfd6e2 });
       t.position.set(10, (26 - t.height) / 2);
       const tagBox = new Container();
@@ -1005,6 +1107,85 @@ export class Scene {
         }
       }
     }
+  }
+
+  /** One stretch of conveyor with its moving slats. */
+  private beltTile(gx: number, gy: number, w: number, axis: 'x' | 'y', dir: 1 | -1) {
+    const [bw, bd] = axis === 'x' ? [w, 0.8] : [0.8, w];
+    const [bx, by] = axis === 'x' ? [gx, gy - 0.4] : [gx - 0.4, gy];
+    const body = new Graphics();
+    block(body, bx, by, bw, bd, BELT_UP, 0x6b7590);
+    body.label = 'prop';
+    body.zIndex = (bx + bw / 2 + by + bd / 2) * 100 - 40;
+    const marks = new Graphics();
+    marks.label = 'prop';
+    marks.zIndex = body.zIndex + 1;
+    this.things.addChild(body, marks);
+    this.belts.push({ g: marks, gx, gy, w, axis, dir });
+  }
+
+  /** The lodge in the basement: teammates on holiday sleep here. */
+  private drawLodge() {
+    this.ground.removeChildren().forEach((c) => c.destroy({ children: true }));
+    this.signs.removeChildren().forEach((c) => c.destroy({ children: true }));
+    this.things.children.filter((c) => c.label === 'prop').forEach((c) => c.destroy({ children: true }));
+    this.truck = null;
+    this.people = [];
+    this.belts = [];
+    this.belt = null;
+    this.lamps = [];
+    this.lampLayer.clear();
+    const here = this.away.filter((a) => a.active);
+    const beds = Math.max(4, here.length);
+    const width = Math.max(ZW, 1.2 + beds * 1.7);
+    const depth = 6;
+    rowDepths = [depth];
+    this.drawBuilding(width, depth, 1, 1, -1, '숙소', 2);
+    const floor = new Graphics();
+    floor.poly(floorPoly(0, 0, width, depth)).fill(0xeadfce);
+    for (let i = 1; i < width; i++) {
+      const a = iso(i, 0);
+      const b = iso(i, depth);
+      floor.moveTo(a.x, a.y).lineTo(b.x, b.y).stroke({ width: 1, color: 0x8a6a4a, alpha: 0.12 });
+    }
+    floor.poly(floorPoly(1.2, 3.3, width - 2.4, 1.8)).fill(0xd9c7b0);
+    floor.poly(floorPoly(1.4, 3.5, width - 2.8, 1.4)).fill(0xe6d8c5);
+    this.ground.addChild(floor);
+    const prop = (gx: number, gy: number, draw: (g: Graphics) => void) => {
+      const g = new Graphics();
+      draw(g);
+      g.label = 'prop';
+      g.zIndex = (gx + gy) * 100;
+      this.things.addChild(g);
+    };
+    const members = this.snap?.members ?? [];
+    for (let i = 0; i < beds; i++) {
+      const who = here[i];
+      const gx = 0.7 + i * 1.7;
+      const index = who ? members.findIndex((m) => m.id === who.id) : -1;
+      prop(gx + 0.5, 1.2, (g) => bed(g, gx, 0.5, who ? AVATARS[(index < 0 ? i : index) % AVATARS.length] : null));
+      if (who) {
+        const [, mo, dd] = who.to.split('-').map(Number);
+        this.tag(`${shortName(who.name)} · ~${mo}/${dd}`, gx + 0.5, 0.9, 56, who.me);
+        this.tag('z Z', gx + 0.85, 0.7, 76, false);
+      }
+    }
+    prop(0.4, 3.0, (g) => tree(g, 0.2, 2.8));
+    prop(width - 0.5, 3.0, (g) => lamp(g, width - 0.6, 2.9));
+    prop(width - 0.5, depth - 0.5, (g) => purifier(g, width - 0.75, depth - 0.75));
+    prop(width / 2, depth - 0.3, (g) => hedge(g, width / 2 - 1.4, depth - 0.5, 'x', 2.8));
+    prop(1.6, depth - 0.75, (g) => bench(g, 0.8, depth - 1.0, 'x', 1.6));
+    const coming = this.away.filter((a) => !a.active);
+    this.plate(here.length ? `숙소 · 쉬는 중 ${here.length}명` : '숙소 · 비어 있음', width / 2, 0.15);
+    coming.slice(0, 3).forEach((a, i) => {
+      const [, mo, dd] = a.from.split('-').map(Number);
+      this.tag(`${shortName(a.name)} ${mo}/${dd}부터 휴가`, width / 2, depth - 1.6 + i * 0.6, 0, a.me);
+    });
+    const corners = [iso(-PAD, -PAD), iso(width + PAD, -PAD), iso(width + PAD, depth + PAD), iso(-PAD, depth + PAD)];
+    const xs = corners.map((c) => c.x);
+    const ys = corners.map((c) => c.y);
+    this.bounds = { x: Math.min(...xs), y: Math.min(...ys) - WALL_H - 46, w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys) + WALL_H + 60 };
+    this.refit();
   }
 
   /** The point on the conveyor a distance s along it (0 = where lane A starts), in screen coordinates. */
@@ -1302,7 +1483,7 @@ export class Scene {
       return;
     }
     // people breathe; the belt runs
-    for (const p of this.people) p.g.y = p.y + Math.sin(T * 2.4 + p.phase) * 1.4;
+    for (const p of this.people) p.g.y = p.y + Math.sin(T * (p.slow ? 1.2 : 2.4) + p.phase) * (p.slow ? 2.2 : 1.4);
     // server lamps: each blinks at its own pace
     this.lampLayer.clear();
     for (const l of this.lamps) {

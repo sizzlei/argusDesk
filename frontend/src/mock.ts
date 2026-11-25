@@ -2,12 +2,14 @@
 // invented; nothing comes from a real Jira.
 
 import type { Backend } from './backend';
-import type { AppState, Badge, BoardEvent, Box, Change, GameStats, Member, PathStep, Snapshot, Tally, ZoneView } from './types';
+import type { AppState, Away, Badge, BoardEvent, Box, Change, GameStats, Member, PathStep, Snapshot, Tally, Vacation, ZoneView } from './types';
 
 const HOUR = 3600_000;
 
 const zones: Omit<ZoneView, 'count' | 'staleCount'>[] = [
   { id: 'lobby', name: '접수 로비', kind: 'wait' },
+  { id: 'security', name: '보안팀 승인', kind: 'siding' },
+  { id: 'control', name: '내부통제 승인', kind: 'siding' },
   { id: 'review', name: '검토실', kind: 'work', staleAfter: '3h' },
   { id: 'approval', name: '승인 데스크', kind: 'work', staleAfter: '3h' },
   { id: 'work', name: '작업장', kind: 'desk', staleAfter: '5d' },
@@ -17,6 +19,8 @@ const zones: Omit<ZoneView, 'count' | 'staleCount'>[] = [
 
 const statusOf: Record<string, [string, string]> = {
   lobby: ['10001', '요청 부서 승인 대기'],
+  security: ['10007', '보안팀 승인 요청'],
+  control: ['10008', '내부통제 승인 요청'],
   review: ['10002', '검토 중'],
   approval: ['10003', '승인 대기'],
   work: ['10004', '작업 대기'],
@@ -151,6 +155,8 @@ function seed(now: number): Box[] {
   const boxes: Box[] = [];
   const add = (zone: string, hours: number[]) => hours.forEach((h) => boxes.push(make(zone, h, now)));
   add('lobby', [1, 3, 6, 20, 30, 52, 70]);
+  add('security', [3, 9, 30, 50]);
+  add('control', [5, 12]);
   add('review', [0.3, 1, 2.2, 3.5, 7, 20, 52, 400]);
   add('approval', [0.2, 0.8, 1.6, 2.6, 4.2, 14, 75]);
   add('work', [2, 5, 9, 20, 30, 44, 60, 80, 100, 130, 150, 26, 12]);
@@ -264,10 +270,19 @@ export function mockBackend(): Backend {
     while (xp >= from + 100 * level * scale) from += 100 * level++ * scale;
     return { done, today, week: today + 9, xp, level, levelXp: from, nextXp: from + 100 * level * scale };
   };
+  const day = (offset: number) => new Date(Date.now() + offset * 86400_000).toISOString().slice(0, 10);
+  const vacation: Vacation = { from: '', to: '', shared: true };
+  const away = (): Away[] => {
+    const list: Away[] = [{ id: 'u4', name: '최지우', from: day(-1), to: day(2), active: true, me: false }];
+    if (vacation.from) list.push({ id: 'u1', name: '김하늘', from: vacation.from, to: vacation.to, active: vacation.from <= day(0) && vacation.to >= day(0), me: true });
+    return list;
+  };
   const game = (): GameStats => {
     const b = (id: string, name: string, desc: string, scope: 'me' | 'team', have: number, need: number): Badge => ({ id, name, desc, scope, have: Math.min(have, need), need, earned: have >= need });
     return {
       since: '2026-01-01T00:00:00+09:00',
+      fatigue: { u2: 1, u3: 2 }, // one teammate tired, one resting, to show both
+      away: away(),
       team: tally(counts.team, counts.teamToday, 4),
       me: tally(counts.me, counts.meToday, 1),
       badges: [
@@ -307,11 +322,19 @@ export function mockBackend(): Backend {
       boxes.push(b);
       changes.push({ kind: 'added', key: b.key, toZone: b.zone });
     } else if (roll < 8) {
-      const movable = boxes.filter((b) => order.indexOf(b.zone) >= 0 && b.zone !== 'dock');
+      const sidings = ['security', 'control'];
+      const movable = boxes.filter((b) => (order.indexOf(b.zone) >= 0 && b.zone !== 'dock') || sidings.includes(b.zone));
       const b = movable[rand(movable.length)];
       if (b) {
         const from = b.zone;
-        const to = b.zone === 'approval' && rand(6) === 0 ? 'returns' : order[order.indexOf(b.zone) + 1];
+        // From the lobby some boxes turn off to another team's approval first.
+        const to = sidings.includes(b.zone)
+          ? 'review'
+          : b.zone === 'lobby' && rand(3) === 0
+            ? sidings[rand(2)]
+            : b.zone === 'approval' && rand(6) === 0
+              ? 'returns'
+              : order[order.indexOf(b.zone) + 1];
         place(b, to, now);
         changes.push({ kind: 'moved', key: b.key, fromZone: from, toZone: to });
       }
@@ -430,6 +453,15 @@ export function mockBackend(): Backend {
     onBoard: (cb) => void listeners.push(cb),
     onError: () => {},
     gameStats: async () => game(),
+    myVacation: async () => ({ ...vacation }),
+    setVacation: async (from, to) => {
+      await pause();
+      vacation.from = from;
+      vacation.to = to;
+      const s = game();
+      gameListeners.forEach((cb) => cb(s));
+      return { ...vacation };
+    },
     onGame: (cb) => void gameListeners.push(cb),
     checkUpdate: async () => ({
       current: '0.1.0',

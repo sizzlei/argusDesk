@@ -4,7 +4,7 @@
 // In mock mode (npm run dev:mock) the same interface is served by mock.ts
 // with made-up data, so the screen runs in a plain browser.
 
-import type { AppState, BoardError, BoardEvent, GameStats, Release, Snapshot, TicketActions, TicketDetail, UpdateInfo } from './types';
+import type { AppState, BoardError, BoardEvent, GameStats, Release, Snapshot, TicketActions, TicketDetail, UpdateInfo, Vacation } from './types';
 
 export interface Backend {
   mock: boolean;
@@ -31,6 +31,9 @@ export interface Backend {
   // the season's experience, levels and badges
   gameStats(): Promise<GameStats | null>;
   onGame(cb: (stats: GameStats) => void): void;
+  // the user's own holiday; empty days cancel it
+  myVacation(): Promise<Vacation>;
+  setVacation(from: string, to: string): Promise<Vacation>;
   // updates
   checkUpdate(): Promise<UpdateInfo>;
   lastUpdateCheck(): Promise<number>;
@@ -64,6 +67,8 @@ async function real(): Promise<Backend> {
     onBoard: (cb) => void Events.On('board:snapshot', (ev: { data: BoardEvent }) => cb(ev.data)),
     onError: (cb) => void Events.On('board:error', (ev: { data: BoardError }) => cb(ev.data)),
     gameStats: () => call('GameStats'),
+    myVacation: () => call('MyVacation'),
+    setVacation: (from, to) => call('SetVacation', from, to),
     onGame: (cb) => void Events.On('game:stats', (ev: { data: GameStats }) => cb(ev.data)),
     checkUpdate: () => call('CheckUpdate'),
     lastUpdateCheck: () => call('LastUpdateCheck'),

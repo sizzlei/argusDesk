@@ -1,42 +1,52 @@
-// The ticket panel: what a box holds, shown beside the room.
+// Ticket windows: what a box holds, in a window floating over the room.
 
 import type { Backend } from './backend';
 import { sanitize } from './sanitize';
 import type { Box, Snapshot, TicketActions, TicketDetail } from './types';
 import { codeBlock, confirmAction, copyButton, dateTime, errText, fill, h, limitText, span, toast } from './ui';
 
-const el = () => document.getElementById('panel')!;
-
-// Details are read from Jira when a box is opened and kept only in memory,
-// until the ticket changes.
+// Details are read from Jira when a ticket is opened and kept only in memory,
+// until the ticket changes. What can be done with it is asked the same way.
 const details = new Map<string, { updated: string; detail?: TicketDetail; error?: string }>();
-let shown = ''; // key of the ticket in the panel
-
-// What can be done with a ticket is asked from Jira the same way.
 const actions = new Map<string, { updated: string; actions?: TicketActions; error?: string }>();
-// A comment being written survives the panel's redraws.
+// A comment being written survives a window's redraws, and its closing.
 const drafts = new Map<string, { text: string; isPublic: boolean }>();
-let busy = false; // a change is on its way to Jira
-// The comment box is built with the other actions but sits with the comments.
-let commentBox: HTMLElement | null = null;
-function commentSlot() {
-  const slot = h('div', { id: 'comment-slot' });
-  if (commentBox) slot.append(commentBox);
-  return slot;
+
+/** One open ticket window. Several can be open at once. */
+interface Win {
+  key: string;
+  box: Box;
+  el: HTMLElement;
+  body: HTMLElement; // the scrolling part
+  actionsEl: HTMLElement | null;
+  detailEl: HTMLElement | null;
+  text: HTMLTextAreaElement | null; // the comment box's text area
+  commentBox: HTMLElement | null; // built with the actions, shown with the comments
+  busy: boolean; // a change is on its way to Jira
+  // Redrawing replaces the comment box, which would break typing (Korean input
+  // composes a syllable over several keys). While the box has the cursor, a
+  // redraw waits here until the cursor leaves.
+  pending: (() => void) | null;
 }
-// Redrawing replaces the comment box, which would break typing (Korean input
-// composes a syllable over several keys). While the box has the cursor, a
-// redraw waits here until the cursor leaves.
-let pending: (() => void) | null = null;
-const typing = () => document.activeElement?.id === 'comment-text';
-function flush() {
+
+const wins = new Map<string, Win>();
+let top = 20; // z-index of the window in front
+const MAX_WINDOWS = 6;
+
+const typing = (w: Win) => !!w.text && document.activeElement === w.text;
+function flush(w: Win) {
   // Later, so a click on a button next to the box lands before the redraw.
   setTimeout(() => {
-    if (typing()) return;
-    const run = pending;
-    pending = null;
+    if (typing(w)) return;
+    const run = w.pending;
+    w.pending = null;
     run?.();
   }, 200);
+}
+function commentSlot(w: Win) {
+  const slot = h('div', { class: 'comment-slot' });
+  if (w.commentBox) slot.append(w.commentBox);
+  return slot;
 }
 
 function row(name: string, value: string | Node | undefined) {
@@ -79,12 +89,13 @@ function rich(html: string, backend: Backend) {
 }
 
 /**
- * Sends one change to Jira. The panel is locked while it is on its way; what
+ * Sends one change to Jira. The window is locked while it is on its way; what
  * was known about the ticket is forgotten so it is read again afterwards.
  */
-async function act(b: Box, done: string, run: () => Promise<void>, redraw: () => void) {
-  if (busy) return;
-  busy = true;
+async function act(w: Win, done: string, run: () => Promise<void>, redraw: () => void) {
+  const b = w.box;
+  if (w.busy) return;
+  w.busy = true;
   redraw();
   try {
     await run();
@@ -94,7 +105,7 @@ async function act(b: Box, done: string, run: () => Promise<void>, redraw: () =>
   } catch (e) {
     toast(errText(e), 'error');
   } finally {
-    busy = false;
+    w.busy = false;
     redraw();
   }
 }
@@ -102,14 +113,16 @@ async function act(b: Box, done: string, run: () => Promise<void>, redraw: () =>
 const DECISION: Record<string, string> = { pending: '대기', approved: '승인', declined: '반려' };
 
 /** The "처리" part of the panel: assignee, approvals, moves and a comment box. */
-function renderActions(host: HTMLElement, b: Box, snap: Snapshot, backend: Backend) {
+function renderActions(w: Win, snap: Snapshot, backend: Backend) {
+  const host = w.actionsEl;
+  if (!host) return;
+  const b = w.box;
+  const busy = w.busy;
   const redraw = () => {
-    const now = document.getElementById('actions');
-    const box = snap.boxes.find((x) => x.key === b.key) ?? b;
-    if (shown === b.key && now) renderActions(now, box, snap, backend);
+    if (wins.get(w.key) === w) renderActions(w, snap, backend);
   };
-  if (typing() && !busy && host.childElementCount) {
-    pending = redraw;
+  if (typing(w) && !busy && host.childElementCount) {
+    w.pending = redraw;
     return;
   }
   const entry = actions.get(b.key);
@@ -132,7 +145,7 @@ function renderActions(host: HTMLElement, b: Box, snap: Snapshot, backend: Backe
     const m = others.find((x) => x.id === pick.value);
     pick.value = '';
     if (m && (await confirmAction('담당자 변경', `${b.key}을(를) ${m.name} 님에게 배정합니다.`, '배정')))
-      void act(b, `${m.name} 님에게 배정했습니다.`, () => backend.assignTicket(b.key, m.id), redraw);
+      void act(w, `${m.name} 님에게 배정했습니다.`, () => backend.assignTicket(b.key, m.id), redraw);
   });
   const assign = h(
     'div',
@@ -147,7 +160,7 @@ function renderActions(host: HTMLElement, b: Box, snap: Snapshot, backend: Backe
             onclick: async () => {
               const from = b.assignee ? `현재 담당자는 ${b.assignee} 님입니다. ` : '';
               if (b.assignee && !(await confirmAction('담당자 변경', `${from}${b.key}을(를) 나에게 배정합니다.`, '나에게 배정'))) return;
-              void act(b, '나에게 배정했습니다.', () => backend.assignTicket(b.key, 'me'), redraw);
+              void act(w, '나에게 배정했습니다.', () => backend.assignTicket(b.key, 'me'), redraw);
             },
           },
           '나에게 배정',
@@ -160,7 +173,7 @@ function renderActions(host: HTMLElement, b: Box, snap: Snapshot, backend: Backe
             disabled: off,
             onclick: async () => {
               if (await confirmAction('배정 해제', `${b.key}의 담당자(${b.assignee})를 비웁니다.`, '배정 해제'))
-                void act(b, '배정을 해제했습니다.', () => backend.assignTicket(b.key, ''), redraw);
+                void act(w, '배정을 해제했습니다.', () => backend.assignTicket(b.key, ''), redraw);
             },
           },
           '배정 해제',
@@ -188,7 +201,7 @@ function renderActions(host: HTMLElement, b: Box, snap: Snapshot, backend: Backe
                 disabled: off,
                 onclick: async () => {
                   if (await confirmAction('승인', `${b.key} "${b.summary}"을(를) 승인합니다. Jira에 바로 반영되며 되돌릴 수 없습니다.`, '승인'))
-                    void act(b, '승인했습니다.', () => backend.answerApproval(b.key, ap.id, true), redraw);
+                    void act(w, '승인했습니다.', () => backend.answerApproval(b.key, ap.id, true), redraw);
                 },
               },
               '승인',
@@ -200,7 +213,7 @@ function renderActions(host: HTMLElement, b: Box, snap: Snapshot, backend: Backe
                 disabled: off,
                 onclick: async () => {
                   if (await confirmAction('반려', `${b.key} "${b.summary}"을(를) 반려합니다. Jira에 바로 반영되며 되돌릴 수 없습니다.`, '반려', true))
-                    void act(b, '반려했습니다.', () => backend.answerApproval(b.key, ap.id, false), redraw);
+                    void act(w, '반려했습니다.', () => backend.answerApproval(b.key, ap.id, false), redraw);
                 },
               },
               '반려',
@@ -235,7 +248,7 @@ function renderActions(host: HTMLElement, b: Box, snap: Snapshot, backend: Backe
                     onclick: async () => {
                       const what = reject ? '반려(취소)' : '승인';
                       if (await confirmAction(what, `${b.key} "${b.summary}"을(를) "${t.toName}"(으)로 옮깁니다. Jira에 바로 반영됩니다.`, t.name, reject))
-                        void act(b, `"${t.toName}"(으)로 옮겼습니다.`, () => backend.moveTicket(b.key, t.id), redraw);
+                        void act(w, `"${t.toName}"(으)로 옮겼습니다.`, () => backend.moveTicket(b.key, t.id), redraw);
                     },
                   },
                   t.name,
@@ -260,7 +273,7 @@ function renderActions(host: HTMLElement, b: Box, snap: Snapshot, backend: Backe
             disabled: off,
             onclick: async () => {
               if (await confirmAction('상태 이동', `${b.key}을(를) "${b.status}"에서 "${t.toName}"(으)로 옮깁니다.`, t.name))
-                void act(b, `"${t.toName}"(으)로 옮겼습니다.`, () => backend.moveTicket(b.key, t.id), redraw);
+                void act(w, `"${t.toName}"(으)로 옮겼습니다.`, () => backend.moveTicket(b.key, t.id), redraw);
             },
           },
           t.toName && t.toName !== t.name ? `${t.name} → ${t.toName}` : t.name,
@@ -271,9 +284,10 @@ function renderActions(host: HTMLElement, b: Box, snap: Snapshot, backend: Backe
   // a ticket of an ordinary project takes plain comments
   const desk = a?.serviceDesk ?? true;
   const draft = drafts.get(b.key) ?? { text: '', isPublic: false };
-  const old = document.getElementById('comment-text') as HTMLTextAreaElement | null;
+  const old = w.text;
   const focused = old && document.activeElement === old ? [old.selectionStart, old.selectionEnd] : null;
-  const text = h('textarea', { id: 'comment-text', rows: '3', placeholder: '댓글 쓰기', disabled: off });
+  const text = h('textarea', { class: 'comment-text', rows: '3', placeholder: '댓글 쓰기', 'aria-label': `${b.key} 댓글`, disabled: off });
+  w.text = text;
   text.value = draft.text;
   const send = h('button', { class: 'primary' });
   const audience = h('select', { 'aria-label': '댓글 공개 범위', disabled: off },
@@ -284,12 +298,12 @@ function renderActions(host: HTMLElement, b: Box, snap: Snapshot, backend: Backe
   const mode = () => (!desk ? 'plain' : audience.value === 'public' ? 'public' : 'internal');
   const keep = () => {
     drafts.set(b.key, { text: text.value, isPublic: audience.value === 'public' });
-    send.disabled = busy || !a || !text.value.trim(); // not before Jira said what kind of ticket this is
+    send.disabled = w.busy || !a || !text.value.trim(); // not before Jira said what kind of ticket this is
     send.textContent = { plain: '댓글 등록', public: '요청자에게 답변', internal: '내부 메모 남기기' }[mode()];
   };
   keep();
   text.addEventListener('input', keep);
-  text.addEventListener('blur', flush);
+  text.addEventListener('blur', () => flush(w));
   audience.addEventListener('change', keep);
   send.addEventListener('click', async () => {
     const body = text.value.trim();
@@ -298,7 +312,7 @@ function renderActions(host: HTMLElement, b: Box, snap: Snapshot, backend: Backe
     // A public comment reaches the requester, so it is confirmed first.
     if (how === 'public' && !(await confirmAction('요청자에게 답변', `${b.reporter} 님에게 보이는 공개 댓글로 등록합니다.`, '등록'))) return;
     void act(
-      b,
+      w,
       { plain: '댓글을 등록했습니다.', public: '답변을 등록했습니다.', internal: '내부 메모를 남겼습니다.' }[how],
       async () => {
         await backend.addComment(b.key, body, how);
@@ -323,8 +337,8 @@ function renderActions(host: HTMLElement, b: Box, snap: Snapshot, backend: Backe
         : null,
   );
   // Writing a comment happens where the comments are read: at the top of that list.
-  commentBox = h('div', { class: 'comment-box' }, text, h('div', { class: 'act-row' }, desk ? audience : null, send));
-  document.getElementById('comment-slot')?.replaceChildren(commentBox);
+  w.commentBox = h('div', { class: 'comment-box' }, text, h('div', { class: 'act-row' }, desk ? audience : null, send));
+  w.detailEl?.querySelector('.comment-slot')?.replaceChildren(w.commentBox);
   if (focused) {
     text.focus();
     text.setSelectionRange(focused[0], focused[1]);
@@ -350,26 +364,28 @@ function answer(label: string, value: string) {
   return h('div', { class: 'answer wide' }, name, h('dd', {}, value));
 }
 
-function renderDetail(host: HTMLElement, b: Box, backend: Backend) {
+function renderDetail(w: Win, backend: Backend) {
+  const host = w.detailEl;
+  if (!host) return;
+  const b = w.box;
   const entry = details.get(b.key);
   if (!entry || entry.updated !== b.updated) {
     details.set(b.key, { updated: b.updated });
-    fill(host, h('p', { class: 'quiet' }, '내용을 불러오는 중입니다.'), h('h3', {}, '댓글'), commentSlot());
+    fill(host, h('p', { class: 'quiet' }, '내용을 불러오는 중입니다.'), h('h3', {}, '댓글'), commentSlot(w));
     backend.ticketDetail(b.key).then(
       (detail) => details.set(b.key, { updated: b.updated, detail }),
       (e) => details.set(b.key, { updated: b.updated, error: errText(e) }),
     ).finally(() => {
-      // Draw only if the panel still shows this ticket.
-      const now = document.getElementById('detail');
-      if (shown !== b.key || !now) return;
+      // Draw only if the window is still open.
+      if (wins.get(w.key) !== w) return;
       // Redrawing moves the comment box: wait while someone is typing in it.
-      if (typing()) pending = () => renderDetail(now, b, backend);
-      else renderDetail(now, b, backend);
+      if (typing(w)) w.pending = () => renderDetail(w, backend);
+      else renderDetail(w, backend);
     });
     return;
   }
   if (entry.error) {
-    fill(host, h('p', { class: 'error' }, `내용을 불러오지 못했습니다: ${entry.error}`), h('h3', {}, '댓글'), commentSlot());
+    fill(host, h('p', { class: 'error' }, `내용을 불러오지 못했습니다: ${entry.error}`), h('h3', {}, '댓글'), commentSlot(w));
     return;
   }
   const d = entry.detail;
@@ -404,7 +420,7 @@ function renderDetail(host: HTMLElement, b: Box, backend: Backend) {
     hasDescription ? rich(d.descriptionHtml, backend) : forms.length === 0 ? h('p', { class: 'quiet' }, '설명이 없습니다.') : null,
     d.attachments ? h('p', { class: 'quiet' }, `첨부파일 ${d.attachments}개는 Jira에서 볼 수 있습니다.`) : null,
     h('h3', {}, d.comments.length ? `댓글 ${d.comments.length}개` : '댓글'),
-    commentSlot(),
+    commentSlot(w),
     d.comments.length
       ? h(
           'ol',
@@ -428,34 +444,22 @@ function renderDetail(host: HTMLElement, b: Box, backend: Backend) {
   );
 }
 
-export function showPanel(b: Box | null, snap: Snapshot | null, backend: Backend, close: () => void) {
-  const p = el();
-  if (!b || !snap) {
-    shown = '';
-    p.hidden = true;
-    p.replaceChildren();
+/** Draws a window's content for its ticket as it is in this snapshot. */
+function draw(w: Win, snap: Snapshot, backend: Backend) {
+  if (typing(w) && !w.busy) {
+    w.pending = () => draw(w, snap, backend);
     return;
   }
-  if (shown === b.key && typing() && !busy) {
-    pending = () => showPanel(b, snap, backend, close);
-    return;
-  }
-  pending = null;
-  // The panel is redrawn on every refresh: keep the reader's place.
-  const scroll = shown === b.key ? p.scrollTop : 0;
-  shown = b.key;
+  w.pending = null;
+  const b = w.box;
+  // A window is redrawn on every refresh: keep the reader's place.
+  const scroll = w.body.scrollTop;
   const zone = snap.spaces.find((s) => s.id === b.space)?.zones.find((z) => z.id === b.zone);
-  const detail = h('div', { id: 'detail' });
-  const work = h('section', { id: 'actions' });
-  p.hidden = false;
+  w.detailEl = h('div', { class: 'tw-detail' });
+  w.actionsEl = h('section', { class: 'tw-actions' });
+  w.el.querySelector('.tw-title')!.replaceChildren(h('span', { class: `tag tag-${b.tag || 'gray'}` }, b.type), h('b', {}, b.key));
   fill(
-    p,
-    h(
-      'div',
-      { class: 'panel-head' },
-      h('span', { class: `tag tag-${b.tag || 'gray'}` }, b.type),
-      h('button', { class: 'close', 'aria-label': '패널 닫기', onclick: close }, '×'),
-    ),
+    w.body,
     h(
       'p',
       { class: 'key' },
@@ -477,7 +481,7 @@ export function showPanel(b: Box | null, snap: Snapshot | null, backend: Backend
       row('구역 도착', dateTime(b.enteredAt)),
       row('경과', ageLine(b, snap)),
     ),
-    work,
+    w.actionsEl,
     b.path?.length
       ? h(
           'div',
@@ -492,9 +496,106 @@ export function showPanel(b: Box | null, snap: Snapshot | null, backend: Backend
           ),
         )
       : null,
-    detail,
+    w.detailEl,
   );
-  renderActions(work, b, snap, backend);
-  renderDetail(detail, b, backend);
-  p.scrollTop = scroll;
+  renderActions(w, snap, backend);
+  renderDetail(w, backend);
+  w.body.scrollTop = scroll;
+}
+
+export interface TicketHooks {
+  /** A window came to the front: its box is the one marked in the room. */
+  onFocus(key: string): void;
+  onClose(key: string): void;
+}
+
+function front(w: Win, hooks: TicketHooks) {
+  w.el.style.zIndex = String(++top);
+  wins.forEach((o) => o.el.classList.toggle('front', o === w));
+  hooks.onFocus(w.key);
+}
+
+function close(w: Win, hooks: TicketHooks) {
+  w.el.remove();
+  wins.delete(w.key);
+  hooks.onClose(w.key);
+}
+
+/**
+ * Opens a ticket in its own window, or brings its window to the front if it
+ * is open already. Windows float over the room, can be dragged by their title
+ * and resized, and several can stay open side by side.
+ */
+export function openTicket(b: Box, snap: Snapshot, backend: Backend, hooks: TicketHooks) {
+  const host = document.getElementById('windows')!;
+  let w = wins.get(b.key);
+  if (w) {
+    w.box = b;
+    front(w, hooks);
+    draw(w, snap, backend);
+    return;
+  }
+  // Room for one more: the window opened longest ago goes.
+  if (wins.size >= MAX_WINDOWS) close(wins.values().next().value!, hooks);
+
+  const title = h('div', { class: 'tw-title' });
+  const shut = h('button', { class: 'close', 'aria-label': `${b.key} 창 닫기` }, '×');
+  const head = h('header', { class: 'tw-head' }, title, shut);
+  const body = h('div', { class: 'tw-body' });
+  const el = h('section', { class: 'tw', role: 'dialog', 'aria-label': `${b.key} ${b.summary}` }, head, body);
+  const win: Win = { key: b.key, box: b, el, body, actionsEl: null, detailEl: null, text: null, commentBox: null, busy: false, pending: null };
+  w = win;
+  wins.set(b.key, win);
+
+  // Each new window opens a step down and to the left of the last, from the right edge.
+  const n = wins.size - 1;
+  const width = Math.min(560, host.clientWidth - 24);
+  el.style.width = `${width}px`;
+  el.style.left = `${Math.max(12, host.clientWidth - width - 16 - n * 32)}px`;
+  el.style.top = `${66 + n * 30}px`;
+
+  shut.addEventListener('click', () => close(win, hooks));
+  el.addEventListener('pointerdown', () => front(win, hooks), true);
+  el.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !typing(win)) close(win, hooks);
+  });
+  // drag by the title bar, kept inside the window of the app
+  head.addEventListener('pointerdown', (e) => {
+    if ((e.target as HTMLElement).closest('button')) return;
+    const sx = e.clientX - el.offsetLeft;
+    const sy = e.clientY - el.offsetTop;
+    head.setPointerCapture(e.pointerId);
+    const move = (m: PointerEvent) => {
+      el.style.left = `${Math.min(host.clientWidth - 80, Math.max(80 - el.offsetWidth, m.clientX - sx))}px`;
+      el.style.top = `${Math.min(host.clientHeight - 40, Math.max(0, m.clientY - sy))}px`;
+    };
+    const stop = () => {
+      head.removeEventListener('pointermove', move);
+      head.removeEventListener('pointerup', stop);
+      head.removeEventListener('pointercancel', stop);
+    };
+    head.addEventListener('pointermove', move);
+    head.addEventListener('pointerup', stop);
+    head.addEventListener('pointercancel', stop);
+  });
+
+  host.append(el);
+  front(win, hooks);
+  draw(win, snap, backend);
+}
+
+/** Brings every open window up to date with a new snapshot. */
+export function syncTickets(snap: Snapshot, backend: Backend) {
+  wins.forEach((w) => {
+    const now = snap.boxes.find((b) => b.key === w.key);
+    // A ticket that left the centre keeps its window, as it was last seen.
+    w.el.classList.toggle('gone', !now);
+    if (now) w.box = now;
+    draw(w, snap, backend);
+  });
+}
+
+export function closeTickets() {
+  wins.forEach((w) => w.el.remove());
+  wins.clear();
 }

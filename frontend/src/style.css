@@ -237,21 +237,6 @@ button:disabled {
 
 /* ---- ticket panel ---- */
 
-#panel {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  bottom: 12px;
-  z-index: 10;
-  width: clamp(420px, 46vw, 720px);
-  max-width: calc(100% - 24px);
-  padding: 20px;
-  overflow: auto;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: var(--surface);
-  box-shadow: 0 12px 32px rgb(43 42 39 / 12%);
-}
 
 .panel-head {
   display: flex;
@@ -286,24 +271,24 @@ button.close {
 .tag-navy { background: #34477f; }
 .tag-gray { background: #6f6f69; }
 
-#panel .key {
+.tw .key {
   margin: 14px 0 0;
   color: var(--quiet);
   font-size: 12px;
   font-variant-numeric: tabular-nums;
 }
 
-#panel h2 {
+.tw h2 {
   margin: 2px 0 14px;
   font-size: 17px;
   line-height: 1.35;
 }
 
-#panel dl {
+.tw dl {
   margin: 0 0 16px;
 }
 
-#panel .row {
+.tw .row {
   display: grid;
   grid-template-columns: 76px 1fr;
   gap: 8px;
@@ -311,15 +296,15 @@ button.close {
   border-top: 1px solid var(--line);
 }
 
-#panel dt {
+.tw dt {
   color: var(--quiet);
 }
 
-#panel dd {
+.tw dd {
   margin: 0;
 }
 
-#panel .old {
+.tw .old {
   color: var(--old);
   font-weight: 600;
 }
@@ -381,18 +366,18 @@ button.close {
   color: var(--quiet);
 }
 
-#panel > button.primary {
+.tw-body > button.primary {
   position: sticky;
   bottom: 0;
   width: 100%;
   box-shadow: 0 0 0 8px var(--surface);
 }
 
-#detail {
+.tw-detail {
   margin-bottom: 16px;
 }
 
-#detail h3 {
+.tw-detail h3 {
   margin: 14px 0 6px;
   font-size: 13px;
 }
@@ -801,7 +786,7 @@ button.copy.done {
 
 /* ---- working on a ticket ---- */
 
-#actions {
+.tw-actions {
   margin: 0 0 16px;
   padding: 12px 14px;
   border: 1px solid var(--line);
@@ -809,7 +794,7 @@ button.copy.done {
   background: var(--paper);
 }
 
-#actions h3 {
+.tw-actions h3 {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -836,7 +821,7 @@ button.copy.done {
   gap: 6px;
 }
 
-#actions select,
+.tw-actions select,
 .comment-box select {
   padding: 6px 8px;
   border: 1px solid var(--line);
@@ -846,8 +831,8 @@ button.copy.done {
   color: inherit;
 }
 
-#actions button:disabled,
-#actions select:disabled,
+.tw-actions button:disabled,
+.tw-actions select:disabled,
 .comment-box button:disabled,
 .comment-box select:disabled,
 .comment-box textarea:disabled {
@@ -1065,9 +1050,6 @@ dialog.confirm .buttons {
   top: 66px;
 }
 
-#panel {
-  top: 66px;
-}
 
 #legend-toggle {
   position: absolute;
@@ -1257,6 +1239,97 @@ dialog.confirm .buttons {
 }
 
 /* The comment box, above the list of comments. */
-#comment-slot .comment-box {
+.comment-slot .comment-box {
   margin: 0 0 10px;
+}
+
+/* ---- holiday dialog ---- */
+
+dialog.vacation .dates {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 8px 12px;
+  align-items: center;
+  margin: 0 0 12px;
+}
+
+dialog.vacation input[type='date'] {
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+dialog.vacation p.error:empty {
+  display: none;
+}
+
+/* ---- ticket windows: float over the room, several at once ---- */
+
+#windows {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  overflow: hidden;
+  pointer-events: none; /* only the windows themselves take clicks */
+}
+
+.tw {
+  position: absolute;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  height: min(74vh, 760px);
+  min-width: 380px;
+  min-height: 240px;
+  max-width: calc(100% - 24px);
+  max-height: calc(100% - 12px);
+  overflow: hidden;
+  resize: both;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: 0 10px 28px rgb(31 42 68 / 16%);
+  pointer-events: auto;
+}
+
+.tw.front {
+  border-color: #aab6d3;
+  box-shadow: 0 16px 44px rgb(31 42 68 / 26%);
+}
+
+.tw-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 8px 8px 14px;
+  border-bottom: 1px solid var(--line);
+  background: var(--paper);
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+}
+
+.tw-head:active {
+  cursor: grabbing;
+}
+
+.tw-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.tw-body {
+  padding: 4px 18px 18px;
+  overflow: auto;
+}
+
+.tw.gone .tw-head::after {
+  content: '센터를 떠난 티켓';
+  margin-right: auto;
+  color: var(--quiet);
+  font-size: 12px;
 }

@@ -1,11 +1,12 @@
 import { connect } from './backend';
 import { news } from './game';
 import { renderHud } from './hud';
-import { showPanel } from './panel';
+import { closeTickets, openTicket, syncTickets } from './panel';
 import { AGE, Scene, TAGS } from './scene';
 import { renderSetup } from './setup';
 import type { AppState, Box, GameStats, Snapshot } from './types';
 import { checkForUpdates, initUpdates } from './update';
+import { openVacation } from './vacation';
 import { errText, toast } from './ui';
 
 async function boot() {
@@ -19,11 +20,17 @@ async function boot() {
   let gameOpen = false;
 
   const tooltip = document.getElementById('tooltip')!;
+  // Ticket windows float over the room. The window in front marks its box.
+  const tickets = {
+    onFocus: (key: string) => scene.mark(key),
+    onClose: (key: string) => {
+      if (selected?.key === key) scene.mark('');
+    },
+  };
   const scene = new Scene(document.getElementById('scene')!, {
     onSelect: (box) => {
       selected = box;
-      showPanel(box, snap, backend, () => scene.select(''));
-      inset();
+      if (box && snap) openTicket(box, snap, backend, tickets);
     },
     onHover: (box, x, y) => {
       tooltip.hidden = !box;
@@ -34,13 +41,6 @@ async function boot() {
     },
   });
   await scene.init();
-  /** Keeps the building clear of the open panel. */
-  const inset = () => {
-    const p = document.getElementById('panel')!;
-    scene.setInset(p.hidden ? 0 : p.offsetWidth + 24);
-  };
-  window.addEventListener('resize', inset);
-
   const hud = () =>
     renderHud(state, snap, space, lastError, backend, {
       refresh: () => void backend.refresh(),
@@ -48,6 +48,7 @@ async function boot() {
       chooseConfig: () => void backend.chooseConfig().then(apply, fail),
       checkUpdate: () => void checkForUpdates(true),
       logout: () => void backend.logout().then(apply, fail),
+      vacation: () => void openVacation(backend).catch(fail),
       setNotify: (on) =>
         void backend.setNotify(on).then((next) => {
           apply(next);
@@ -111,6 +112,7 @@ async function boot() {
     if (!next) return;
     const fresh = news(game, next);
     game = next;
+    scene.setTeam(next.fatigue ?? {}, next.away ?? []);
     hud();
     if (fresh.myLevel) {
       toast(`레벨 업! 나 Lv.${fresh.myLevel}`);
@@ -136,7 +138,7 @@ async function boot() {
     const blocked = renderSetup(state, backend, apply);
     if (blocked) {
       snap = null;
-      showPanel(null, null, backend, () => {});
+      closeTickets();
       legend();
     }
     hud();
@@ -146,7 +148,7 @@ async function boot() {
     snap = ev.snapshot;
     lastError = '';
     scene.update(ev.snapshot, ev.changes);
-    if (selected) showPanel(ev.snapshot.boxes.find((b) => b.key === selected!.key) ?? null, snap, backend, () => scene.select(''));
+    syncTickets(ev.snapshot, backend);
     hud();
     legend();
   });

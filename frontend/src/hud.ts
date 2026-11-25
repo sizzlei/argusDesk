@@ -13,6 +13,7 @@ export interface HudHooks {
   checkUpdate(): void;
   logout(): void;
   setNotify(on: boolean): void;
+  vacation(): void;
   setSpace(index: number): void;
   game: GameStats | null;
   gameOpen: boolean;
@@ -24,14 +25,14 @@ let menuOpen = false;
 export function renderHud(state: AppState, snap: Snapshot | null, space: number, lastError: string, backend: Backend, hooks: HudHooks) {
   const hud = document.getElementById('hud')!;
   // Returned boxes leave the building, so they have no room and no counter.
-  const zones = (snap?.spaces[space]?.zones ?? []).filter((z) => z.kind !== 'returned');
+  const zones = (space < 0 ? [] : (snap?.spaces[space]?.zones ?? [])).filter((z) => z.kind !== 'returned');
   const item = (label: string, run: () => void) =>
     h('button', { role: 'menuitem', onclick: () => ((menuOpen = false), run()) }, label);
 
   // Spaces are floors of one building: the floor buttons stand beside it,
   // highest floor on top, each with its open boxes.
   const floors = document.getElementById('floors')!;
-  floors.hidden = !snap || snap.spaces.length < 2;
+  floors.hidden = !snap;
   fill(
     floors,
     ...(snap?.spaces ?? [])
@@ -46,6 +47,16 @@ export function renderHud(state: AppState, snap: Snapshot | null, space: number,
         ),
       )
       .reverse(),
+    // the basement: the lodge where teammates on holiday rest
+    snap
+      ? h(
+          'button',
+          { class: space < 0 ? 'on' : '', 'aria-pressed': String(space < 0), onclick: () => hooks.setSpace(-1) },
+          h('b', {}, 'B1'),
+          h('span', { class: 'name' }, '숙소'),
+          h('span', { class: 'count' }, String((hooks.game?.away ?? []).filter((a) => a.active).length)),
+        )
+      : null,
   );
 
   renderGame(hooks.game, hooks.gameOpen, hooks.toggleGame);
@@ -105,6 +116,7 @@ export function renderHud(state: AppState, snap: Snapshot | null, space: number,
               { class: 'menu-list', role: 'menu' },
               item('설정 다시 읽기', hooks.reloadConfig),
               item('설정 파일 바꾸기', hooks.chooseConfig),
+              item('휴가 등록', hooks.vacation),
               item(state.notify ? '알림 끄기' : '알림 켜기', () => hooks.setNotify(!state.notify)),
               state.notify && state.notifyProblem ? h('p', { class: 'quiet' }, `알림을 보낼 수 없습니다: ${state.notifyProblem}`) : null,
               item('업데이트 확인', hooks.checkUpdate),

@@ -25,6 +25,7 @@ const (
 	KindDesk     = "desk"     // the team acts here; boxes sit on assignee desks
 	KindDone     = "done"     // finished today
 	KindReturned = "returned" // rejected or cancelled
+	KindSiding   = "siding"   // waiting on another team: a spur off the conveyor, not a room
 	KindUnsorted = "unsorted" // statuses the file does not mention
 )
 
@@ -46,14 +47,26 @@ type Config struct {
 	PollSeconds int     `yaml:"poll_seconds"`
 	Spaces      []Space `yaml:"spaces"`
 	Game        Game    `yaml:"game"`
+	Team        Team    `yaml:"team"`
 
 	loc *time.Location
+}
+
+// Team holds what the team shares through Jira, as the app has no server.
+type Team struct {
+	// StateIssue is a ticket every teammate can edit. Holidays are kept on it
+	// as issue properties so that everyone sees them. Without it, a holiday is
+	// only known to the app it was entered in.
+	StateIssue string `yaml:"state_issue"`
 }
 
 // Game sets how finished tickets turn into experience. All of it is optional.
 type Game struct {
 	SeasonStart string `yaml:"season_start"` // "2026-01-01"; default: January 1st of this year
 	XP          int    `yaml:"xp"`           // experience for a finished ticket; default 10
+	// Fatigue: every finished ticket adds 1 and fades by half every two days.
+	Tired     float64 `yaml:"tired"`     // from here the avatar looks tired; default 8
+	Exhausted float64 `yaml:"exhausted"` // from here it rests on a bench; default 14
 
 	start time.Time
 }
@@ -214,7 +227,7 @@ func ParseDuration(s string) (time.Duration, error) {
 	return time.Duration(n) * unit, nil
 }
 
-var kinds = map[string]bool{KindWait: true, KindWork: true, KindDesk: true, KindDone: true, KindReturned: true}
+var kinds = map[string]bool{KindWait: true, KindWork: true, KindDesk: true, KindDone: true, KindReturned: true, KindSiding: true}
 
 // check validates the file and fills in defaults. Every problem is reported
 // at once, so a file can be fixed in one pass.
@@ -245,6 +258,15 @@ func (c *Config) check() error {
 	c.loc = loc
 	if c.Game.XP == 0 {
 		c.Game.XP = 10
+	}
+	if c.Game.Tired == 0 {
+		c.Game.Tired = 8
+	}
+	if c.Game.Exhausted == 0 {
+		c.Game.Exhausted = 14
+	}
+	if c.Game.Tired < 0 || c.Game.Exhausted < c.Game.Tired {
+		bad("game: tired는 0보다 크고 exhausted는 tired 이상이어야 합니다")
 	}
 	if c.Game.XP < 0 {
 		bad("game.xp: 0보다 커야 합니다")
@@ -294,7 +316,7 @@ func (c *Config) check() error {
 				z.Name = z.ID
 			}
 			if !kinds[z.Kind] {
-				bad("%s: kind는 wait, work, desk, done, returned 중 하나여야 합니다 (현재 %q)", zat, z.Kind)
+				bad("%s: kind는 wait, work, desk, done, returned, siding 중 하나여야 합니다 (현재 %q)", zat, z.Kind)
 			}
 			if z.Stale != nil {
 				d, err := ParseDuration(z.Stale.After)

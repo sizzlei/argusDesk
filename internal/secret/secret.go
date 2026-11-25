@@ -52,6 +52,8 @@ type Prefs struct {
 	LastUpdateCheck int64  `json:"lastUpdateCheck"` // unix ms
 	NotesShownFor   string `json:"notesShownFor"`   // version whose release notes were shown
 	NotifyOff       bool   `json:"notifyOff"`       // the user turned notifications off
+	VacationFrom    string `json:"vacationFrom"`    // own holiday, "2026-12-01"; used when the team has no shared ticket
+	VacationTo      string `json:"vacationTo"`
 }
 
 // Dir is the folder argusDesk keeps its own files in.
