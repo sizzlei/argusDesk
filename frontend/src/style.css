@@ -1479,66 +1479,6 @@ dialog.avatars .looks button.on {
   box-shadow: 0 0 0 2px var(--accent);
 }
 
-/* ---- the dock: open ticket windows, and closing them all ---- */
-
-#dock {
-  position: absolute;
-  bottom: 16px;
-  left: 92px;
-  z-index: 11;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-  max-width: calc(100% - 420px);
-  padding: 6px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: color-mix(in srgb, var(--surface) 94%, transparent);
-  box-shadow: 0 4px 14px rgb(31 42 68 / 10%);
-}
-
-#dock .win {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  max-width: 220px;
-  padding: 3px 4px 3px 10px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: var(--surface);
-  font-size: 12px;
-}
-
-#dock .win.on {
-  border-color: var(--ink);
-  font-weight: 600;
-}
-
-#dock .win .open {
-  overflow: hidden;
-  padding: 0;
-  border: 0;
-  background: none;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-#dock .win .x {
-  padding: 0 6px;
-  border: 0;
-  background: none;
-  font-size: 15px;
-  line-height: 1;
-  color: var(--quiet);
-}
-
-#dock .all {
-  padding: 3px 10px;
-  border-radius: 999px;
-  font-size: 12px;
-}
-
 /* ---- minimise, and the cancel button kept apart at the top ---- */
 
 .tw-buttons {
@@ -1572,10 +1512,6 @@ dialog.avatars .looks button.on {
   color: var(--old);
 }
 
-#dock .win.min {
-  border-style: dashed;
-  color: var(--quiet);
-}
 
 /* My avatar in the team strip is the menu button. */
 .team button.member {

@@ -539,28 +539,8 @@ export interface TicketHooks {
   onClose(key: string): void;
 }
 
-let frontKey = '';
-
-/** The dock lists the open windows: one press brings a window forward, and one closes them all. */
-function dock(hooks: TicketHooks) {
-  const el = document.getElementById('dock')!;
-  el.hidden = wins.size === 0;
-  fill(
-    el,
-    ...[...wins.values()].map((w) =>
-      h(
-        'span',
-        { class: `win${w.key === frontKey ? ' on' : ''}${w.min ? ' min' : ''}` },
-        h('button', { class: 'open', title: `${w.key} · ${w.box.summary}${w.min ? ' (최소화됨)' : ''}`, onclick: () => (setMin(w, false, hooks), front(w, hooks)) }, `${w.key.split('-').pop()} · ${w.box.summary}`),
-        h('button', { class: 'x', 'aria-label': `${w.key} 창 닫기`, onclick: () => close(w, hooks) }, '×'),
-      ),
-    ),
-    wins.size > 1 ? h('button', { class: 'all', onclick: () => closeTickets(hooks) }, `모두 닫기 (${wins.size})`) : null,
-  );
-}
-
 /** Shrinks a window to its title bar, or opens it out again at the size it had. */
-function setMin(w: Win, min: boolean, hooks: TicketHooks) {
+function setMin(w: Win, min: boolean) {
   if (w.min === min) return;
   w.min = min;
   if (min) {
@@ -576,7 +556,6 @@ function setMin(w: Win, min: boolean, hooks: TicketHooks) {
   fold.textContent = min ? '▢' : '–';
   fold.title = min ? '펼치기' : '최소화';
   fold.setAttribute('aria-label', `${w.key} 창 ${min ? '펼치기' : '최소화'}`);
-  dock(hooks);
 }
 
 function front(w: Win, hooks: TicketHooks) {
@@ -587,17 +566,14 @@ function front(w: Win, hooks: TicketHooks) {
     w.el.style.left = `${Math.max(12, host.clientWidth - w.el.offsetWidth - 16)}px`;
     w.el.style.top = '66px';
   }
-  frontKey = w.key;
   wins.forEach((o) => o.el.classList.toggle('front', o === w));
   hooks.onFocus(w.key);
-  dock(hooks);
 }
 
 function close(w: Win, hooks: TicketHooks) {
   w.el.remove();
   wins.delete(w.key);
   hooks.onClose(w.key);
-  dock(hooks);
 }
 
 /**
@@ -610,7 +586,7 @@ export function openTicket(b: Box, snap: Snapshot, backend: Backend, hooks: Tick
   let w = wins.get(b.key);
   if (w) {
     w.box = b;
-    setMin(w, false, hooks);
+    setMin(w, false);
     front(w, hooks);
     draw(w, snap, backend);
     return;
@@ -637,9 +613,9 @@ export function openTicket(b: Box, snap: Snapshot, backend: Backend, hooks: Tick
 
   shut.addEventListener('click', () => close(win, hooks));
   // Minimised, a window is just its title bar: small, and still movable.
-  fold.addEventListener('click', () => setMin(win, !win.min, hooks));
+  fold.addEventListener('click', () => setMin(win, !win.min));
   head.addEventListener('dblclick', (e) => {
-    if (!(e.target as HTMLElement).closest('button')) setMin(win, !win.min, hooks);
+    if (!(e.target as HTMLElement).closest('button')) setMin(win, !win.min);
   });
   el.addEventListener(
     'pointerdown',
@@ -691,7 +667,8 @@ export function closeTickets(hooks?: TicketHooks) {
   const keys = [...wins.keys()];
   wins.forEach((w) => w.el.remove());
   wins.clear();
-  frontKey = '';
-  document.getElementById('dock')!.hidden = true;
   if (hooks) keys.forEach((k) => hooks.onClose(k));
 }
+
+/** How many ticket windows are open (minimised ones included). */
+export const openTickets = () => wins.size;

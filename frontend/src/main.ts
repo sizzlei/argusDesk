@@ -1,7 +1,7 @@
 import { connect } from './backend';
 import { news } from './game';
 import { renderHud } from './hud';
-import { closeTickets, openTicket, syncTickets } from './panel';
+import { closeTickets, openTicket, openTickets, syncTickets } from './panel';
 import { AGE, Scene, TAGS } from './scene';
 import { renderSetup } from './setup';
 import type { AppState, Box, GameStats, Snapshot } from './types';
@@ -48,6 +48,8 @@ async function boot() {
       chooseConfig: () => void backend.chooseConfig().then(apply, fail),
       checkUpdate: () => void checkForUpdates(true),
       logout: () => void backend.logout().then(apply, fail),
+      windows: openTickets(),
+      closeWindows: () => closeTickets(tickets),
       vacation: () => void openVacation(backend).catch(fail),
       avatar: () => {
         const me = snap?.members.find((m) => m.me);

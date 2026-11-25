@@ -16,6 +16,8 @@ export interface HudHooks {
   setNotify(on: boolean): void;
   vacation(): void;
   avatar(): void;
+  windows: number; // open ticket windows
+  closeWindows(): void;
   setSpace(index: number): void;
   game: GameStats | null;
   gameOpen: boolean;
@@ -149,6 +151,7 @@ export function renderHud(state: AppState, snap: Snapshot | null, space: number,
               { class: 'menu-list', role: 'menu' },
               item('설정 다시 읽기', hooks.reloadConfig),
               item('설정 파일 바꾸기', hooks.chooseConfig),
+              hooks.windows > 1 ? item(`티켓 창 모두 닫기 (${hooks.windows})`, hooks.closeWindows) : null,
               item('아바타 선택', hooks.avatar),
               item('휴가 등록', hooks.vacation),
               item(state.notify ? '알림 끄기' : '알림 켜기', () => hooks.setNotify(!state.notify)),
