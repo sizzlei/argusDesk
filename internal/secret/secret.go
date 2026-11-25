@@ -51,6 +51,7 @@ type Prefs struct {
 	Email           string `json:"email"`           // Jira e-mail last signed in with
 	LastUpdateCheck int64  `json:"lastUpdateCheck"` // unix ms
 	NotesShownFor   string `json:"notesShownFor"`   // version whose release notes were shown
+	NotifyOff       bool   `json:"notifyOff"`       // the user turned notifications off
 }
 
 // Dir is the folder argusDesk keeps its own files in.

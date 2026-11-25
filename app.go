@@ -43,6 +43,8 @@ type App struct {
 	stopPolling context.CancelFunc
 	kick        chan struct{}
 
+	notify notifier
+
 	updating atomic.Bool
 	restart  func() error
 }
@@ -62,6 +64,8 @@ type AppState struct {
 	Me            string `json:"me"`
 	AuthError     string `json:"authError"`
 	PollSeconds   int    `json:"pollSeconds"`
+	Notify        bool   `json:"notify"`        // the user wants notifications
+	NotifyProblem string `json:"notifyProblem"` // why the system will not show them ("" = fine)
 }
 
 // BoardEvent carries a fresh snapshot and what changed since the last one.
@@ -78,8 +82,9 @@ type BoardError struct {
 
 // ServiceStartup runs once when the application starts: it restores the
 // settings file and the sign-in from the last run.
-func (a *App) ServiceStartup(ctx context.Context, _ application.ServiceOptions) error {
+func (a *App) ServiceStartup(ctx context.Context, options application.ServiceOptions) error {
 	go update.Cleanup() // leftovers of the previous self-update
+	a.notify.start(ctx, options)
 	a.kick = make(chan struct{}, 1)
 	a.prefs, _ = secret.LoadPrefs()
 	if a.prefs.ConfigPath != "" {
@@ -124,6 +129,8 @@ func (a *App) stateLocked() *AppState {
 		Site:          a.prefs.Site,
 		Email:         a.prefs.Email,
 		AuthError:     a.authError,
+		Notify:        !a.prefs.NotifyOff,
+		NotifyProblem: a.notify.problem(),
 	}
 	if a.cfg != nil {
 		s.ConfigLoaded, s.ConfigName, s.ConfigVersion, s.PollSeconds = true, a.cfg.Name, a.cfg.Version, a.cfg.PollSeconds
@@ -297,8 +304,21 @@ func (a *App) jira() (*jira.Client, *jira.User, error) {
 	return a.client, a.me, nil
 }
 
+// SetNotify turns operating system notifications on or off.
+func (a *App) SetNotify(on bool) *AppState {
+	a.mu.Lock()
+	a.prefs.NotifyOff = !on
+	_ = secret.SavePrefs(a.prefs)
+	a.mu.Unlock()
+	if on {
+		a.notify.send([]board.Note{{Title: "ArgusDesk 알림이 켜졌습니다", Body: "새 상자와 내 상자의 이동을 알려 드립니다."}})
+	}
+	return a.State()
+}
+
 // write runs one change against Jira and refreshes the centre when it worked.
-func (a *App) write(fn func(ctx context.Context, c *jira.Client, me *jira.User) error) error {
+// The ticket is remembered so its change does not come back as a notification.
+func (a *App) write(key string, fn func(ctx context.Context, c *jira.Client, me *jira.User) error) error {
 	c, me, err := a.jira()
 	if err != nil {
 		return err
@@ -308,6 +328,7 @@ func (a *App) write(fn func(ctx context.Context, c *jira.Client, me *jira.User) 
 	if err := fn(ctx, c, me); err != nil {
 		return err
 	}
+	a.notify.touched(key)
 	a.Refresh()
 	return nil
 }
@@ -352,7 +373,7 @@ func (a *App) TicketActions(key string) (*jira.Actions, error) {
 
 // MoveTicket makes one of the ticket's transitions.
 func (a *App) MoveTicket(key, transitionID string) error {
-	return a.write(func(ctx context.Context, c *jira.Client, _ *jira.User) error {
+	return a.write(key, func(ctx context.Context, c *jira.Client, _ *jira.User) error {
 		return c.DoTransition(ctx, key, transitionID)
 	})
 }
@@ -360,7 +381,7 @@ func (a *App) MoveTicket(key, transitionID string) error {
 // AssignTicket gives the ticket to an account: "me" for the signed-in user,
 // "" to leave it unassigned.
 func (a *App) AssignTicket(key, accountID string) error {
-	return a.write(func(ctx context.Context, c *jira.Client, me *jira.User) error {
+	return a.write(key, func(ctx context.Context, c *jira.Client, me *jira.User) error {
 		if accountID == "me" {
 			accountID = me.AccountID
 		}
@@ -370,7 +391,7 @@ func (a *App) AssignTicket(key, accountID string) error {
 
 // AnswerApproval approves or declines a pending approval.
 func (a *App) AnswerApproval(key, approvalID string, approve bool) error {
-	return a.write(func(ctx context.Context, c *jira.Client, _ *jira.User) error {
+	return a.write(key, func(ctx context.Context, c *jira.Client, _ *jira.User) error {
 		return c.AnswerApproval(ctx, key, approvalID, approve)
 	})
 }
@@ -382,7 +403,7 @@ func (a *App) AddComment(key, text, mode string) error {
 	if text == "" {
 		return errors.New("댓글 내용을 입력해 주세요")
 	}
-	return a.write(func(ctx context.Context, c *jira.Client, _ *jira.User) error {
+	return a.write(key, func(ctx context.Context, c *jira.Client, _ *jira.User) error {
 		return c.AddComment(ctx, key, text, mode)
 	})
 }
@@ -426,6 +447,12 @@ func (a *App) startPolling() {
 				return
 			case err == nil:
 				a.app.Event.Emit(evSnapshot, BoardEvent{Snapshot: snap, Changes: changes})
+				a.mu.Lock()
+				wanted := !a.prefs.NotifyOff
+				a.mu.Unlock()
+				if wanted {
+					a.notify.send(board.Notes(snap, changes, a.notify.skip()))
+				}
 			case errors.Is(err, jira.ErrUnauthorized):
 				a.mu.Lock()
 				a.authError, a.me = err.Error(), nil

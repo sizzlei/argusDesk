@@ -13,6 +13,7 @@ export interface Backend {
   reloadConfig(): Promise<AppState>;
   login(site: string, email: string, token: string): Promise<AppState>;
   logout(): Promise<AppState>;
+  setNotify(on: boolean): Promise<AppState>;
   snapshot(): Promise<Snapshot | null>;
   refresh(): Promise<void>;
   ticketDetail(key: string): Promise<TicketDetail>;
@@ -47,6 +48,7 @@ async function real(): Promise<Backend> {
     reloadConfig: () => call('ReloadConfig'),
     login: (site, email, token) => call('Login', site, email, token),
     logout: () => call('Logout'),
+    setNotify: (on) => call('SetNotify', on),
     snapshot: () => call('Snapshot'),
     refresh: () => call('Refresh'),
     ticketDetail: (key) => call('TicketDetail', key),

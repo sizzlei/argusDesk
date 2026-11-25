@@ -100,6 +100,8 @@ export interface AppState {
   me: string;
   authError: string;
   pollSeconds: number;
+  notify: boolean; // the user wants notifications
+  notifyProblem: string; // why the system will not show them ("" = fine)
 }
 
 export interface Release {

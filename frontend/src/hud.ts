@@ -11,6 +11,7 @@ export interface HudHooks {
   chooseConfig(): void;
   checkUpdate(): void;
   logout(): void;
+  setNotify(on: boolean): void;
   setSpace(index: number): void;
 }
 
@@ -96,6 +97,8 @@ export function renderHud(state: AppState, snap: Snapshot | null, space: number,
               { class: 'menu-list', role: 'menu' },
               item('설정 다시 읽기', hooks.reloadConfig),
               item('설정 파일 바꾸기', hooks.chooseConfig),
+              item(state.notify ? '알림 끄기' : '알림 켜기', () => hooks.setNotify(!state.notify)),
+              state.notify && state.notifyProblem ? h('p', { class: 'quiet' }, `알림을 보낼 수 없습니다: ${state.notifyProblem}`) : null,
               item('업데이트 확인', hooks.checkUpdate),
               item('로그아웃', hooks.logout),
               h('p', { class: 'quiet' }, `ArgusDesk v${state.version}`),

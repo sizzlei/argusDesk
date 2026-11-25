@@ -45,6 +45,11 @@ async function boot() {
       chooseConfig: () => void backend.chooseConfig().then(apply, fail),
       checkUpdate: () => void checkForUpdates(true),
       logout: () => void backend.logout().then(apply, fail),
+      setNotify: (on) =>
+        void backend.setNotify(on).then((next) => {
+          apply(next);
+          toast(on ? (next.notifyProblem ? `알림을 켰지만 보낼 수 없습니다: ${next.notifyProblem}` : '알림을 켰습니다.') : '알림을 껐습니다.');
+        }, fail),
       setSpace: (i) => {
         space = i;
         scene.setSpace(i);

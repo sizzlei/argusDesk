@@ -230,6 +230,8 @@ export function mockBackend(): Backend {
     me: '김하늘',
     authError: '',
     pollSeconds: 60,
+    notify: true,
+    notifyProblem: '프로토타입에서는 알림을 보내지 않습니다',
   };
 
   let stamp = 0; // makes every change from the panel a new "updated" time
@@ -287,6 +289,10 @@ export function mockBackend(): Backend {
     reloadConfig: nothing,
     login: nothing,
     logout: nothing,
+    setNotify: async (on) => {
+      state.notify = on;
+      return state;
+    },
     snapshot: async () => snapshot(boxes, now),
     refresh: async () => tick(),
     ticketDetail: async (key) => {
