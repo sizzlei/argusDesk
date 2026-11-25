@@ -561,6 +561,8 @@ const SQUASH = 260;
 export interface SceneHooks {
   onSelect(box: Box | null): void;
   onHover(box: Box | null, x: number, y: number): void;
+  /** The zoom changed: 1 = drawn at its own size. */
+  onZoom?(scale: number): void;
 }
 
 export class Scene {
@@ -638,15 +640,8 @@ export class Scene {
       'wheel',
       (e) => {
         e.preventDefault();
-        const old = this.world.scale.x;
-        const next = Math.min(2.5, Math.max(0.35, old * Math.exp(-e.deltaY * 0.0015)));
         const r = this.app.canvas.getBoundingClientRect();
-        const cx = e.clientX - r.left;
-        const cy = e.clientY - r.top;
-        // keep the point under the cursor where it is
-        this.world.position.set(cx - ((cx - this.world.x) * next) / old, cy - ((cy - this.world.y) * next) / old);
-        this.world.scale.set(next);
-        this.held = true;
+        this.zoomAt(e.clientX - r.left, e.clientY - r.top, this.world.scale.x * Math.exp(-e.deltaY * 0.0015));
       },
       { passive: false },
     );
@@ -679,6 +674,27 @@ export class Scene {
     this.away = away;
     this.looks = looks;
     if (!same && this.snap) this.update(this.snap, []);
+  }
+
+  /** Sets the zoom, keeping the point (cx, cy) of the window where it is. */
+  private zoomAt(cx: number, cy: number, to: number) {
+    const old = this.world.scale.x;
+    const next = Math.min(2.5, Math.max(0.35, to));
+    this.world.position.set(cx - ((cx - this.world.x) * next) / old, cy - ((cy - this.world.y) * next) / old);
+    this.world.scale.set(next);
+    this.held = true;
+    this.hooks.onZoom?.(next);
+  }
+
+  /** Zooms in or out a step around the middle of the window (for the zoom buttons). */
+  zoom(factor: number) {
+    this.zoomAt(this.app.screen.width / 2, this.app.screen.height / 2, this.world.scale.x * factor);
+  }
+
+  /** Back to the whole building, fitted to the window. */
+  resetView() {
+    this.held = false;
+    this.fit();
   }
 
   /** Tells the scene how much of the right side the open panel covers. */
@@ -1410,6 +1426,7 @@ export class Scene {
     this.world.scale.set(s);
     this.world.position.set((free - this.bounds.w * s) / 2 - this.bounds.x * s, top + (height - top - this.bounds.h * s) / 2 - this.bounds.y * s);
     this.app.stage.hitArea = this.app.screen;
+    this.hooks.onZoom?.(s);
     this.reveal();
   }
 

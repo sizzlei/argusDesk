@@ -32,6 +32,9 @@ async function boot() {
       selected = box;
       if (box && snap) openTicket(box, snap, backend, tickets);
     },
+    onZoom: (scale) => {
+      document.getElementById('zoom-pct')!.textContent = `${Math.round(scale * 100)}%`;
+    },
     onHover: (box, x, y) => {
       tooltip.hidden = !box;
       if (!box) return;
@@ -41,6 +44,9 @@ async function boot() {
     },
   });
   await scene.init();
+  document.getElementById('zoom-in')!.addEventListener('click', () => scene.zoom(1.25));
+  document.getElementById('zoom-out')!.addEventListener('click', () => scene.zoom(0.8));
+  document.getElementById('zoom-fit')!.addEventListener('click', () => scene.resetView());
   const hud = () =>
     renderHud(state, snap, space, lastError, backend, {
       refresh: () => void backend.refresh(),

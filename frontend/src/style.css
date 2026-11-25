@@ -1599,3 +1599,92 @@ dialog.avatars .looks button.on {
 .tw.mini .tag-name {
   display: none;
 }
+
+/* ---- zoom buttons, bottom right; the room counters make way for them ---- */
+
+#zoom {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  z-index: 6;
+  display: grid;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  box-shadow: 0 4px 14px rgb(31 42 68 / 10%);
+}
+
+#zoom button {
+  width: 44px;
+  height: 34px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  font-size: 18px;
+  line-height: 1;
+}
+
+#zoom button + button {
+  border-top: 1px solid var(--line);
+}
+
+#zoom button:hover {
+  background: var(--paper);
+}
+
+#zoom-pct {
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+#hud .zones {
+  right: 68px;
+}
+
+/* ---- ticket windows read a size smaller than the rest ---- */
+
+.tw {
+  font-size: 13px;
+}
+
+.tw h2 {
+  margin: 2px 0 12px;
+  font-size: 15px;
+}
+
+.tw .tw-detail h3,
+.tw .tw-actions h3,
+.tw .route h3 {
+  font-size: 12px;
+}
+
+.tw .rich table,
+.tw .approval ul {
+  font-size: 12px;
+}
+
+.tw .code pre,
+.tw .rich code,
+.tw .rich tt {
+  font-size: 11.5px;
+}
+
+.tw .key,
+.tw .comments .meta {
+  font-size: 11.5px;
+}
+
+.tw .tw-actions button,
+.tw .tw-actions select,
+.tw .comment-box button,
+.tw .comment-box select,
+.tw .comment-box textarea {
+  font-size: 13px;
+}
+
+.tw button.copy {
+  font-size: 10.5px;
+}

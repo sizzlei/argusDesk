@@ -12,6 +12,11 @@
       <main id="stage">
         <div id="scene"></div>
         <nav id="floors" aria-label="층" hidden></nav>
+        <div id="zoom" role="group" aria-label="확대와 축소">
+          <button type="button" id="zoom-in" aria-label="확대" title="확대">+</button>
+          <button type="button" id="zoom-fit" aria-label="전체 보기" title="전체 보기"><span id="zoom-pct">100%</span></button>
+          <button type="button" id="zoom-out" aria-label="축소" title="축소">−</button>
+        </div>
         <button id="legend-toggle" type="button" aria-expanded="false" aria-controls="legend" hidden>범례</button>
         <div id="legend" hidden></div>
         <div id="tooltip" hidden></div>
