@@ -836,7 +836,8 @@ button.copy.done {
   gap: 6px;
 }
 
-#actions select {
+#actions select,
+.comment-box select {
   padding: 6px 8px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
@@ -846,7 +847,10 @@ button.copy.done {
 }
 
 #actions button:disabled,
-#actions select:disabled {
+#actions select:disabled,
+.comment-box button:disabled,
+.comment-box select:disabled,
+.comment-box textarea:disabled {
   opacity: 0.5;
   cursor: default;
 }
@@ -1236,4 +1240,23 @@ dialog.confirm .buttons {
 
 .badges li.locked {
   color: var(--quiet);
+}
+
+/* Room counters sit at the bottom right, out of the way of the building. */
+#hud .zones {
+  position: fixed;
+  right: 12px;
+  bottom: 12px;
+  justify-content: flex-end;
+  max-width: min(70vw, 760px);
+  margin: 0;
+}
+
+#hud .tools {
+  margin-left: auto;
+}
+
+/* The comment box, above the list of comments. */
+#comment-slot .comment-box {
+  margin: 0 0 10px;
 }

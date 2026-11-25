@@ -17,6 +17,13 @@ const actions = new Map<string, { updated: string; actions?: TicketActions; erro
 // A comment being written survives the panel's redraws.
 const drafts = new Map<string, { text: string; isPublic: boolean }>();
 let busy = false; // a change is on its way to Jira
+// The comment box is built with the other actions but sits with the comments.
+let commentBox: HTMLElement | null = null;
+function commentSlot() {
+  const slot = h('div', { id: 'comment-slot' });
+  if (commentBox) slot.append(commentBox);
+  return slot;
+}
 // Redrawing replaces the comment box, which would break typing (Korean input
 // composes a syllable over several keys). While the box has the cursor, a
 // redraw waits here until the cursor leaves.
@@ -314,8 +321,10 @@ function renderActions(host: HTMLElement, b: Box, snap: Snapshot, backend: Backe
       : a
         ? h('div', { class: 'act' }, h('span', { class: 'act-name' }, '이동'), moves.length ? h('div', { class: 'act-row' }, ...moves) : h('span', { class: 'quiet' }, byMove && decide.length ? '위의 승인 단계에서 처리합니다.' : '지금 옮길 수 있는 상태가 없습니다.'))
         : null,
-    h('div', { class: 'comment-box' }, text, h('div', { class: 'act-row' }, desk ? audience : null, send)),
   );
+  // Writing a comment happens where the comments are read: at the top of that list.
+  commentBox = h('div', { class: 'comment-box' }, text, h('div', { class: 'act-row' }, desk ? audience : null, send));
+  document.getElementById('comment-slot')?.replaceChildren(commentBox);
   if (focused) {
     text.focus();
     text.setSelectionRange(focused[0], focused[1]);
@@ -345,19 +354,22 @@ function renderDetail(host: HTMLElement, b: Box, backend: Backend) {
   const entry = details.get(b.key);
   if (!entry || entry.updated !== b.updated) {
     details.set(b.key, { updated: b.updated });
-    fill(host, h('p', { class: 'quiet' }, '내용을 불러오는 중입니다.'));
+    fill(host, h('p', { class: 'quiet' }, '내용을 불러오는 중입니다.'), h('h3', {}, '댓글'), commentSlot());
     backend.ticketDetail(b.key).then(
       (detail) => details.set(b.key, { updated: b.updated, detail }),
       (e) => details.set(b.key, { updated: b.updated, error: errText(e) }),
     ).finally(() => {
       // Draw only if the panel still shows this ticket.
       const now = document.getElementById('detail');
-      if (shown === b.key && now) renderDetail(now, b, backend);
+      if (shown !== b.key || !now) return;
+      // Redrawing moves the comment box: wait while someone is typing in it.
+      if (typing()) pending = () => renderDetail(now, b, backend);
+      else renderDetail(now, b, backend);
     });
     return;
   }
   if (entry.error) {
-    fill(host, h('p', { class: 'error' }, `내용을 불러오지 못했습니다: ${entry.error}`));
+    fill(host, h('p', { class: 'error' }, `내용을 불러오지 못했습니다: ${entry.error}`), h('h3', {}, '댓글'), commentSlot());
     return;
   }
   const d = entry.detail;
@@ -392,6 +404,7 @@ function renderDetail(host: HTMLElement, b: Box, backend: Backend) {
     hasDescription ? rich(d.descriptionHtml, backend) : forms.length === 0 ? h('p', { class: 'quiet' }, '설명이 없습니다.') : null,
     d.attachments ? h('p', { class: 'quiet' }, `첨부파일 ${d.attachments}개는 Jira에서 볼 수 있습니다.`) : null,
     h('h3', {}, d.comments.length ? `댓글 ${d.comments.length}개` : '댓글'),
+    commentSlot(),
     d.comments.length
       ? h(
           'ol',
