@@ -374,12 +374,20 @@ func (a *App) syncServer(force bool) {
 				a.authError = "서버에 등록한 Jira 토큰으로 로그인하지 못했습니다. 토큰이 만료되었는지 확인하고 서버에서 다시 등록해 주세요."
 				a.mu.Unlock()
 			} else {
+				// Said on the start page, which is all there is to see before the
+				// centre opens: Jira could not be reached from this computer.
+				a.mu.Lock()
+				a.srv.problem = fmt.Sprintf("Argus에서 Jira 토큰은 받았지만 Jira(%s)에 연결하지 못했습니다: %v", key.Site, jerr)
+				a.mu.Unlock()
 				a.emitError(jerr)
 			}
 			return
 		}
-		_ = secret.SaveToken(key.Site, key.Email, key.Token) // so the centre opens without the server next time
+		kept := secret.SaveToken(key.Site, key.Email, key.Token) // so the centre opens without the server next time
 		a.mu.Lock()
+		if kept != nil {
+			a.srv.problem = fmt.Sprintf("Jira 토큰을 이 컴퓨터의 자격 증명 저장소에 보관하지 못했습니다(%v). 앱을 켤 때마다 Argus에서 다시 받아 옵니다.", kept)
+		}
 		a.prefs.Site, a.prefs.Email = key.Site, key.Email
 		_ = secret.SavePrefs(a.prefs)
 		if a.srv.needs == needJira {

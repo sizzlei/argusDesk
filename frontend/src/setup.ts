@@ -157,7 +157,7 @@ function serverPage(host: HTMLElement, state: AppState, backend: Backend, done: 
   }
   // Signed in, nothing reported missing: still fetching, or the server cannot be reached.
   page(
-    state.serverProblem ? 'Argus에 연결하지 못했습니다' : 'Argus에서 받아 오는 중',
+    state.serverProblem ? '아직 시작하지 못했습니다' : 'Argus에서 받아 오는 중',
     state.serverProblem ? h('p', { class: 'error' }, state.serverProblem) : h('p', { class: 'quiet' }, '설정과 Jira 연결을 받아 오고 있습니다.'),
     state.configError ? h('pre', { class: 'error' }, state.configError) : null,
     retry('다시 확인'),
