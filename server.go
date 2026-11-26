@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/sizzlei/argusDesk/internal/argus"
@@ -29,6 +30,8 @@ const (
 	needConfig    = "config"    // nobody has uploaded settings yet
 	needForbidden = "forbidden" // this account may not use the app
 	needDisabled  = "disabled"  // the feature is switched off on the server
+	needLocked    = "locked"    // the server account is locked
+	needSite      = "site"      // the server's administrator has not set the Jira site
 )
 
 // serverState is the part of App that belongs to the team server. Guarded by App.mu.
@@ -43,6 +46,8 @@ type serverState struct {
 	cfgTag   string
 	teamTag  string
 	team     *argus.Team
+	feedTag  string
+	feed     *ServerFeed
 	rejected time.Time // when Jira last refused the key from the server
 }
 
@@ -106,13 +111,18 @@ func (a *App) watchServer() {
 	a.mu.Unlock()
 	go func() {
 		t := time.NewTicker(5 * time.Minute)
+		f := time.NewTicker(30 * time.Second)
 		defer t.Stop()
+		defer f.Stop()
+		a.readFeed(ctx)
 		for {
 			select {
 			case <-ctx.Done():
 				return
 			case <-t.C:
 				a.syncServer(false)
+			case <-f.C:
+				a.readFeed(ctx)
 			}
 		}
 	}()
@@ -140,6 +150,18 @@ func (a *App) ConnectServer(addr string) (*AppState, error) {
 	a.mu.Unlock()
 
 	ep := argus.DefaultEndpoints()
+	// Asked first, without a sign-in: a wrong address or a switched-off server is told apart before the browser opens.
+	st, err := argus.ServerStatus(ctx, base, ep)
+	if err == nil && !st.Enabled {
+		err = argus.ErrDisabled
+	}
+	if err != nil {
+		cancel()
+		a.mu.Lock()
+		a.srv.busy, a.srv.cancel, a.srv.needs, a.srv.problem = false, nil, needLogin, err.Error()
+		a.mu.Unlock()
+		return nil, err
+	}
 	tok, err := argus.Login(ctx, base, ep, openBrowser)
 	cancelled := ctx.Err() != nil
 	cancel()
@@ -255,6 +277,10 @@ func (a *App) syncServer(force bool) {
 			need = needForbidden
 		case errors.Is(err, argus.ErrDisabled):
 			need = needDisabled
+		case errors.Is(err, argus.ErrLocked):
+			need = needLocked
+		case errors.Is(err, argus.ErrNoSite):
+			need = needSite
 		default:
 			return false
 		}
@@ -422,4 +448,76 @@ func (a *App) serverTeam(ctx context.Context, me *jira.User) (away []game.Away, 
 		away = append(away, game.Away{ID: v.JiraAccountID, Name: names[v.JiraAccountID], From: v.From, To: v.To, Kind: v.Kind, Half: half, CoverID: v.Cover, Cover: shortName(names[v.Cover])})
 	}
 	return away, avatars, true
+}
+
+// ServerNotice is one thing the team server wants seen, as the screen shows it.
+type ServerNotice struct {
+	ID       int64  `json:"id"`
+	Category string `json:"category"`
+	Severity string `json:"severity"` // crit · warn · info · good
+	Title    string `json:"title"`
+	Target   string `json:"target"`
+	URL      string `json:"url"` // the page on the server ("" = none)
+	Changed  string `json:"changed"`
+	Due      string `json:"due"`
+}
+
+// ServerFeed is the team server's state in brief.
+type ServerFeed struct {
+	Notices   []ServerNotice `json:"notices"`
+	Total     int            `json:"total"`     // more than are listed when the server holds over a hundred
+	System    string         `json:"system"`    // ok · warn · fail; "" = this user may not see it
+	SystemURL string         `json:"systemUrl"` // the server's own status page
+	AllURL    string         `json:"allUrl"`    // every notice, on the server
+}
+
+// ServerFeed returns what the team server last said about itself (nil without a server).
+func (a *App) ServerFeed() *ServerFeed {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.srv.feed
+}
+
+// readFeed asks the server for its notices and tells the screen when they changed.
+func (a *App) readFeed(ctx context.Context) {
+	a.mu.Lock()
+	c, tag := a.srv.client, a.srv.feedTag
+	a.mu.Unlock()
+	if c == nil {
+		return
+	}
+	rctx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
+	got, changed, err := c.Feed(rctx, &tag)
+	if err != nil || !changed {
+		return // the last one stays: a server that cannot be reached is shown elsewhere
+	}
+	base := c.Base()
+	// A link is opened only when it is a page of the server itself.
+	page := func(path string) string {
+		if path == "" || !strings.HasPrefix(path, "/") || strings.HasPrefix(path, "//") {
+			return ""
+		}
+		if u := base + path; argus.SameHost(base, u) {
+			return u
+		}
+		return ""
+	}
+	out := &ServerFeed{Notices: []ServerNotice{}, Total: got.Total, AllURL: page("/notifications")}
+	for _, n := range got.Notices {
+		v := ServerNotice{ID: n.ID, Category: n.CategoryName, Severity: n.Severity, Title: n.Title, URL: page(n.Link), Changed: n.ChangedAt, Due: n.DueAt}
+		if n.Target != nil {
+			v.Target = strings.TrimSpace(n.Target.Account + " " + n.Target.Identifier)
+		}
+		out.Notices = append(out.Notices, v)
+	}
+	if got.System != nil {
+		out.System, out.SystemURL = got.System.Status, page(got.System.Link)
+	}
+	a.mu.Lock()
+	a.srv.feed, a.srv.feedTag = out, tag
+	a.mu.Unlock()
+	if a.app != nil {
+		a.app.Event.Emit(evFeed, out)
+	}
 }

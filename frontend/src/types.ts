@@ -54,6 +54,27 @@ export interface SpaceView {
   types?: { name: string; tag: string }[]; // the kinds of ticket that can be made there
 }
 
+/** One thing the team server wants seen. */
+export interface ServerNotice {
+  id: number;
+  category: string;
+  severity: 'crit' | 'warn' | 'info' | 'good';
+  title: string;
+  target: string;
+  url: string; // the page on the server ("" = none)
+  changed: string;
+  due: string;
+}
+
+/** The team server's state in brief. */
+export interface ServerFeed {
+  notices: ServerNotice[];
+  total: number; // more than are listed when the server holds over a hundred
+  system: '' | 'ok' | 'warn' | 'fail'; // "" = this user may not see it
+  systemUrl: string;
+  allUrl: string;
+}
+
 /** One field of the form a ticket is made with. */
 export interface CreateField {
   id: string;
@@ -136,7 +157,7 @@ export interface AppState {
   notifyProblem: string; // why the system will not show them ("" = fine)
   server: string; // team server address ("" = none: settings file and Jira token)
   serverBusy: boolean; // waiting for the browser sign-in
-  serverNeeds: '' | 'login' | 'jira' | 'config' | 'forbidden' | 'disabled';
+  serverNeeds: '' | 'login' | 'jira' | 'config' | 'forbidden' | 'disabled' | 'locked' | 'site';
   serverProblem: string; // the last thing that went wrong with the server
 }
 

@@ -4,7 +4,7 @@
 // In mock mode (npm run dev:mock) the same interface is served by mock.ts
 // with made-up data, so the screen runs in a plain browser.
 
-import type { AppState, BoardError, BoardEvent, CreateForm, GameStats, Release, Snapshot, TicketActions, TicketDetail, UpdateInfo, Vacation } from './types';
+import type { AppState, BoardError, BoardEvent, CreateForm, GameStats, Release, ServerFeed, Snapshot, TicketActions, TicketDetail, UpdateInfo, Vacation } from './types';
 
 export interface Backend {
   mock: boolean;
@@ -18,6 +18,8 @@ export interface Backend {
   syncServer(): Promise<AppState>;
   forgetServer(): Promise<AppState>;
   onServer(cb: (state: AppState) => void): void;
+  serverFeed(): Promise<ServerFeed | null>;
+  onFeed(cb: (feed: ServerFeed) => void): void;
   setNotify(on: boolean): Promise<AppState>;
   snapshot(): Promise<Snapshot | null>;
   refresh(): Promise<void>;
@@ -68,6 +70,8 @@ async function real(): Promise<Backend> {
     syncServer: () => call('SyncServer'),
     forgetServer: () => call('ForgetServer'),
     onServer: (cb) => void Events.On('server:state', (ev: { data: AppState }) => cb(ev.data)),
+    serverFeed: () => call('ServerFeed'),
+    onFeed: (cb) => void Events.On('server:feed', (ev: { data: ServerFeed }) => cb(ev.data)),
     setNotify: (on) => call('SetNotify', on),
     snapshot: () => call('Snapshot'),
     refresh: () => call('Refresh'),

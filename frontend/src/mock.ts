@@ -2,7 +2,7 @@
 // invented; nothing comes from a real Jira.
 
 import type { Backend } from './backend';
-import type { AppState, Away, Badge, BoardEvent, Box, Change, CreateForm, GameStats, Member, Note, PathStep, Snapshot, Tally, Vacation, ZoneView } from './types';
+import type { AppState, Away, Badge, BoardEvent, Box, Change, CreateForm, GameStats, Member, Note, PathStep, ServerFeed, Snapshot, Tally, Vacation, ZoneView } from './types';
 
 const HOUR = 3600_000;
 
@@ -420,6 +420,18 @@ export function mockBackend(): Backend {
       return state;
     },
     onServer: () => {},
+    // made-up notices from a team server, to show where they appear
+    serverFeed: async (): Promise<ServerFeed> => ({
+      notices: [
+        { id: 1, category: '자동 백업 이상', severity: 'crit', title: 'orders-db 자동 백업 지연', target: 'prod orders-db', url: 'https://argus.example.com/databases/1', changed: new Date(Date.now() - 40 * 60000).toISOString(), due: '' },
+        { id: 2, category: '유지관리 예정', severity: 'warn', title: 'stats-db 유지관리 예정', target: 'prod stats-db', url: 'https://argus.example.com/databases/2', changed: new Date(Date.now() - 5 * HOUR).toISOString(), due: new Date(Date.now() + 40 * HOUR).toISOString() },
+      ],
+      total: 2,
+      system: 'warn',
+      systemUrl: 'https://argus.example.com/system-status',
+      allUrl: 'https://argus.example.com/notifications',
+    }),
+    onFeed: () => {},
     setNotify: async (on) => {
       state.notify = on;
       return state;

@@ -21,7 +21,7 @@ export interface HudHooks {
   toggleFilters(): void;
   search(): void;
   unassigned: { count: number; stale: number }; // open boxes nobody holds
-  notices: { approvals: number; unread: number; open: boolean; toggle(): void };
+  notices: { approvals: number; unread: number; urgent: number; open: boolean; toggle(): void };
   setSpace(index: number): void;
   game: GameStats | null;
   gameOpen: boolean;
@@ -42,6 +42,8 @@ export const SERVER_NEEDS: Record<string, string> = {
   config: '팀 서버에 아직 설정이 올라와 있지 않습니다.',
   forbidden: '이 계정에는 ArgusDesk를 쓸 권한이 없습니다. 서버 관리자에게 요청해 주세요.',
   disabled: '팀 서버에서 ArgusDesk 연동이 꺼져 있습니다.',
+  locked: '서버 계정이 잠겨 있습니다. 서버에 로그인해 잠금을 풀어 주세요.',
+  site: '서버에 Jira 사이트 주소가 정해져 있지 않습니다. 서버 관리자에게 알려 주세요.',
 };
 
 const TIRED = ['여유', '피곤', '소진'];
@@ -195,15 +197,15 @@ export function renderHud(state: AppState, snap: Snapshot | null, space: number,
       h(
         'button',
         {
-          class: `bell${hooks.notices.approvals ? ' urgent' : ''}`,
+          class: `bell${hooks.notices.approvals || hooks.notices.urgent ? ' urgent' : ''}`,
           'aria-expanded': String(hooks.notices.open),
           'aria-controls': 'notices',
-          'aria-label': `알림: 내 승인 대기 ${hooks.notices.approvals}건, 새 알림 ${hooks.notices.unread}건`,
+          'aria-label': `알림: 내 승인 대기 ${hooks.notices.approvals}건, 새 알림 ${hooks.notices.unread}건, 팀 서버 긴급 ${hooks.notices.urgent}건`,
           title: hooks.notices.approvals ? `내 승인 대기 ${hooks.notices.approvals}건` : '알림',
           onclick: hooks.notices.toggle,
         },
         h('span', { class: 'bell-ico', 'aria-hidden': 'true' }),
-        hooks.notices.approvals + hooks.notices.unread ? h('span', { class: 'n' }, String(hooks.notices.approvals + hooks.notices.unread)) : null,
+        hooks.notices.approvals + hooks.notices.unread + hooks.notices.urgent ? h('span', { class: 'n' }, String(hooks.notices.approvals + hooks.notices.unread + hooks.notices.urgent)) : null,
       ),
       h('span', { class: 'quiet' }, snap ? `${clock(snap.fetchedAt)} 갱신` : '불러오는 중'),
       h('button', { onclick: hooks.refresh, title: '지금 Jira에서 다시 읽기' }, '새로 고침'),

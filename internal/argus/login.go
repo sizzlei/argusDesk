@@ -112,7 +112,7 @@ func Login(ctx context.Context, base string, ep Endpoints, open func(url string)
 	defer cancel()
 	select {
 	case <-ctx.Done():
-		return nil, errors.New("로그인을 기다리다 시간이 지났습니다. 다시 시도하세요")
+		return nil, errors.New("로그인을 기다리다 시간이 지났습니다. 브라우저에서 로그인을 마쳤는데도 넘어오지 않았다면 한 번 더 시도해 주세요")
 	case res := <-got:
 		if res.err != nil {
 			return nil, res.err
@@ -181,10 +181,19 @@ func exchange(ctx context.Context, base string, ep Endpoints, form url.Values) (
 	}
 	defer res.Body.Close()
 	body, _ := io.ReadAll(io.LimitReader(res.Body, 1<<20))
-	if res.StatusCode == http.StatusBadRequest || res.StatusCode == http.StatusUnauthorized {
-		return nil, ErrUnauthorized // a refused code or an expired refresh token
-	}
 	if res.StatusCode != http.StatusOK {
+		// The server says why in "code"; without one, a refused code or an
+		// expired refresh token means signing in again.
+		var refused struct {
+			Code string `json:"code"`
+		}
+		_ = json.Unmarshal(body, &refused)
+		if err := byCode(refused.Code); err != nil {
+			return nil, err
+		}
+		if res.StatusCode == http.StatusBadRequest || res.StatusCode == http.StatusUnauthorized {
+			return nil, ErrUnauthorized
+		}
 		return nil, fmt.Errorf("토큰을 받지 못했습니다 (HTTP %d)", res.StatusCode) // the body may hold secrets: not shown
 	}
 	var out struct {

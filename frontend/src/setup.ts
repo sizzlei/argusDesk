@@ -176,7 +176,7 @@ function serverPage(host: HTMLElement, state: AppState, backend: Backend, done: 
       'Jira 토큰 등록이 필요합니다',
       h('p', {}, state.authError || SERVER_NEEDS.jira),
       h('p', { class: 'quiet' }, '토큰은 서버에 암호화되어 보관되고, 이 앱은 로그인한 본인의 것만 받아 옵니다.'),
-      h('button', { onclick: () => backend.openUrl(address) }, '서버 열기'),
+      h('button', { onclick: () => backend.openUrl(`${address}/desk/my`) }, '서버에서 등록하기'),
       retry('등록했습니다. 다시 확인'),
     );
     return true;

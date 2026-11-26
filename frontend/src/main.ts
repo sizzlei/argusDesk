@@ -4,7 +4,7 @@ import { news } from './game';
 import { filtersOpen, renderFilters, toggleFilters } from './filters';
 import { initFinder, openFinder } from './finder';
 import { renderHud } from './hud';
-import { addNotes, noticeCount, noticesOpen, renderNotices, toggleNotices } from './notices';
+import { addNotes, noticeCount, noticesOpen, renderNotices, setServerFeed, toggleNotices } from './notices';
 import { closeTickets, openTicket, openTickets, setStrength, syncTickets } from './panel';
 import { AGE, Scene, TAGS } from './scene';
 import { type ProfileAction, profileOpen, renderProfile, toggleProfile } from './profile';
@@ -140,7 +140,7 @@ async function boot() {
     return list.filter((a): a is ProfileAction => !!a);
   };
   const hud = () => {
-    renderNotices(snap, visit, () => hud());
+    renderNotices(snap, visit, () => hud(), (url) => backend.openUrl(url));
     const shown = view();
     renderFilters(snap, space, filter, shown?.boxes.length ?? 0, snap?.boxes.length ?? 0, setFilter, () => hud());
     renderProfile(
@@ -316,6 +316,12 @@ async function boot() {
   });
   backend.onGame(score);
   backend.onServer(apply);
+  const fed = (f: Parameters<typeof setServerFeed>[0]) => {
+    setServerFeed(f);
+    hud();
+  };
+  backend.onFeed(fed);
+  void backend.serverFeed().then(fed, () => {});
   backend.onError((err) => {
     lastError = err.message;
     if (err.auth) void backend.state().then(apply);

@@ -30,6 +30,7 @@ const (
 	evProgress = "update:progress"
 	evGame     = "game:stats"   // *game.Stats
 	evServer   = "server:state" // *AppState, when the team server changed something on its own
+	evFeed     = "server:feed"  // *ServerFeed
 )
 
 // App is the service bound to the screen: every exported method can be

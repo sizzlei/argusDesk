@@ -2505,3 +2505,29 @@ dialog.waybill::backdrop {
   margin-right: auto;
   font-size: 12px;
 }
+
+/* notices from the team server */
+button.notice.server.crit .ico {
+  background: var(--old);
+  color: #fff;
+}
+
+button.notice.server.warn .ico {
+  background: #e9a23b;
+  color: #fff;
+}
+
+#notices h3 .sys-ok {
+  border-color: #3fb37f;
+  color: #2c8a60;
+}
+
+#notices h3 .sys-warn {
+  border-color: #e9a23b;
+  color: #9a6410;
+}
+
+#notices h3 .sys-fail {
+  border-color: var(--old);
+  color: var(--old);
+}

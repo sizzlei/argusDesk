@@ -5,8 +5,9 @@
 // a Jira token, as before. Nothing in this package names a real server: the
 // address comes from the user at first run.
 //
-// The paths and the shapes of the answers follow the contract proposed to the
-// server and are still to be confirmed against what the server ships.
+// The paths and the shapes of the answers follow the server's desk API
+// (version 1). The app tells answers apart by their "code", never by their
+// wording.
 package argus
 
 import (
@@ -28,23 +29,28 @@ type Endpoints struct {
 	Scope     string
 }
 
-// DefaultEndpoints are used until the server says otherwise.
+// DefaultEndpoints are the server's desk API, version 1.
 func DefaultEndpoints() Endpoints {
 	return Endpoints{
-		Authorize: "/oauth2/authorize",
-		Token:     "/oauth2/token",
-		Revoke:    "/oauth2/revoke",
+		Authorize: "/desk/authorize",
+		Token:     "/api/desk/v1/oauth/token",
+		Revoke:    "/api/desk/v1/oauth/revoke",
 		API:       "/api/desk/v1",
-		ClientID:  "argus-desk",
-		Scope:     "desk",
+		ClientID:  "argus-desk", // fixed on the server, and no secret: anyone may know it
 	}
 }
+
+// JiraKeyPage is where a user registers their own Jira key, in the browser.
+const JiraKeyPage = "/desk/my"
 
 // Errors the app tells apart.
 var (
 	ErrDisabled     = errors.New("서버에서 ArgusDesk 연동이 꺼져 있습니다")
 	ErrUnauthorized = errors.New("Argus 로그인이 필요합니다")
 	ErrForbidden    = errors.New("이 계정에는 ArgusDesk를 쓸 권한이 없습니다")
+	ErrLocked       = errors.New("서버 계정이 잠겨 있습니다. 서버에 로그인해 잠금을 풀어 주세요")
+	ErrNoSite       = errors.New("서버에 Jira 사이트 주소가 정해져 있지 않습니다. 서버 관리자에게 알려 주세요")
+	ErrBusy         = errors.New("요청이 너무 잦습니다. 잠시 뒤 다시 시도해 주세요")
 	ErrNotFound     = errors.New("서버에 아직 등록된 것이 없습니다")
 	ErrConflict     = errors.New("이미 다른 사람이 등록한 값입니다")
 )

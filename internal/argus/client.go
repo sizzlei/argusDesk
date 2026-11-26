@@ -65,9 +65,36 @@ func (c *Client) access(ctx context.Context, force bool) (string, error) {
 	return next.Access, nil
 }
 
-type apiError struct {
-	Code    string `json:"code"`
-	Message string `json:"message"`
+// envelope is how the server wraps every answer of the desk API.
+type envelope struct {
+	Status string          `json:"status"`
+	Data   json.RawMessage `json:"data"`
+	Error  string          `json:"error"` // wording for people; it may change
+	Code   string          `json:"code"`  // what the app goes by
+}
+
+// byCode turns the server's error code into the error the app tells apart
+// (nil for a code it does not know).
+func byCode(code string) error {
+	switch code {
+	case "desk_disabled":
+		return ErrDisabled
+	case "token_missing", "token_invalid", "token_expired":
+		return ErrUnauthorized
+	case "forbidden":
+		return ErrForbidden
+	case "user_locked":
+		return ErrLocked
+	case "jira_not_registered", "config_not_found", "calendar_not_registered", "not_found":
+		return ErrNotFound
+	case "jira_site_not_set":
+		return ErrNoSite
+	case "jira_account_conflict":
+		return ErrConflict
+	case "rate_limited":
+		return ErrBusy
+	}
+	return nil
 }
 
 // do sends one request. in and out are JSON (nil = none). etag, when not
@@ -104,57 +131,92 @@ func (c *Client) do(ctx context.Context, method, path string, in, out any, etag 
 		}
 		raw, _ := io.ReadAll(io.LimitReader(res.Body, 4<<20))
 		res.Body.Close()
-		switch {
-		case res.StatusCode == http.StatusNotModified:
+		if res.StatusCode == http.StatusNotModified {
 			return false, nil
-		case res.StatusCode == http.StatusUnauthorized && attempt == 0:
-			continue // the token may just have expired: renew once and try again
-		case res.StatusCode >= 200 && res.StatusCode < 300:
+		}
+		var env envelope
+		_ = json.Unmarshal(raw, &env)
+		if res.StatusCode >= 200 && res.StatusCode < 300 {
 			if etag != nil {
 				*etag = res.Header.Get("ETag")
 			}
-			if out != nil && len(raw) > 0 {
-				if err := json.Unmarshal(raw, out); err != nil {
+			if out != nil && len(env.Data) > 0 {
+				if err := json.Unmarshal(env.Data, out); err != nil {
 					return false, errors.New("서버의 응답을 읽을 수 없습니다")
 				}
 			}
 			return true, nil
 		}
-		var ae apiError
-		_ = json.Unmarshal(raw, &ae)
 		switch {
-		case ae.Code == "desk_disabled" || res.StatusCode == http.StatusServiceUnavailable:
-			return false, ErrDisabled
-		case res.StatusCode == http.StatusUnauthorized:
+		case env.Code == "token_expired" && attempt == 0:
+			continue // renewed only for this code: once, then the call again
+		case env.Code == "token_invalid" || env.Code == "token_missing":
+			// The sign-in is gone on the server: forget it here as well.
+			c.mu.Lock()
+			c.token = nil
+			c.mu.Unlock()
+			if c.saved != nil {
+				c.saved(nil)
+			}
 			return false, ErrUnauthorized
-		case res.StatusCode == http.StatusForbidden:
-			return false, ErrForbidden
-		case res.StatusCode == http.StatusNotFound:
-			return false, ErrNotFound
-		case res.StatusCode == http.StatusConflict:
-			return false, ErrConflict
 		}
-		if ae.Message != "" {
-			return false, fmt.Errorf("서버가 요청을 받지 않았습니다: %s", ae.Message)
+		if err := byCode(env.Code); err != nil {
+			return false, err
+		}
+		if env.Error != "" {
+			return false, fmt.Errorf("서버가 요청을 받지 않았습니다: %s", env.Error)
 		}
 		return false, fmt.Errorf("서버가 요청을 받지 않았습니다 (HTTP %d)", res.StatusCode)
 	}
 }
 
+// Status is what the server says about itself without a sign-in.
+type Status struct {
+	Enabled       bool   `json:"enabled"`
+	APIVersion    int    `json:"apiVersion"`
+	ServerVersion string `json:"serverVersion"`
+}
+
+// ServerStatus asks whether the desk API is switched on. It needs no
+// sign-in: an error here means the server could not be reached at all.
+func ServerStatus(ctx context.Context, base string, ep Endpoints) (*Status, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, base+ep.API+"/status", nil)
+	if err != nil {
+		return nil, err
+	}
+	res, err := httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("서버에 연결하지 못했습니다: %w", err)
+	}
+	defer res.Body.Close()
+	raw, _ := io.ReadAll(io.LimitReader(res.Body, 1<<20))
+	var env envelope
+	if res.StatusCode != http.StatusOK || json.Unmarshal(raw, &env) != nil || len(env.Data) == 0 {
+		return nil, fmt.Errorf("이 주소에서 ArgusDesk 서버를 찾지 못했습니다 (HTTP %d). 주소를 확인해 주세요", res.StatusCode)
+	}
+	var st Status
+	if err := json.Unmarshal(env.Data, &st); err != nil {
+		return nil, errors.New("서버의 응답을 읽을 수 없습니다")
+	}
+	return &st, nil
+}
+
 // Me is the signed-in user's own state on the server.
 type Me struct {
 	JiraAccountID string `json:"jiraAccountId"`
-	JiraReady     bool   `json:"jiraRegistered"` // a Jira key is registered on the server
 	Avatar        *int   `json:"avatar"`
 	Vacation      *Span  `json:"vacation"`
+	Jira          struct {
+		Registered bool `json:"registered"` // a Jira key is registered on the server
+	} `json:"jiraCredential"`
 }
 
 // Span is a holiday: both days included, "2026-12-01".
 type Span struct {
 	From  string `json:"from"`
 	To    string `json:"to"`
-	Kind  string `json:"kind,omitempty"`  // "연차", "오전반차", ...
-	Cover string `json:"cover,omitempty"` // Jira account id of whoever covers
+	Kind  string `json:"kind"`  // "연차", "오전반차", ...
+	Cover string `json:"cover"` // Jira account id of whoever covers
 }
 
 // JiraKey is what the app signs in to Jira with. It is held in memory and
@@ -197,18 +259,32 @@ type Config struct {
 
 // Notice is one thing the server wants seen (a late backup, pending maintenance).
 type Notice struct {
-	Category string `json:"category"`
-	Severity string `json:"severity"`
-	Title    string `json:"title"`
-	Target   string `json:"target"`
-	At       string `json:"at"`
-	Path     string `json:"path"` // a page on the server, relative to its address
+	ID           int64  `json:"id"`
+	Category     string `json:"category"`
+	CategoryName string `json:"categoryName"`
+	Severity     string `json:"severity"` // crit · warn · info · good
+	Title        string `json:"title"`
+	Body         string `json:"body"`
+	Target       *struct {
+		Type       string `json:"type"`
+		Identifier string `json:"identifier"`
+		Account    string `json:"accountName"`
+	} `json:"target"`
+	Link      string `json:"link"` // a page on the server, as a path
+	LinkLabel string `json:"linkLabel"`
+	At        string `json:"occurredAt"`
+	ChangedAt string `json:"changedAt"`
+	DueAt     string `json:"dueAt"`
 }
 
 // Feed is the server's state in brief.
 type Feed struct {
-	Notices []Notice `json:"notices"`
-	Signal  string   `json:"signal"` // "" when this user may not see it
+	Notices []Notice `json:"notifications"`
+	Total   int      `json:"total"` // more than are listed when over a hundred
+	System  *struct {
+		Status string `json:"status"` // ok · warn · fail
+		Link   string `json:"link"`
+	} `json:"system"` // nil when this user may not see it
 }
 
 func (c *Client) Me(ctx context.Context) (*Me, error) {
@@ -230,7 +306,8 @@ func (c *Client) SetMe(ctx context.Context, jiraAccountID string, avatar *int) e
 	return err
 }
 
-// JiraKey fetches the user's own Jira key. ErrNotFound: none is registered on the server yet.
+// JiraKey fetches the user's own Jira key. ErrNotFound: none is registered
+// on the server yet; ErrNoSite: the server's administrator has not set the site.
 func (c *Client) JiraKey(ctx context.Context) (*JiraKey, error) {
 	var out JiraKey
 	if _, err := c.do(ctx, http.MethodGet, "/me/jira", nil, &out, nil); err != nil {
