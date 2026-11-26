@@ -54,8 +54,9 @@ type Stats struct {
 	// 1 tired, 2 resting. Only the level is given, never the count behind it.
 	Fatigue map[string]int `json:"fatigue"`
 	Away    []Away         `json:"away"` // holidays, current and coming
-	// MyFatigue is the user's own fatigue as a share of the point where one
-	// has to rest, in percent (100 = resting). Only one's own is given as a number.
+	// MyFatigue is what is left of the user's own strength for the week, in
+	// percent: full on Monday, 0 when no more tickets can be taken. Only one's
+	// own is given as a number.
 	MyFatigue int `json:"myFatigue"`
 	// Avatars is the look each teammate chose, by account id.
 	Avatars map[string]int `json:"avatars"`
@@ -71,19 +72,37 @@ type Away struct {
 	Me     bool   `json:"me"`
 }
 
-// FatigueScores works out how worn each assignee is. Every ticket finished
-// in the last week adds one point, and a point fades by half every two days,
-// so a heavy run shows for a while and a quiet spell lets it wear off.
+// WeekStart is the Monday the week of now began on, at midnight, in now's
+// own time zone. Fatigue is counted from there, so it starts afresh once the
+// weekend is over.
+func WeekStart(now time.Time) time.Time {
+	y, m, d := now.Date()
+	back := (int(now.Weekday()) + 6) % 7 // days since Monday
+	return time.Date(y, m, d-back, 0, 0, 0, 0, now.Location())
+}
+
+// FatigueScores works out how much of the week's strength each assignee has
+// used: one point for every ticket finished since Monday. Nothing fades
+// during the week; everything is forgotten when the next one starts.
 func FatigueScores(dones []Done, now time.Time) map[string]float64 {
 	score := map[string]float64{}
+	from := WeekStart(now)
 	for _, d := range dones {
-		age := now.Sub(d.At)
-		if d.AssigneeID == "" || age < 0 || age > 7*24*time.Hour {
+		if d.AssigneeID == "" || d.At.Before(from) || d.At.After(now) {
 			continue
 		}
-		score[d.AssigneeID] += math.Pow(0.5, age.Hours()/48)
+		score[d.AssigneeID]++
 	}
 	return score
+}
+
+// Left is what remains of the week's strength, in percent: 100 on Monday
+// morning, 0 once `exhausted` tickets are done. At 0 no more can be taken.
+func Left(used, exhausted float64) int {
+	if exhausted <= 0 {
+		return 100
+	}
+	return int(math.Max(0, math.Round(100-used/exhausted*100)))
 }
 
 // Fatigue turns the scores into levels: 0 fresh, 1 tired, 2 resting.

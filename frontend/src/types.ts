@@ -230,7 +230,7 @@ export interface GameStats {
   badges: Badge[];
   fatigue: Record<string, number>; // by account id: 0 fresh, 1 tired, 2 resting
   away: Away[]; // holidays, current and coming
-  myFatigue: number; // own fatigue, percent of the point where one rests
+  myFatigue: number; // own strength left for the week, percent: 100 on Monday, 0 = no more boxes can be taken
   avatars: Record<string, number>; // chosen look by account id
 }
 

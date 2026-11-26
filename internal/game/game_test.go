@@ -62,22 +62,35 @@ func TestStreakSkipsWeekends(t *testing.T) {
 	}
 }
 
-func TestFatigueFadesAndLevels(t *testing.T) {
-	now := at(25, 18)
+func TestFatigueCountsTheWeekAndStartsAfresh(t *testing.T) {
+	now := at(25, 18) // Wednesday; the week began on Monday the 23rd
+	if ws := WeekStart(now); ws.Day() != 23 || ws.Hour() != 0 || ws.Weekday() != time.Monday {
+		t.Fatalf("week start = %v", ws)
+	}
+	if ws := WeekStart(at(29, 23)); ws.Day() != 23 { // Sunday night still belongs to that week
+		t.Fatalf("sunday's week start = %v", ws)
+	}
 	var dones []Done
 	for i := 0; i < 16; i++ {
 		dones = append(dones, Done{AssigneeID: "busy", At: now.Add(-time.Duration(i) * time.Hour)}) // all today
 	}
 	for i := 0; i < 9; i++ {
-		dones = append(dones, Done{AssigneeID: "steady", At: now.Add(-time.Duration(i) * 2 * time.Hour)})
+		dones = append(dones, Done{AssigneeID: "steady", At: at(23, 9).Add(time.Duration(i) * time.Hour)}) // Monday: nothing fades in the week
 	}
 	for i := 0; i < 16; i++ {
-		dones = append(dones, Done{AssigneeID: "rested", At: now.Add(-6 * 24 * time.Hour)}) // a heavy day, six days ago
+		dones = append(dones, Done{AssigneeID: "rested", At: at(20, 10)}) // a heavy Friday, last week
 	}
-	dones = append(dones, Done{AssigneeID: "old", At: now.Add(-8 * 24 * time.Hour)})
 	got := Fatigue(dones, now, 8, 14)
-	if got["busy"] != 2 || got["steady"] != 1 || got["rested"] != 0 || got["old"] != 0 {
+	if got["busy"] != 2 || got["steady"] != 1 || got["rested"] != 0 {
 		t.Fatalf("fatigue = %v", got)
+	}
+	scores := FatigueScores(dones, now)
+	if l := []int{Left(scores["busy"], 14), Left(scores["steady"], 14), Left(scores["rested"], 14), Left(7, 14)}; l[0] != 0 || l[1] != 36 || l[2] != 100 || l[3] != 50 {
+		t.Fatalf("left = %v", l)
+	}
+	// The next Monday everything is back.
+	if next := FatigueScores(dones, at(30, 9)); len(next) != 0 {
+		t.Fatalf("after the weekend = %v", next)
 	}
 }
 

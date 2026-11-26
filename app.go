@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"math"
 	"os"
 	"strings"
 	"sync"
@@ -417,12 +416,32 @@ func (a *App) MoveTicket(key, transitionID string) error {
 // AssignTicket gives the ticket to an account: "me" for the signed-in user,
 // "" to leave it unassigned.
 func (a *App) AssignTicket(key, accountID string) error {
+	if accountID == "me" {
+		if err := a.spent(); err != nil {
+			return err
+		}
+	}
 	return a.write(key, func(ctx context.Context, c *jira.Client, me *jira.User) error {
 		if accountID == "me" {
 			accountID = me.AccountID
 		}
 		return c.Assign(ctx, key, accountID)
 	})
+}
+
+// spent refuses another ticket to someone whose strength for the week is
+// used up. Statistics from before this week began do not count: the week
+// starts afresh on Monday.
+func (a *App) spent() error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.cfg == nil || a.gameStats == nil || a.gameStats.MyFatigue > 0 {
+		return nil
+	}
+	if a.gameAt.Before(game.WeekStart(time.Now().In(a.cfg.Location()))) {
+		return nil
+	}
+	return errors.New("이번 주 피로도를 다 써서 상자를 더 가져올 수 없습니다. 월요일에 다시 채워집니다.")
 }
 
 // AnswerApproval approves or declines a pending approval.
@@ -573,8 +592,9 @@ func (a *App) refreshGame(ctx context.Context, snap *model.Snapshot, changes []m
 		away, avatars := a.teamState(rctx, cfg, client, me)
 		stats.Away = game.Holidays(away, me.AccountID, now)
 		stats.Avatars = avatars
+		stats.MyFatigue = 100
 		if cfg.Game.Exhausted > 0 {
-			stats.MyFatigue = int(math.Min(100, math.Round(game.FatigueScores(dones, now)[me.AccountID]/cfg.Game.Exhausted*100)))
+			stats.MyFatigue = game.Left(game.FatigueScores(dones, now)[me.AccountID], cfg.Game.Exhausted)
 		}
 		a.mu.Lock()
 		a.gameStats, a.gameAt = stats, time.Now()

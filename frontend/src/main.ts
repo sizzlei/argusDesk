@@ -5,7 +5,7 @@ import { filtersOpen, renderFilters, toggleFilters } from './filters';
 import { initFinder, openFinder } from './finder';
 import { renderHud } from './hud';
 import { addNotes, noticeCount, noticesOpen, renderNotices, toggleNotices } from './notices';
-import { closeTickets, openTicket, openTickets, syncTickets } from './panel';
+import { closeTickets, openTicket, openTickets, setStrength, syncTickets } from './panel';
 import { AGE, Scene, TAGS } from './scene';
 import { type ProfileAction, profileOpen, renderProfile, toggleProfile } from './profile';
 import { renderSetup } from './setup';
@@ -251,6 +251,7 @@ async function boot() {
     if (!next) return;
     const fresh = news(game, next);
     game = next;
+    setStrength(next.myFatigue);
     scene.setTeam(next.fatigue ?? {}, next.away ?? [], next.avatars ?? {});
     hud();
     if (fresh.myLevel) {

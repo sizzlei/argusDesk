@@ -116,6 +116,15 @@ async function act(w: Win, done: string, run: () => Promise<void>, redraw: () =>
 
 const DECISION: Record<string, string> = { pending: '대기', approved: '승인', declined: '반려' };
 
+// With the week's strength used up, no more boxes can be taken (the backend refuses too).
+let spent = false;
+const SPENT = '이번 주 피로도를 다 써서 상자를 더 가져올 수 없습니다. 월요일에 다시 채워집니다.';
+
+/** Tells the windows how much strength is left for the week. */
+export function setStrength(left: number | undefined) {
+  spent = left === 0;
+}
+
 /** The "처리" part of the panel: assignee, approvals, moves and a comment box. */
 function renderActions(w: Win, snap: Snapshot, backend: Backend) {
   const host = w.actionsEl;
@@ -160,7 +169,8 @@ function renderActions(w: Win, snap: Snapshot, backend: Backend) {
           'button',
           {
             class: 'primary',
-            disabled: off,
+            disabled: off || spent || undefined,
+            title: spent ? SPENT : undefined,
             onclick: async () => {
               const from = b.assignee ? `현재 담당자는 ${b.assignee} 님입니다. ` : '';
               if (b.assignee && !(await confirmAction('담당자 변경', `${from}${b.key}을(를) 나에게 배정합니다.`, '나에게 배정'))) return;
@@ -294,7 +304,7 @@ function renderActions(w: Win, snap: Snapshot, backend: Backend) {
     fill(
       w.claimEl,
       h('span', {}, '담당자가 없는 상자입니다.'),
-      h('button', { class: 'primary', disabled: off, onclick: () => void act(w, '나에게 배정했습니다.', () => backend.assignTicket(b.key, 'me'), redraw) }, '내가 담당'),
+      h('button', { class: 'primary', disabled: off || spent || undefined, title: spent ? SPENT : undefined, onclick: () => void act(w, '나에게 배정했습니다.', () => backend.assignTicket(b.key, 'me'), redraw) }, '내가 담당'),
     );
   }
 

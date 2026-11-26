@@ -309,7 +309,7 @@ export function mockBackend(): Backend {
     return {
       since: '2026-01-01T00:00:00+09:00',
       fatigue: { u1: counts.meToday > 4 ? 1 : 0, u2: 1, u3: 2 }, // one teammate tired, one resting, to show both
-      myFatigue: Math.min(100, 30 + counts.meToday * 6),
+      myFatigue: Math.max(0, 70 - counts.meToday * 6),
       avatars: { ...chosen },
       away: away(),
       team: tally(counts.team, counts.teamToday, 4),

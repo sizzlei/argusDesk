@@ -65,8 +65,8 @@ type Game struct {
 	SeasonStart string `yaml:"season_start"` // "2026-01-01"; default: January 1st of this year
 	XP          int    `yaml:"xp"`           // experience for a finished ticket; default 10
 	// Fatigue: every finished ticket adds 1 and fades by half every two days.
-	Tired     float64 `yaml:"tired"`     // from here the avatar looks tired; default 8
-	Exhausted float64 `yaml:"exhausted"` // from here it rests on a bench; default 14
+	Tired     float64 `yaml:"tired"`     // tickets finished in a week from which the avatar looks tired; default 8
+	Exhausted float64 `yaml:"exhausted"` // tickets finished in a week at which the strength is used up: the avatar rests and no more can be taken; default 14
 
 	start time.Time
 }

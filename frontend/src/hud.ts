@@ -43,7 +43,7 @@ export const SERVER_NEEDS: Record<string, string> = {
   disabled: '팀 서버에서 ArgusDesk 연동이 꺼져 있습니다.',
 };
 
-const TIRED = ['여유', '피곤', '지침'];
+const TIRED = ['여유', '피곤', '소진'];
 
 /**
  * The team at a glance: one avatar each, ringed by how worn they are. No
@@ -67,7 +67,7 @@ function team(snap: Snapshot | null, game: GameStats | null, hooks: HudHooks) {
       if (m.me) {
         return h(
           'button',
-          { class: cls, role: 'listitem', 'aria-expanded': String(hooks.profileOpen), 'aria-controls': 'profile', 'aria-label': `내 상태 · 피로도 ${game.myFatigue}% (${state})`, title: `피로도 ${game.myFatigue}% · ${state} · 눌러서 내 상태 보기`, onclick: hooks.toggleProfile },
+          { class: cls, role: 'listitem', 'aria-expanded': String(hooks.profileOpen), 'aria-controls': 'profile', 'aria-label': `내 상태 · 피로도 ${game.myFatigue}% 남음 (${state})`, title: `피로도 ${game.myFatigue}% 남음 · ${state} · 눌러서 내 상태 보기`, onclick: hooks.toggleProfile },
           icon,
           h('span', { class: 'meter' }, h('i', { style: `width:${Math.min(100, game.myFatigue)}%` })),
           h('span', { class: 'pct' }, `${game.myFatigue}%`),
