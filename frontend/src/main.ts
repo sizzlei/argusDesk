@@ -12,7 +12,7 @@ import { type ProfileAction, profileOpen, renderProfile, toggleProfile } from '.
 import { renderSetup } from './setup';
 import type { AppState, Box, Change, GameStats, Snapshot } from './types';
 import { checkForUpdates, initUpdates } from './update';
-import { openAvatarPicker, openVacation } from './vacation';
+import { openAvatarPicker, openVacation, cancelVacation } from './vacation';
 import { errText, toast } from './ui';
 import { openWaybill } from './waybill';
 import { type Filter, applyFilter, loadFilter, saveFilter, unassigned } from './view';
@@ -120,6 +120,8 @@ async function boot() {
         apply(next);
         toast(on ? (next.notifyProblem ? `알림을 켰지만 보낼 수 없습니다: ${next.notifyProblem}` : '알림을 켰습니다.') : '알림을 껐습니다.');
       }, fail);
+    const myAway = game?.away.find((a) => a.me);
+    const when = myAway ? (myAway.from === myAway.to ? myAway.from : `${myAway.from} ~ ${myAway.to}`) : '';
     const list: (ProfileAction | false)[] = [
       {
         label: '아바타 선택',
@@ -129,13 +131,15 @@ async function boot() {
         },
       },
       {
-        label: '휴가 등록',
+        label: myAway ? '휴가 변경' : '휴가 등록',
+        note: myAway ? `${myAway.kind || '휴가'} ${when}${myAway.cover ? ` · 대무자 ${myAway.cover}` : ''}` : undefined,
         run: () => {
           const seen = new Set<string>();
           const people = (snap?.members ?? []).filter((m) => !m.me && !seen.has(m.id) && seen.add(m.id)).map((m) => ({ id: m.id, name: m.name.trim().split(/\s+/)[0] }));
           void openVacation(backend, state.me.trim().split(/\s+/)[0] ?? '', people).catch(fail);
         },
       },
+      !!myAway && { label: '휴가 취소', run: () => void cancelVacation(backend, when), danger: true },
       { label: state.notify ? '알림 끄기' : '알림 켜기', run: () => setNotify(!state.notify), note: state.notify && state.notifyProblem ? `알림을 보낼 수 없습니다: ${state.notifyProblem}` : undefined },
       openTickets() > 1 && { label: `티켓 창 모두 닫기 (${openTickets()})`, run: () => closeTickets(tickets) },
       { label: 'Argus에서 설정 다시 받기', run: () => void backend.reloadConfig().then(apply, fail) },

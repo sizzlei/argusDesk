@@ -3,12 +3,28 @@
 
 import type { Backend } from './backend';
 import { avatarIcon, LOOKS } from './avatars';
-import { errText, h, toast } from './ui';
+import { confirmAction, errText, h, toast } from './ui';
 
 const today = () => {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
+
+/** Says how saving went. The holiday is saved either way; the team calendar is a second step that can fail on its own. */
+function vacationToast(saved: { calendar?: string } | undefined, done: string, cancelled: boolean) {
+  if (saved?.calendar && saved.calendar !== 'ok') toast(`${done} 다만 팀 캘린더에는 반영하지 못했습니다: ${saved.calendar}`, 'error');
+  else toast(saved?.calendar === 'ok' ? `${done} ${cancelled ? '팀 캘린더의 일정도 지웠습니다.' : '팀 캘린더에도 반영했습니다.'}` : done);
+}
+
+/** Cancels the holiday that is registered, after asking. `when` is its days as shown. */
+export async function cancelVacation(backend: Backend, when: string) {
+  if (!(await confirmAction('휴가를 취소할까요?', `${when} 휴가를 취소합니다. 팀 캘린더의 일정도 지웁니다.`, '휴가 취소', true))) return;
+  try {
+    vacationToast(await backend.setVacation('', '', '', ''), '휴가를 취소했습니다.', true);
+  } catch (e) {
+    toast(errText(e), 'error');
+  }
+}
 
 /** `me` is my name as the calendar will show it; `people` are the teammates who can cover. */
 export async function openVacation(backend: Backend, me: string, people: { id: string; name: string }[]) {
@@ -41,8 +57,7 @@ export async function openVacation(backend: Backend, me: string, people: { id: s
       const saved = await backend.setVacation(a, b, kind.value, cover.value);
       close();
       // The holiday is saved either way; the team calendar is a second step that can fail on its own.
-      if (saved?.calendar && saved.calendar !== 'ok') toast(`${done} 다만 팀 캘린더에는 반영하지 못했습니다: ${saved.calendar}`, 'error');
-      else toast(saved?.calendar === 'ok' ? `${done} 팀 캘린더에도 반영했습니다.` : done);
+      vacationToast(saved, done, !a);
     } catch (e) {
       error.textContent = errText(e);
     }
@@ -51,7 +66,7 @@ export async function openVacation(backend: Backend, me: string, people: { id: s
   sync();
   const now = mine.from ? `등록된 휴가: ${mine.from === mine.to ? mine.from : `${mine.from} ~ ${mine.to}`}${mine.kind ? ` · ${mine.kind}` : ''}${mine.cover ? ` · 대무자 ${mine.cover}` : ''}` : '';
   dlg.append(
-    h('h3', {}, '휴가 등록'),
+    h('h3', {}, mine.from ? '휴가 변경 · 취소' : '휴가 등록'),
     h('p', {}, now || '휴가 기간 동안 내 아바타는 지하 숙소에서 쉽니다.'),
     h(
       'div',
@@ -73,7 +88,7 @@ export async function openVacation(backend: Backend, me: string, people: { id: s
       { class: 'buttons' },
       mine.from ? h('button', { class: 'danger', onclick: () => void save('', '', '휴가를 취소했습니다.') }, '휴가 취소') : null,
       h('button', { onclick: close }, '닫기'),
-      h('button', { class: 'primary', onclick: () => void save(from.value, to.value, `${kind.value}를 등록했습니다: ${from.value === to.value ? from.value : `${from.value} ~ ${to.value}`}.`) }, '등록'),
+      h('button', { class: 'primary', onclick: () => void save(from.value, to.value, `${kind.value}를 등록했습니다: ${from.value === to.value ? from.value : `${from.value} ~ ${to.value}`}.`) }, mine.from ? '변경' : '등록'),
     ),
   );
   dlg.addEventListener('cancel', (e) => (e.preventDefault(), close()));

@@ -635,11 +635,11 @@ func shortName(display string) string {
 }
 
 // MyVacation returns the user's own holiday and the kinds one can be. The
-// team server is asked what it holds; what was last saved from this computer
-// stands in until it has answered.
+// team server is asked for it, so a holiday registered from another computer
+// shows too; when the server cannot be reached, what was last saved from
+// this computer stands in.
 func (a *App) MyVacation() *Vacation {
 	a.mu.Lock()
-	defer a.mu.Unlock()
 	v := &Vacation{
 		From: a.prefs.VacationFrom, To: a.prefs.VacationTo, Kind: a.prefs.VacationKind, CoverID: a.prefs.VacationCoverID, Cover: a.prefs.VacationCover,
 		Kinds: []config.VacationKind{},
@@ -647,27 +647,34 @@ func (a *App) MyVacation() *Vacation {
 	if a.cfg != nil {
 		v.Kinds = a.cfg.VacationKinds()
 	}
-	if a.me == nil || a.srv.team == nil || a.srv.teamTag == "" {
-		return v
-	}
-	// The server's list is in step: it is the truth, also for a holiday
-	// registered from another computer.
-	v.From, v.To, v.Kind, v.CoverID, v.Cover = "", "", "", "", ""
-	for _, h := range a.srv.team.Vacations {
-		if h.JiraAccountID != a.me.AccountID {
-			continue
-		}
-		v.From, v.To, v.Kind, v.CoverID = h.From, h.To, h.Kind, h.Cover
-		if a.engine != nil {
-			if snap := a.engine.Last(); snap != nil {
-				for _, m := range snap.Members {
-					if m.ID == h.Cover {
-						v.Cover = shortName(m.Name)
-					}
-				}
+	server := a.srv.client
+	names := map[string]string{}
+	if a.engine != nil {
+		if snap := a.engine.Last(); snap != nil {
+			for _, m := range snap.Members {
+				names[m.ID] = shortName(m.Name)
 			}
 		}
 	}
+	a.mu.Unlock()
+	if server == nil {
+		return v
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	me, err := server.Me(ctx)
+	if err != nil {
+		return v
+	}
+	v.From, v.To, v.Kind, v.CoverID, v.Cover = "", "", "", "", ""
+	if h := me.Vacation; h != nil {
+		v.From, v.To, v.Kind, v.CoverID, v.Cover = h.From, h.To, h.Kind, h.Cover, names[h.Cover]
+	}
+	a.mu.Lock()
+	a.prefs.VacationFrom, a.prefs.VacationTo = v.From, v.To
+	a.prefs.VacationKind, a.prefs.VacationCoverID, a.prefs.VacationCover = v.Kind, v.CoverID, v.Cover
+	_ = secret.SavePrefs(a.prefs)
+	a.mu.Unlock()
 	return v
 }
 
