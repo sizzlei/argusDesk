@@ -309,7 +309,6 @@ export function mockBackend(): Backend {
       { name: '오후반차', half: true },
       { name: '리프레시', half: false },
     ],
-    shared: true,
   };
   const away = (): Away[] => {
     const list: Away[] = [{ id: 'u4', name: '최지우', from: day(-1), to: day(2), kind: '연차', half: false, coverId: 'u2', cover: '이도윤', active: true, me: false }];

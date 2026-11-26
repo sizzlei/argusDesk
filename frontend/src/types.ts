@@ -314,6 +314,5 @@ export interface Vacation {
   coverId: string;
   cover: string;
   kinds: { name: string; half: boolean }[]; // the kinds a holiday can be
-  shared: boolean; // teammates see it
   calendar?: string; // how putting it on the team calendar went: '' none, 'ok', or why it failed
 }

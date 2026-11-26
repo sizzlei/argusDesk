@@ -47,18 +47,9 @@ type Config struct {
 	PollSeconds int      `yaml:"poll_seconds"`
 	Spaces      []Space  `yaml:"spaces"`
 	Game        Game     `yaml:"game"`
-	Team        Team     `yaml:"team"`
 	Vacation    Vacation `yaml:"vacation"`
 
 	loc *time.Location
-}
-
-// Team holds what the team shares through Jira, as the app has no server.
-type Team struct {
-	// StateIssue is a ticket every teammate can edit. Holidays are kept on it
-	// as issue properties so that everyone sees them. Without it, a holiday is
-	// only known to the app it was entered in.
-	StateIssue string `yaml:"state_issue"`
 }
 
 // Vacation sets the kinds of holiday a teammate can register beyond the

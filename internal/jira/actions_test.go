@@ -135,34 +135,3 @@ func TestAddCommentRefusesUnknownMode(t *testing.T) {
 		t.Fatal("want an error")
 	}
 }
-
-func TestIssueProperties(t *testing.T) {
-	var puts, deletes int
-	c := server(t, func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case r.Method == http.MethodPut && r.URL.Path == "/rest/api/3/issue/A-1/properties/team.vacation.u1":
-			puts++
-			w.WriteHeader(http.StatusCreated)
-		case r.Method == http.MethodDelete:
-			deletes++
-			http.Error(w, "gone", http.StatusNotFound)
-		case r.URL.Path == "/rest/api/3/issue/A-1/properties":
-			io.WriteString(w, `{"keys":[{"key":"team.vacation.u1"},{"key":"other"}]}`)
-		case r.URL.Path == "/rest/api/3/issue/A-1/properties/team.vacation.u1":
-			io.WriteString(w, `{"key":"team.vacation.u1","value":{"from":"2026-12-01"}}`)
-		default:
-			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
-		}
-	})
-	ctx := context.Background()
-	got, err := c.IssueProperties(ctx, "A-1", "team.vacation.")
-	if err != nil || len(got) != 1 || !strings.Contains(string(got["team.vacation.u1"]), "2026-12-01") {
-		t.Fatalf("got %v, err %v", got, err)
-	}
-	if err := c.SetIssueProperty(ctx, "A-1", "team.vacation.u1", map[string]string{"from": "2026-12-01"}); err != nil || puts != 1 {
-		t.Fatalf("set: %v, %d", err, puts)
-	}
-	if err := c.DeleteIssueProperty(ctx, "A-1", "team.vacation.u1"); err != nil || deletes != 1 {
-		t.Fatalf("delete of a missing property should pass: %v", err)
-	}
-}

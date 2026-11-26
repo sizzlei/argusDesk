@@ -78,7 +78,7 @@ type Prefs struct {
 	LastUpdateCheck int64  `json:"lastUpdateCheck"` // unix ms
 	NotesShownFor   string `json:"notesShownFor"`   // version whose release notes were shown
 	NotifyOff       bool   `json:"notifyOff"`       // the user turned notifications off
-	VacationFrom    string `json:"vacationFrom"`    // own holiday, "2026-12-01"; used when the team has no shared ticket
+	VacationFrom    string `json:"vacationFrom"`    // own holiday as last saved from here, "2026-12-01"; shown until the team server has answered
 	VacationTo      string `json:"vacationTo"`
 	VacationKind    string `json:"vacationKind"`
 	VacationCoverID string `json:"vacationCoverId"`

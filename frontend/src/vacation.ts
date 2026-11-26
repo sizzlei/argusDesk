@@ -66,7 +66,7 @@ export async function openVacation(backend: Backend, me: string, people: { id: s
       cover,
     ),
     title,
-    h('p', { class: 'quiet' }, mine.shared ? '팀원에게도 보입니다. 팀 서버에 캘린더가 연결되어 있으면 팀 캘린더에도 올라갑니다.' : '팀 서버나 팀 공유 티켓이 없어 이 컴퓨터에서만 보입니다.'),
+    h('p', { class: 'quiet' }, '팀원에게도 보이고, 팀 캘린더에도 올라갑니다.'),
     error,
     h(
       'div',
