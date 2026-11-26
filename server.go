@@ -44,6 +44,7 @@ type serverState struct {
 	stop    context.CancelFunc // the loop that watches for new settings
 
 	cfgTag   string
+	cfgVer   int // the version the server gives the settings in force; 0 = not from the server
 	teamTag  string
 	team     *argus.Team
 	feedTag  string
@@ -178,7 +179,7 @@ func (a *App) ConnectServer(addr string) (*AppState, error) {
 	}
 	keep := a.keepServerToken(base)
 	a.srv.client = argus.New(base, ep, tok, keep)
-	a.srv.needs, a.srv.cfgTag, a.srv.teamTag, a.srv.team = "", "", "", nil
+	a.srv.needs, a.srv.cfgTag, a.srv.cfgVer, a.srv.teamTag, a.srv.team = "", "", 0, "", nil
 	a.mu.Unlock()
 	keep(tok)
 	a.syncServer(true)
@@ -300,7 +301,7 @@ func (a *App) syncServer(force bool) {
 			// A broken upload does not stop the centre: it keeps the settings it had.
 			a.cfgError, a.cfgFallback = fmt.Sprintf("서버의 설정(버전 %d)을 쓸 수 없습니다: %v", got.Version, perr), a.cfg != nil
 		} else {
-			a.cfg, a.cfgError, a.cfgFallback, a.srv.cfgTag = cfg, "", false, tag
+			a.cfg, a.cfgError, a.cfgFallback, a.srv.cfgTag, a.srv.cfgVer = cfg, "", false, tag, got.Version
 			restart = true
 			if good, gerr := secret.LastGoodConfigPath(); gerr == nil {
 				_ = os.WriteFile(good, []byte(got.YAML), 0o600)

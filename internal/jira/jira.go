@@ -333,6 +333,18 @@ func plain(raw json.RawMessage) string {
 	return t
 }
 
+// File is something attached to a ticket. URL opens it in the browser, where
+// the user is signed in to Jira.
+type File struct {
+	ID      string    `json:"id"`
+	Name    string    `json:"name"`
+	Size    int64     `json:"size"`
+	Mime    string    `json:"mime"`
+	Author  string    `json:"author"`
+	Created time.Time `json:"created"`
+	URL     string    `json:"url"`
+}
+
 // Detail is the readable content of one ticket. The HTML is rendered by Jira
 // from what people typed, so it must be sanitised before it is shown.
 type Detail struct {
@@ -340,6 +352,7 @@ type Detail struct {
 	DescriptionHTML string    `json:"descriptionHtml"`
 	Comments        []Comment `json:"comments"`
 	Attachments     int       `json:"attachments"`
+	Files           []File    `json:"files"`
 	Forms           []Form    `json:"forms"`
 	FormsError      string    `json:"formsError"` // why the forms could not be read ("" = fine)
 }
@@ -361,7 +374,16 @@ func (c *Client) Detail(ctx context.Context, key string) (*Detail, error) {
 					JSDPublic *bool  `json:"jsdPublic"`
 				} `json:"comments"`
 			} `json:"comment"`
-			Attachment []json.RawMessage `json:"attachment"`
+			Attachment []struct {
+				ID       string `json:"id"`
+				Filename string `json:"filename"`
+				Size     int64  `json:"size"`
+				MimeType string `json:"mimeType"`
+				Created  string `json:"created"`
+				Author   struct {
+					DisplayName string `json:"displayName"`
+				} `json:"author"`
+			} `json:"attachment"`
 		} `json:"fields"`
 		Rendered struct {
 			Description string `json:"description"`
@@ -381,7 +403,11 @@ func (c *Client) Detail(ctx context.Context, key string) (*Detail, error) {
 	for _, rc := range res.Rendered.Comment.Comments {
 		body[rc.ID] = rc.Body
 	}
-	d := &Detail{Key: key, DescriptionHTML: res.Rendered.Description, Comments: []Comment{}, Attachments: len(res.Fields.Attachment), Forms: []Form{}}
+	d := &Detail{Key: key, DescriptionHTML: res.Rendered.Description, Comments: []Comment{}, Attachments: len(res.Fields.Attachment), Files: []File{}, Forms: []Form{}}
+	for _, fa := range res.Fields.Attachment {
+		at, _ := ParseTime(fa.Created)
+		d.Files = append(d.Files, File{ID: fa.ID, Name: fa.Filename, Size: fa.Size, Mime: fa.MimeType, Author: fa.Author.DisplayName, Created: at, URL: c.base + "/rest/api/3/attachment/content/" + url.PathEscape(fa.ID)})
+	}
 	if forms, ferr := c.Forms(ctx, key); ferr != nil {
 		if errors.Is(ferr, ErrUnauthorized) {
 			return nil, ferr

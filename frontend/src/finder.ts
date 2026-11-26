@@ -104,13 +104,17 @@ export function initFinder(snapshot: () => Snapshot | null, visit: (box: Box) =>
   });
   window.addEventListener('keydown', (e) => {
     const typing = e.target instanceof HTMLElement && (e.target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName));
-    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
-      e.preventDefault();
-      if (open) close();
-      else openFinder();
-    } else if (e.key === '/' && !typing && !open) {
+    if (e.key === '/' && !typing && !open && !e.defaultPrevented) {
       e.preventDefault();
       openFinder();
     }
   });
+}
+
+export const finderOpen = () => open;
+
+/** Opens the search, or closes it when it is open. */
+export function toggleFinder() {
+  if (open) close();
+  else openFinder();
 }

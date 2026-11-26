@@ -3,6 +3,7 @@
 import type { Backend } from './backend';
 import { sanitize } from './sanitize';
 import type { Box, Snapshot, TicketActions, TicketDetail } from './types';
+import { filesOf, sendFiles, sizeText } from './attach';
 import { codeBlock, confirmAction, copyButton, dateTime, errText, fill, h, limitText, span, toast } from './ui';
 
 // Details are read from Jira when a ticket is opened and kept only in memory,
@@ -27,6 +28,8 @@ interface Win {
   text: HTMLTextAreaElement | null; // the comment box's text area
   commentBox: HTMLElement | null; // built with the actions, shown with the comments
   busy: boolean; // a change is on its way to Jira
+  attach: boolean; // files can be added to this ticket
+  sending: number; // files on their way to Jira
   // Redrawing replaces the comment box, which would break typing (Korean input
   // composes a syllable over several keys). While the box has the cursor, a
   // redraw waits here until the cursor leaves.
@@ -414,6 +417,53 @@ function answer(label: string, value: string) {
   return h('div', { class: 'answer wide' }, name, h('dd', {}, value));
 }
 
+/** Sends files to the window's ticket and reads the ticket again. */
+async function upload(w: Win, list: File[], backend: Backend) {
+  if (!w.attach || !list.length) return;
+  w.sending += list.length;
+  renderDetail(w, backend);
+  const sent = await sendFiles(backend, w.key, list);
+  w.sending -= list.length;
+  if (sent) {
+    details.delete(w.key);
+    toast(`${w.key}에 파일 ${sent}개를 붙였습니다.`);
+  }
+  if (wins.get(w.key) !== w) return;
+  if (typing(w)) w.pending = () => renderDetail(w, backend);
+  else renderDetail(w, backend);
+}
+
+/** The files of a ticket and the way to add more. */
+function files(w: Win, d: TicketDetail, backend: Backend) {
+  const list = d.files ?? [];
+  const pick = h('input', { type: 'file', multiple: true, hidden: true });
+  pick.addEventListener('change', () => void upload(w, [...(pick.files ?? [])], backend));
+  return [
+    h('h3', {}, list.length ? `첨부 ${list.length}개` : '첨부'),
+    list.length
+      ? h(
+          'ul',
+          { class: 'files' },
+          ...list.map((f) =>
+            h(
+              'li',
+              {},
+              h('button', { type: 'button', class: 'file', title: 'Jira에서 열기', onclick: () => backend.openUrl(f.url) }, h('i', { class: /^image\//.test(f.mime) ? 'ico img' : 'ico', 'aria-hidden': 'true' }), h('span', { class: 'name' }, f.name)),
+              h('span', { class: 'quiet' }, `${sizeText(f.size)} · ${f.author} · ${dateTime(f.created)}`),
+            ),
+          ),
+        )
+      : null,
+    h(
+      'p',
+      { class: 'attach-bar' },
+      pick,
+      h('button', { type: 'button', disabled: w.sending > 0, onclick: () => pick.click() }, w.sending > 0 ? `${w.sending}개 올리는 중…` : '파일 추가'),
+      h('span', { class: 'quiet' }, '이 창에 끌어다 놓거나 붙여넣어도 됩니다.'),
+    ),
+  ];
+}
+
 function renderDetail(w: Win, backend: Backend) {
   const host = w.detailEl;
   if (!host) return;
@@ -468,7 +518,7 @@ function renderDetail(w: Win, backend: Backend) {
     // A ticket with forms and no description does not need an empty heading.
     hasDescription || forms.length === 0 ? h('h3', {}, '설명') : null,
     hasDescription ? rich(d.descriptionHtml, backend) : forms.length === 0 ? h('p', { class: 'quiet' }, '설명이 없습니다.') : null,
-    d.attachments ? h('p', { class: 'quiet' }, `첨부파일 ${d.attachments}개는 Jira에서 볼 수 있습니다.`) : null,
+    ...(w.attach ? files(w, d, backend) : [d.attachments ? h('p', { class: 'quiet' }, `첨부파일 ${d.attachments}개는 Jira에서 볼 수 있습니다.`) : null]),
     h('h3', {}, d.comments.length ? `댓글 ${d.comments.length}개` : '댓글'),
     commentSlot(w),
     d.comments.length
@@ -502,6 +552,7 @@ function draw(w: Win, snap: Snapshot, backend: Backend) {
   }
   w.pending = null;
   const b = w.box;
+  w.attach = !!snap.spaces.find((s) => s.id === b.space)?.attach;
   // A window is redrawn on every refresh: keep the reader's place.
   const scroll = w.body.scrollTop;
   const zone = snap.spaces.find((s) => s.id === b.space)?.zones.find((z) => z.id === b.zone);
@@ -629,7 +680,7 @@ export function openTicket(b: Box, snap: Snapshot, backend: Backend, hooks: Tick
   const head = h('header', { class: 'tw-head' }, title, h('span', { class: 'tw-buttons' }, fold, shut));
   const body = h('div', { class: 'tw-body' });
   const el = h('section', { class: 'tw', role: 'dialog', 'aria-label': `${b.key} ${b.summary}` }, head, body);
-  const win: Win = { key: b.key, box: b, el, body, actionsEl: null, detailEl: null, cancelEl: null, claimEl: null, min: false, size: { w: '', h: '' }, text: null, commentBox: null, busy: false, pending: null };
+  const win: Win = { key: b.key, box: b, el, body, actionsEl: null, detailEl: null, cancelEl: null, claimEl: null, min: false, size: { w: '', h: '' }, text: null, commentBox: null, busy: false, attach: false, sending: 0, pending: null };
   w = win;
   wins.set(b.key, win);
 
@@ -653,8 +704,25 @@ export function openTicket(b: Box, snap: Snapshot, backend: Backend, hooks: Tick
     },
     true,
   );
-  el.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && !typing(win)) close(win, hooks);
+  // Files dropped on the window, or pasted while it has the focus, go to its ticket.
+  el.addEventListener('dragover', (e) => {
+    if (!win.attach || !e.dataTransfer?.types.includes('Files')) return;
+    e.preventDefault();
+    el.classList.add('dropping');
+  });
+  el.addEventListener('dragleave', (e) => !el.contains(e.relatedTarget as Node | null) && el.classList.remove('dropping'));
+  el.addEventListener('drop', (e) => {
+    el.classList.remove('dropping');
+    const list = filesOf(e.dataTransfer);
+    if (!win.attach || !list.length) return;
+    e.preventDefault();
+    void upload(win, list, backend);
+  });
+  el.addEventListener('paste', (e) => {
+    const list = filesOf(e.clipboardData);
+    if (!win.attach || !list.length) return; // text goes where it was going
+    e.preventDefault();
+    void upload(win, list, backend);
   });
   // drag by the title bar, kept inside the window of the app
   head.addEventListener('pointerdown', (e) => {
@@ -690,6 +758,21 @@ export function syncTickets(snap: Snapshot, backend: Backend) {
     if (now) w.box = now;
     draw(w, snap, backend);
   });
+}
+
+/**
+ * Closes one window: the one that holds the focus, else the one in front.
+ * Returns false when none is open.
+ */
+export function closeFront(hooks: TicketHooks) {
+  const all = [...wins.values()];
+  const w = all.find((x) => x.el.contains(document.activeElement)) ?? all.sort((a, b) => Number(b.el.style.zIndex) - Number(a.el.style.zIndex))[0];
+  if (!w) return false;
+  close(w, hooks);
+  // the next one in front is marked in the room
+  const next = [...wins.values()].sort((a, b) => Number(b.el.style.zIndex) - Number(a.el.style.zIndex))[0];
+  if (next) front(next, hooks);
+  return true;
 }
 
 export function closeTickets(hooks?: TicketHooks) {

@@ -2,6 +2,7 @@
 // the team makes its own, and the form for it is laid out like a waybill:
 // who sends, who receives, what is inside.
 
+import { filesOf, sendFiles, sizeText } from './attach';
 import type { Backend } from './backend';
 import { TAGS } from './scene';
 import type { CreateField, CreateForm, SpaceView } from './types';
@@ -131,6 +132,30 @@ export function openWaybill(backend: Backend, space: SpaceView, me: string, peop
   const body = h('div', { class: 'wb-body' });
   const error = h('p', { class: 'error', role: 'alert' });
   const send = h('button', { class: 'primary', type: 'submit' }, '송장 붙여 보내기');
+  // Files to go with the ticket: Jira takes them once the ticket exists, so they are sent right after it is made.
+  let picked: File[] = [];
+  const pick = h('input', { type: 'file', multiple: true, hidden: true });
+  const chosen = h('ul', { class: 'files' });
+  const showPicked = () =>
+    chosen.replaceChildren(
+      ...picked.map((f, i) =>
+        h(
+          'li',
+          {},
+          h('span', { class: 'name' }, f.name),
+          h('span', { class: 'quiet' }, sizeText(f.size)),
+          h('button', { type: 'button', class: 'close', 'aria-label': `${f.name} 빼기`, onclick: () => (picked.splice(i, 1), showPicked()) }, '×'),
+        ),
+      ),
+    );
+  const add = (list: File[]) => {
+    picked.push(...list);
+    showPicked();
+  };
+  pick.addEventListener('change', () => (add([...(pick.files ?? [])]), (pick.value = '')));
+  const attachRow = space.attach
+    ? h('div', { class: 'wb-attach' }, h('span', { class: 'wb-cap' }, '첨부'), chosen, h('p', { class: 'attach-bar' }, pick, h('button', { type: 'button', onclick: () => pick.click() }, '파일 추가'), h('span', { class: 'quiet' }, '끌어다 놓거나 붙여넣어도 됩니다.')))
+    : null;
   let form: CreateForm | null = null;
   let read: { field: CreateField; value: () => Value; extra?: () => Record<string, Value> }[] = [];
 
@@ -196,6 +221,10 @@ export function openWaybill(backend: Backend, space: SpaceView, me: string, peop
           const key = await backend.createTicket(space.id, type.value, values, to.value);
           close();
           toast(`${key} 송장을 붙였습니다. 곧 ${space.name}에 상자가 나타납니다.`);
+          if (picked.length) {
+            const sent = await sendFiles(backend, key, picked);
+            if (sent) toast(`${key}에 파일 ${sent}개를 붙였습니다.`);
+          }
           made(key);
         } catch (err) {
           error.textContent = errText(err);
@@ -220,9 +249,25 @@ export function openWaybill(backend: Backend, space: SpaceView, me: string, peop
       h('div', {}, h('label', { class: 'wb-cap', for: 'wb-type' }, '유형'), type),
     ),
     body,
+    attachRow,
     error,
     h('footer', {}, h('span', { class: 'quiet' }, '보내면 Jira에 바로 티켓이 만들어집니다.'), h('button', { type: 'button', onclick: close }, '닫기'), send),
   );
+  if (space.attach) {
+    dlg.addEventListener('dragover', (e) => e.dataTransfer?.types.includes('Files') && e.preventDefault());
+    dlg.addEventListener('drop', (e) => {
+      const list = filesOf(e.dataTransfer);
+      if (!list.length) return;
+      e.preventDefault();
+      add(list);
+    });
+    dlg.addEventListener('paste', (e) => {
+      const list = filesOf(e.clipboardData);
+      if (!list.length) return; // text goes where it was going
+      e.preventDefault();
+      add(list);
+    });
+  }
   dlg.append(paper);
   dlg.addEventListener('cancel', (e) => (e.preventDefault(), close()));
   document.body.append(dlg);

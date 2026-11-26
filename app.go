@@ -2,10 +2,12 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -69,17 +71,20 @@ type AppState struct {
 	ConfigPath    string `json:"configPath"`
 	ConfigName    string `json:"configName"`
 	ConfigVersion string `json:"configVersion"`
-	ConfigError   string `json:"configError"`
-	ConfigLoaded  bool   `json:"configLoaded"`
-	UsingLastGood bool   `json:"usingLastGood"`
-	Site          string `json:"site"`
-	Email         string `json:"email"`
-	SignedIn      bool   `json:"signedIn"`
-	Me            string `json:"me"`
-	AuthError     string `json:"authError"`
-	PollSeconds   int    `json:"pollSeconds"`
-	Notify        bool   `json:"notify"`        // the user wants notifications
-	NotifyProblem string `json:"notifyProblem"` // why the system will not show them ("" = fine)
+	// ConfigFileVersion is the version written in the settings themselves,
+	// when ConfigVersion is the team server's.
+	ConfigFileVersion string `json:"configFileVersion"`
+	ConfigError       string `json:"configError"`
+	ConfigLoaded      bool   `json:"configLoaded"`
+	UsingLastGood     bool   `json:"usingLastGood"`
+	Site              string `json:"site"`
+	Email             string `json:"email"`
+	SignedIn          bool   `json:"signedIn"`
+	Me                string `json:"me"`
+	AuthError         string `json:"authError"`
+	PollSeconds       int    `json:"pollSeconds"`
+	Notify            bool   `json:"notify"`        // the user wants notifications
+	NotifyProblem     string `json:"notifyProblem"` // why the system will not show them ("" = fine)
 
 	Server        string `json:"server"`        // team server address ("" = none)
 	ServerBusy    bool   `json:"serverBusy"`    // waiting for the browser sign-in
@@ -160,6 +165,11 @@ func (a *App) stateLocked() *AppState {
 	}
 	if a.cfg != nil {
 		s.ConfigLoaded, s.ConfigName, s.ConfigVersion, s.PollSeconds = true, a.cfg.Name, a.cfg.Version, a.cfg.PollSeconds
+		// Settings from the team server go by the version the server gives
+		// them; what the file calls itself is kept beside it.
+		if a.srv.cfgVer > 0 {
+			s.ConfigVersion, s.ConfigFileVersion = fmt.Sprintf("v%d", a.srv.cfgVer), a.cfg.Version
+		}
 		if s.Site == "" {
 			s.Site = a.cfg.Site
 		}
@@ -463,6 +473,53 @@ func (a *App) AddComment(key, text, mode string) error {
 	return a.write(key, func(ctx context.Context, c *jira.Client, _ *jira.User) error {
 		return c.AddComment(ctx, key, text, mode)
 	})
+}
+
+// maxAttach is the largest file the app sends to Jira. Jira has its own
+// limit, usually lower; this one keeps a slip of the hand out of memory.
+const maxAttach = 25 << 20
+
+// AttachFile adds a file to a ticket. data is the file in base64. Only
+// spaces whose settings say "attach: true" take files.
+func (a *App) AttachFile(key, name, data string) error {
+	project, _, _ := strings.Cut(key, "-")
+	a.mu.Lock()
+	allowed := false
+	if a.cfg != nil {
+		for _, sp := range a.cfg.Spaces {
+			allowed = allowed || (sp.Attach && sp.Project == project)
+		}
+	}
+	a.mu.Unlock()
+	if !allowed {
+		return errors.New("이 층의 티켓에는 앱에서 파일을 붙일 수 없습니다")
+	}
+	name = strings.TrimSpace(filepath.Base(strings.ReplaceAll(name, "\\", "/")))
+	if name == "" || name == "." || name == "/" {
+		return errors.New("파일 이름이 없습니다")
+	}
+	if base64.StdEncoding.DecodedLen(len(data)) > maxAttach+3 {
+		return fmt.Errorf("%s: %dMB보다 큰 파일은 앱에서 붙일 수 없습니다", name, maxAttach>>20)
+	}
+	raw, err := base64.StdEncoding.DecodeString(data)
+	if err != nil {
+		return fmt.Errorf("%s: 파일을 읽을 수 없습니다", name)
+	}
+	if len(raw) == 0 {
+		return fmt.Errorf("%s: 빈 파일입니다", name)
+	}
+	c, _, err := a.jira()
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	if err := c.Attach(ctx, key, name, raw); err != nil {
+		return err
+	}
+	a.notify.touched(key)
+	a.Refresh()
+	return nil
 }
 
 // Refresh asks for a refresh now instead of waiting for the next tick.

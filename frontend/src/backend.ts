@@ -34,6 +34,7 @@ export interface Backend {
   createForm(space: string, type: string): Promise<CreateForm>;
   createTicket(space: string, type: string, values: Record<string, string | string[]>, assignee: string): Promise<string>;
   addComment(key: string, text: string, mode: 'internal' | 'public' | 'plain'): Promise<void>;
+  attachFile(key: string, name: string, base64: string): Promise<void>;
   openUrl(url: string): void;
   onBoard(cb: (ev: BoardEvent) => void): void;
   onError(cb: (err: BoardError) => void): void;
@@ -83,6 +84,7 @@ async function real(): Promise<Backend> {
     createForm: (space, type) => call('CreateForm', space, type),
     createTicket: (space, type, values, assignee) => call('CreateTicket', space, type, values, assignee),
     addComment: (key, text, mode) => call('AddComment', key, text, mode),
+    attachFile: (key, name, base64) => call('AttachFile', key, name, base64),
     // Only web pages are handed to the system: never a file or another app's link.
     openUrl: (url) => void (/^https:\/\//i.test(url) && Browser.OpenURL(url)),
     onBoard: (cb) => void Events.On('board:snapshot', (ev: { data: BoardEvent }) => cb(ev.data)),

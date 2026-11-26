@@ -2612,3 +2612,163 @@ button.notice.server.warn .ico {
   border-color: var(--old);
   color: var(--old);
 }
+
+/* ---- files of a ticket ---- */
+ul.files {
+  display: grid;
+  gap: 4px;
+  margin: 0 0 8px;
+  padding: 0;
+  list-style: none;
+}
+
+ul.files:empty {
+  display: none;
+}
+
+ul.files li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-size: 12px;
+}
+
+ul.files .name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+ul.files li > .quiet {
+  flex: none;
+  margin-left: auto;
+}
+
+ul.files button.file {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 3px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+ul.files button.file:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+ul.files .ico {
+  flex: none;
+  width: 9px;
+  height: 12px;
+  border: 1.5px solid var(--quiet);
+  border-radius: 2px;
+}
+
+ul.files .ico.img {
+  width: 12px;
+  height: 10px;
+  background: linear-gradient(135deg, transparent 55%, var(--quiet) 56%);
+}
+
+ul.files button.close {
+  flex: none;
+}
+
+.attach-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 6px;
+  font-size: 12px;
+}
+
+.tw.dropping {
+  outline: 2px dashed var(--accent);
+  outline-offset: -6px;
+}
+
+.wb-attach {
+  display: grid;
+  gap: 6px;
+}
+
+/* ---- shortcut settings ---- */
+dialog.keys {
+  width: min(420px, calc(100vw - 32px));
+  padding: 18px;
+  border: 0;
+  border-radius: 12px;
+  box-shadow: 0 24px 60px rgb(31 42 68 / 35%);
+}
+
+dialog.keys::backdrop {
+  background: rgb(31 42 68 / 30%);
+}
+
+dialog.keys h2 {
+  margin: 0 0 6px;
+  font-size: 16px;
+}
+
+dialog.keys p {
+  margin: 0 0 12px;
+  font-size: 12px;
+}
+
+dialog.keys dl {
+  display: grid;
+  gap: 6px;
+  margin: 0 0 14px;
+}
+
+dialog.keys .row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+dialog.keys dt {
+  font-size: 13px;
+}
+
+dialog.keys dd {
+  margin: 0;
+}
+
+dialog.keys button.key {
+  min-width: 96px;
+  padding: 5px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--quiet);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+dialog.keys button.key kbd {
+  color: var(--ink);
+  font: inherit;
+  font-weight: 700;
+}
+
+dialog.keys button.key.waiting {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+dialog.keys footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}

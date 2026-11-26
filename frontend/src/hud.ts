@@ -1,6 +1,7 @@
 // The bar above the room: what is loaded, how full each zone is, and the
 // few commands the app has.
 
+import { keyLabel } from './keys';
 import type { Backend } from './backend';
 import { avatarIcon, lookOf } from './avatars';
 import { gameChip, renderGame } from './game';
@@ -131,7 +132,7 @@ export function renderHud(state: AppState, snap: Snapshot | null, space: number,
       'div',
       { class: 'title' },
       h('strong', { title: snap?.name ?? state.configName ?? '' }, 'Argus Desk'),
-      h('span', { class: 'quiet', title: state.configPath }, `설정 ${state.configVersion || '?'}`),
+      h('span', { class: 'quiet', title: state.configFileVersion ? `팀 서버가 배포한 설정 ${state.configVersion} (파일 안의 버전 ${state.configFileVersion})` : state.configPath }, `설정 ${state.configVersion || '?'}`),
       backend.mock ? h('span', { class: 'chip' }, '가짜 데이터') : null,
       state.usingLastGood ? h('span', { class: 'chip warn', title: state.configError }, '이전 설정으로 실행 중') : null,
       gameChip(hooks.game, hooks.gameOpen, hooks.toggleGame),
@@ -152,7 +153,7 @@ export function renderHud(state: AppState, snap: Snapshot | null, space: number,
     h(
       'div',
       { class: 'tools' },
-      snap ? h('button', { class: 'find', title: '상자 찾기 (Ctrl/⌘ K)', 'aria-label': '상자 찾기', onclick: hooks.search }, h('span', { class: 'find-ico', 'aria-hidden': 'true' }), h('kbd', {}, /Mac/.test(navigator.platform) ? '⌘K' : 'Ctrl K')) : null,
+      snap ? h('button', { class: 'find', title: `상자 찾기${keyLabel('search') ? ` (${keyLabel('search')})` : ''}`, 'aria-label': '상자 찾기', onclick: hooks.search }, h('span', { class: 'find-ico', 'aria-hidden': 'true' }), keyLabel('search') ? h('kbd', {}, keyLabel('search')) : null) : null,
       snap
         ? h(
             'div',

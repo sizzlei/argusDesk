@@ -2,10 +2,11 @@ import { lookOf } from './avatars';
 import { connect } from './backend';
 import { news } from './game';
 import { filtersOpen, renderFilters, toggleFilters } from './filters';
-import { initFinder, openFinder } from './finder';
+import { finderOpen, initFinder, openFinder, toggleFinder } from './finder';
+import { initKeys, keyLabel, openKeySettings } from './keys';
 import { renderHud } from './hud';
 import { addNotes, noticeCount, noticesOpen, renderNotices, setServerFeed, toggleNotices } from './notices';
-import { closeTickets, openTicket, openTickets, setStrength, syncTickets } from './panel';
+import { closeFront, closeTickets, openTicket, openTickets, setStrength, syncTickets } from './panel';
 import { AGE, Scene, TAGS } from './scene';
 import { type ProfileAction, profileOpen, renderProfile, toggleProfile } from './profile';
 import { renderSetup } from './setup';
@@ -89,13 +90,6 @@ async function boot() {
     },
   });
   await scene.init();
-  // N writes a ticket from anywhere, as the packing bench does on its floor.
-  window.addEventListener('keydown', (e) => {
-    const typing = e.target instanceof HTMLElement && (e.target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName));
-    if (e.code !== 'KeyN' || typing || e.metaKey || e.ctrlKey || e.altKey || e.isComposing) return;
-    e.preventDefault();
-    write();
-  });
   document.getElementById('zoom-in')!.addEventListener('click', () => scene.zoom(1.25));
   document.getElementById('zoom-out')!.addEventListener('click', () => scene.zoom(0.8));
   document.getElementById('zoom-fit')!.addEventListener('click', () => scene.resetView());
@@ -155,6 +149,7 @@ async function boot() {
           },
         },
       !!state.server && { label: '팀 서버 연결 끊기', run: () => void backend.forgetServer().then(apply, fail) },
+      { label: '단축키 설정', run: () => openKeySettings(), note: `송장 쓰기 ${keyLabel('write') || '없음'} · 상자 찾기 ${keyLabel('search') || '없음'} · Esc 창 닫기` },
       { label: '업데이트 확인', run: () => void checkForUpdates(true) },
       { label: '로그아웃', run: () => void backend.logout().then(apply, fail), danger: true },
     ];
@@ -228,6 +223,52 @@ async function boot() {
     });
   };
   let legendOpen = false;
+  const floor = (step: number) => {
+    if (!snap) return;
+    const next = Math.max(0, Math.min(snap.spaces.length - 1, (space < 0 ? -1 : space) + step));
+    if (next === space) return;
+    space = next;
+    scene.setSpace(next);
+    hud();
+    legend();
+  };
+  const panel = (which: 'notices' | 'profile', isOpen: boolean, toggle: (on: boolean) => void) => {
+    only(isOpen ? '' : which);
+    toggle(!isOpen);
+    hud();
+  };
+  initKeys(
+    {
+      search: toggleFinder,
+      write,
+      refresh: () => void backend.refresh(),
+      mine: () => setFilter({ ...filter, scope: filter.scope === 'mine' ? 'all' : 'mine' }),
+      notices: () => panel('notices', noticesOpen(), toggleNotices),
+      profile: () => panel('profile', profileOpen(), toggleProfile),
+      floorUp: () => floor(1),
+      floorDown: () => floor(-1),
+      fit: () => scene.resetView(),
+    },
+    () => hud(),
+  );
+  // Esc shuts what is open, one thing at a time: a panel, the record, then the ticket window in front.
+  // Dialogs and the search shut themselves; in a text box, the first Esc only leaves the box.
+  window.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape' || e.isComposing || e.defaultPrevented) return;
+    if (document.querySelector('dialog[open]') || finderOpen()) return;
+    const t = e.target;
+    if (t instanceof HTMLElement && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return void t.blur();
+    if (noticesOpen() || filtersOpen() || profileOpen()) {
+      only('');
+      hud();
+    } else if (gameOpen) {
+      gameOpen = false;
+      hud();
+    } else if (legendOpen) {
+      legendOpen = false;
+      legend();
+    } else closeFront(tickets);
+  });
   document.getElementById('legend-toggle')!.addEventListener('click', () => {
     legendOpen = !legendOpen;
     legend();

@@ -2,7 +2,7 @@
 // invented; nothing comes from a real Jira.
 
 import type { Backend } from './backend';
-import type { AppState, Away, Badge, BoardEvent, Box, Change, CreateForm, GameStats, Member, Note, PathStep, ServerFeed, Snapshot, Tally, Vacation, ZoneView } from './types';
+import type { TicketFile, AppState, Away, Badge, BoardEvent, Box, Change, CreateForm, GameStats, Member, Note, PathStep, ServerFeed, Snapshot, Tally, Vacation, ZoneView } from './types';
 
 const HOUR = 3600_000;
 
@@ -43,6 +43,7 @@ Object.assign(statusOf, {
   'i-returns': ['20005', '업무 취소'],
 });
 const order2 = ['i-wait', 'i-approval', 'i-work', 'i-done'];
+const attached = new Map<string, TicketFile[]>(); // files added in this session, by ticket
 const types2: [string, string][] = [
   ['[INT] 내부 업무', 'navy'],
   ['[INT] 작업 계획', 'teal'],
@@ -217,7 +218,7 @@ function snapshot(boxes: Box[], now: number): Snapshot {
     fetchedAt: new Date(now).toISOString(),
     spaces: [
       { id: 'requests', name: '요청 센터', project: 'REQ', zones: zv },
-      { id: 'internal', name: '내부 사무동', project: 'INT', zones: view(zones2), create: true, types: types2.map(([name, tag]) => ({ name, tag })) },
+      { id: 'internal', name: '내부 사무동', project: 'INT', zones: view(zones2), create: true, attach: true, types: types2.map(([name, tag]) => ({ name, tag })) },
     ],
     boxes: boxes.map((b) => ({ ...b })),
     members,
@@ -454,7 +455,8 @@ export function mockBackend(): Backend {
           { author: '김하늘', created: new Date(now - 2 * HOUR).toISOString(), bodyHtml: '<p>인덱스 크기 추정 후 진행 예정.</p>', internal: true },
           ...(written.get(key) ?? []),
         ],
-        attachments: 1,
+        attachments: b?.space === 'internal' ? (attached.get(key)?.length ?? 0) : 1,
+        files: attached.get(key) ?? [],
         forms: [
           {
             name: '스키마 변경 요청서',
@@ -515,6 +517,14 @@ export function mockBackend(): Backend {
     answerApproval: async (key, _id, approve) => {
       await pause();
       move(find(key), approve ? 'work' : 'returns');
+    },
+    attachFile: async (key, name, base64) => {
+      await pause();
+      const size = Math.floor((base64.length * 3) / 4);
+      if (size > 10 * 1024 * 1024) throw new Error(`${name}: Jira가 받는 크기보다 큰 파일입니다`);
+      const list = attached.get(key) ?? [];
+      list.push({ id: `f${++stamp}`, name, size, mime: /\.(png|jpe?g|gif|webp)$/i.test(name) ? 'image/png' : 'application/octet-stream', author: people[0][1], created: new Date().toISOString(), url: 'https://example.atlassian.net/rest/api/3/attachment/content/1' });
+      attached.set(key, list);
     },
     createForm: async (space, type) => {
       await pause();

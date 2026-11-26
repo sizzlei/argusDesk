@@ -79,6 +79,7 @@ type SpaceView struct {
 	// Create is set for a space whose tickets the team writes itself; Types
 	// are then the kinds of ticket the app can make there.
 	Create bool       `json:"create"`
+	Attach bool       `json:"attach"` // files can be added to its tickets
 	Types  []TypeView `json:"types,omitempty"`
 }
 

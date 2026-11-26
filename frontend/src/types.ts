@@ -51,6 +51,7 @@ export interface SpaceView {
   project: string; // Jira project key
   zones: ZoneView[];
   create?: boolean; // the team writes this space's tickets itself: the app can make one
+  attach?: boolean; // files can be added to its tickets
   types?: { name: string; tag: string }[]; // the kinds of ticket that can be made there
 }
 
@@ -147,6 +148,7 @@ export interface AppState {
   configPath: string;
   configName: string;
   configVersion: string;
+  configFileVersion?: string; // what the settings call themselves, when configVersion is the team server's
   configError: string;
   configLoaded: boolean;
   usingLastGood: boolean;
@@ -204,11 +206,23 @@ export interface TicketForm {
 }
 
 /** Forms, description and comments of one ticket. The HTML is rendered by Jira (untrusted). */
+/** A file attached to a ticket. Its url opens in the browser. */
+export interface TicketFile {
+  id: string;
+  name: string;
+  size: number;
+  mime: string;
+  author: string;
+  created: string;
+  url: string;
+}
+
 export interface TicketDetail {
   key: string;
   descriptionHtml: string;
   comments: TicketComment[];
   attachments: number;
+  files?: TicketFile[];
   forms: TicketForm[];
   formsError: string;
 }

@@ -46,7 +46,7 @@ func Assemble(in Input) *model.Snapshot {
 
 	for si := range cfg.Spaces {
 		sp := &cfg.Spaces[si]
-		view := model.SpaceView{ID: sp.ID, Name: sp.Name, Project: sp.Project, Create: sp.Create}
+		view := model.SpaceView{ID: sp.ID, Name: sp.Name, Project: sp.Project, Create: sp.Create, Attach: sp.Attach}
 		if sp.Create {
 			for name, t := range sp.Types {
 				view.Types = append(view.Types, model.TypeView{Name: name, Tag: t.Tag})
