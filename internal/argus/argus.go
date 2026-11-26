@@ -47,7 +47,7 @@ const JiraKeyPage = "/desk/my"
 var (
 	ErrDisabled     = errors.New("서버에서 ArgusDesk 연동이 꺼져 있습니다")
 	ErrUnauthorized = errors.New("Argus 로그인이 필요합니다")
-	ErrForbidden    = errors.New("이 계정에는 ArgusDesk를 쓸 권한이 없습니다")
+	ErrForbidden    = errors.New("ArgusDesk는 서버 관리자만 쓸 수 있습니다. 이 계정에는 권한이 없습니다")
 	ErrLocked       = errors.New("서버 계정이 잠겨 있습니다. 서버에 로그인해 잠금을 풀어 주세요")
 	ErrNoSite       = errors.New("서버에 Jira 사이트 주소가 정해져 있지 않습니다. 서버 관리자에게 알려 주세요")
 	ErrBusy         = errors.New("요청이 너무 잦습니다. 잠시 뒤 다시 시도해 주세요")

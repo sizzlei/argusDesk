@@ -40,7 +40,7 @@ export const SERVER_NEEDS: Record<string, string> = {
   login: '팀 서버 로그인이 끝났습니다. 메뉴에서 다시 로그인해 주세요. 그동안은 마지막으로 받은 설정으로 동작합니다.',
   jira: '팀 서버에 Jira 토큰이 등록되어 있지 않습니다. 서버의 내 설정에서 등록해 주세요.',
   config: '팀 서버에 아직 설정이 올라와 있지 않습니다.',
-  forbidden: '이 계정에는 ArgusDesk를 쓸 권한이 없습니다. 서버 관리자에게 요청해 주세요.',
+  forbidden: 'ArgusDesk는 서버 관리자만 쓸 수 있습니다. 이 계정에는 권한이 없습니다.',
   disabled: '팀 서버에서 ArgusDesk 연동이 꺼져 있습니다.',
   locked: '서버 계정이 잠겨 있습니다. 서버에 로그인해 잠금을 풀어 주세요.',
   site: '서버에 Jira 사이트 주소가 정해져 있지 않습니다. 서버 관리자에게 알려 주세요.',
