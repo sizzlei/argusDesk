@@ -2,7 +2,7 @@
 // invented; nothing comes from a real Jira.
 
 import type { Backend } from './backend';
-import type { AppState, Away, Badge, BoardEvent, Box, Change, GameStats, Member, Note, PathStep, Snapshot, Tally, Vacation, ZoneView } from './types';
+import type { AppState, Away, Badge, BoardEvent, Box, Change, CreateForm, GameStats, Member, Note, PathStep, Snapshot, Tally, Vacation, ZoneView } from './types';
 
 const HOUR = 3600_000;
 
@@ -217,7 +217,7 @@ function snapshot(boxes: Box[], now: number): Snapshot {
     fetchedAt: new Date(now).toISOString(),
     spaces: [
       { id: 'requests', name: '요청 센터', project: 'REQ', zones: zv },
-      { id: 'internal', name: '내부 사무동', project: 'INT', zones: view(zones2) },
+      { id: 'internal', name: '내부 사무동', project: 'INT', zones: view(zones2), create: true, types: types2.map(([name, tag]) => ({ name, tag })) },
     ],
     boxes: boxes.map((b) => ({ ...b })),
     members,
@@ -503,6 +503,36 @@ export function mockBackend(): Backend {
     answerApproval: async (key, _id, approve) => {
       await pause();
       move(find(key), approve ? 'work' : 'returns');
+    },
+    createForm: async (space, type) => {
+      await pause();
+      const fields: CreateForm['fields'] = [
+        { id: 'summary', name: '요약', required: true, hasDefault: false, kind: 'text' },
+        { id: 'description', name: '설명', required: false, hasDefault: false, kind: 'long' },
+        { id: 'cf-env', name: '대상 환경', required: true, hasDefault: false, kind: 'option', options: [{ id: '1', name: '운영' }, { id: '2', name: '개발' }] },
+        { id: 'cf-when', name: '작업 예정일', required: false, hasDefault: false, kind: 'date' },
+      ];
+      // one kind shows what a ticket that has to be written in Jira looks like
+      const blocked = type === types2[2][0] ? ['연관 자산'] : [];
+      return { space, type, fields: blocked.length ? [] : fields.filter((f) => f.id !== 'cf-when' || type === types2[0][0]), blocked, jiraUrl: 'https://example.atlassian.net/secure/CreateIssue.jspa' };
+    },
+    createTicket: async (_space, type, values, assignee) => {
+      await pause();
+      const b = make('i-wait', 0, Date.now());
+      b.space = 'internal';
+      b.key = b.key.replace('REQ', 'INT');
+      b.url = b.url.replace('REQ', 'INT');
+      b.summary = String(values.summary ?? '');
+      [b.type, b.tag] = types2.find(([name]) => name === type) ?? types2[0];
+      b.workflow = 'internal';
+      b.reporter = '김하늘';
+      const who = assignee === 'me' ? people[0] : people.find(([id]) => id === assignee);
+      if (who) [b.assigneeId, b.assignee] = who;
+      b.mine = b.assigneeId === 'u1';
+      b.path = [{ statusId: statusOf['i-wait'][0], name: statusOf['i-wait'][1], state: 'current' }];
+      boxes.push(b);
+      setTimeout(tick, 400);
+      return b.key;
     },
     addComment: async (key, text, mode) => {
       await pause();

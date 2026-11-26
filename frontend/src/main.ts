@@ -13,6 +13,7 @@ import type { AppState, Box, Change, GameStats, Snapshot } from './types';
 import { checkForUpdates, initUpdates } from './update';
 import { openAvatarPicker, openVacation } from './vacation';
 import { errText, toast } from './ui';
+import { openWaybill } from './waybill';
 import { type Filter, applyFilter, loadFilter, saveFilter, unassigned } from './view';
 
 async function boot() {
@@ -25,6 +26,7 @@ async function boot() {
   let game: GameStats | null = null;
   let gameOpen = false;
   let spot = ''; // the teammate whose boxes are lit
+  let awaited = ''; // a ticket I just made: its window opens when the box arrives
   // The filter narrows what the room and the counters show.
   let filter = loadFilter();
   let hidden = new Set<string>();
@@ -156,6 +158,13 @@ async function boot() {
     );
     renderHud(state, shown, space, lastError, backend, {
       refresh: () => void backend.refresh(),
+      write: () => {
+        const sp = snap?.spaces[space];
+        if (!sp) return;
+        const seen = new Set<string>();
+        const people = (snap?.members ?? []).filter((m) => !m.me && !seen.has(m.id) && seen.add(m.id)).map((m) => ({ id: m.id, name: m.name.trim().split(/\s+/)[0] }));
+        openWaybill(backend, sp, state.me.trim().split(/\s+/)[0] ?? '', people, game?.myFatigue === 0, (key) => (awaited = key));
+      },
       profileOpen: profileOpen(),
       toggleProfile: () => {
         const next = !profileOpen();
@@ -297,6 +306,11 @@ async function boot() {
     draw(ev.changes);
     syncTickets(ev.snapshot, backend);
     addNotes(ev.notes, ev.snapshot.fetchedAt);
+    const arrived = awaited && ev.snapshot.boxes.find((b) => b.key === awaited);
+    if (arrived) {
+      awaited = '';
+      visit(arrived);
+    }
     hud();
     legend();
   });

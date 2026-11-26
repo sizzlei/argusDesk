@@ -50,6 +50,27 @@ export interface SpaceView {
   name: string;
   project: string; // Jira project key
   zones: ZoneView[];
+  create?: boolean; // the team writes this space's tickets itself: the app can make one
+  types?: { name: string; tag: string }[]; // the kinds of ticket that can be made there
+}
+
+/** One field of the form a ticket is made with. */
+export interface CreateField {
+  id: string;
+  name: string;
+  required: boolean;
+  hasDefault: boolean;
+  kind: 'text' | 'long' | 'option' | 'options' | 'date' | 'datetime' | 'number' | 'other';
+  options?: { id: string; name: string }[];
+}
+
+/** The waybill for one kind of ticket. */
+export interface CreateForm {
+  space: string;
+  type: string;
+  fields: CreateField[];
+  blocked: string[]; // required fields the app cannot fill in: the ticket has to be made in Jira
+  jiraUrl: string;
 }
 
 export interface Member {

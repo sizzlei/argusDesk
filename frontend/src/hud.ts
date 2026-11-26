@@ -10,6 +10,7 @@ import { type Filter, type Scope, extraCount } from './view';
 
 export interface HudHooks {
   refresh(): void;
+  write(): void; // make a ticket on this floor
   profileOpen: boolean;
   toggleProfile(): void;
   spot: string; // the teammate whose boxes are lit ("" = everyone's)
@@ -117,6 +118,8 @@ export function renderHud(state: AppState, snap: Snapshot | null, space: number,
           h('span', { class: 'count' }, String((hooks.game?.away ?? []).filter((a) => a.active).length)),
         )
       : null,
+    // On a floor whose tickets the team writes itself: the way to make one.
+    space >= 0 && snap?.spaces[space]?.create ? h('button', { class: 'write', title: `${snap.spaces[space].name}에 새 티켓을 만듭니다`, onclick: hooks.write }, h('b', {}, '+'), h('span', { class: 'name' }, '송장 쓰기')) : null,
   );
 
   renderGame(hooks.game, hooks.gameOpen, hooks.toggleGame);

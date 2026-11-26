@@ -76,6 +76,16 @@ type SpaceView struct {
 	Name    string     `json:"name"`
 	Project string     `json:"project"` // Jira project key, e.g. "REQ"
 	Zones   []ZoneView `json:"zones"`
+	// Create is set for a space whose tickets the team writes itself; Types
+	// are then the kinds of ticket the app can make there.
+	Create bool       `json:"create"`
+	Types  []TypeView `json:"types,omitempty"`
+}
+
+// TypeView is a kind of ticket and the colour of its waybill.
+type TypeView struct {
+	Name string `json:"name"`
+	Tag  string `json:"tag"`
 }
 
 // Member is a teammate drawn as an avatar.

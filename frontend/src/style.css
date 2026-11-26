@@ -2353,3 +2353,155 @@ body.wrap-code .code pre {
   align-self: center;
   justify-self: center;
 }
+
+/* ---- waybill: writing a ticket of our own ---- */
+#floors button.write {
+  margin-top: 6px;
+  border-style: dashed;
+  color: var(--accent);
+}
+
+dialog.waybill {
+  width: min(560px, calc(100vw - 32px));
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  background: none;
+  box-shadow: 0 24px 60px rgb(31 42 68 / 35%);
+}
+
+dialog.waybill::backdrop {
+  background: rgb(31 42 68 / 30%);
+}
+
+.wb-paper {
+  display: grid;
+  gap: 12px;
+  padding: 0 18px 16px;
+  border: 2px solid var(--ink);
+  border-radius: 10px;
+  background: #fffdf7;
+}
+
+.wb-paper header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 -18px;
+  padding: 10px 14px 10px 0;
+  border-bottom: 2px solid var(--ink);
+}
+
+.wb-stripe {
+  align-self: stretch;
+  width: 14px;
+  margin: -10px 0;
+  border-radius: 8px 0 0 0;
+  background: var(--quiet);
+}
+
+.wb-paper header strong {
+  font-size: 18px;
+  letter-spacing: 0.3em;
+}
+
+.wb-route {
+  color: var(--quiet);
+  font-size: 12px;
+}
+
+/* a strip of bars, as on a parcel label */
+.wb-code {
+  flex: 1;
+  height: 26px;
+  margin-left: auto;
+  max-width: 150px;
+  background: repeating-linear-gradient(90deg, var(--ink) 0 2px, transparent 2px 4px, var(--ink) 4px 5px, transparent 5px 9px, var(--ink) 9px 12px, transparent 12px 14px);
+  opacity: 0.8;
+}
+
+.wb-parties {
+  display: grid;
+  grid-template-columns: 1fr 1.3fr 1.3fr;
+  margin: -12px -18px 0;
+  border-bottom: 1px dashed var(--ink);
+}
+
+.wb-parties > div {
+  display: grid;
+  gap: 2px;
+  padding: 10px 14px;
+  border-right: 1px dashed var(--ink);
+}
+
+.wb-parties > div:last-child {
+  border-right: 0;
+}
+
+.wb-cap {
+  color: var(--quiet);
+  font-size: 11px;
+}
+
+.wb-body {
+  display: grid;
+  gap: 4px;
+}
+
+.wb-body label {
+  margin-top: 6px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.wb-body label em {
+  color: var(--old);
+  font-style: normal;
+}
+
+.wb-paper select,
+.wb-paper input:not([type='checkbox']),
+.wb-paper textarea {
+  width: 100%;
+  padding: 7px 9px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+  color: inherit;
+  font: inherit;
+}
+
+.wb-paper textarea {
+  resize: vertical;
+}
+
+.wb-body .checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+}
+
+.wb-body .checks label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-weight: 400;
+}
+
+.wb-paper .error:empty {
+  display: none;
+}
+
+.wb-paper footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--ink);
+}
+
+.wb-paper footer .quiet {
+  margin-right: auto;
+  font-size: 12px;
+}

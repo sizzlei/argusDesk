@@ -4,7 +4,7 @@
 // In mock mode (npm run dev:mock) the same interface is served by mock.ts
 // with made-up data, so the screen runs in a plain browser.
 
-import type { AppState, BoardError, BoardEvent, GameStats, Release, Snapshot, TicketActions, TicketDetail, UpdateInfo, Vacation } from './types';
+import type { AppState, BoardError, BoardEvent, CreateForm, GameStats, Release, Snapshot, TicketActions, TicketDetail, UpdateInfo, Vacation } from './types';
 
 export interface Backend {
   mock: boolean;
@@ -29,6 +29,8 @@ export interface Backend {
   assignTicket(key: string, account: string): Promise<void>;
   answerApproval(key: string, approvalId: string, approve: boolean): Promise<void>;
   /** mode: internal / public for a service desk request, plain elsewhere */
+  createForm(space: string, type: string): Promise<CreateForm>;
+  createTicket(space: string, type: string, values: Record<string, string | string[]>, assignee: string): Promise<string>;
   addComment(key: string, text: string, mode: 'internal' | 'public' | 'plain'): Promise<void>;
   openUrl(url: string): void;
   onBoard(cb: (ev: BoardEvent) => void): void;
@@ -74,6 +76,8 @@ async function real(): Promise<Backend> {
     moveTicket: (key, id) => call('MoveTicket', key, id),
     assignTicket: (key, account) => call('AssignTicket', key, account),
     answerApproval: (key, id, approve) => call('AnswerApproval', key, id, approve),
+    createForm: (space, type) => call('CreateForm', space, type),
+    createTicket: (space, type, values, assignee) => call('CreateTicket', space, type, values, assignee),
     addComment: (key, text, mode) => call('AddComment', key, text, mode),
     // Only web pages are handed to the system: never a file or another app's link.
     openUrl: (url) => void (/^https:\/\//i.test(url) && Browser.OpenURL(url)),

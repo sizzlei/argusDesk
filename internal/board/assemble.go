@@ -46,7 +46,13 @@ func Assemble(in Input) *model.Snapshot {
 
 	for si := range cfg.Spaces {
 		sp := &cfg.Spaces[si]
-		view := model.SpaceView{ID: sp.ID, Name: sp.Name, Project: sp.Project}
+		view := model.SpaceView{ID: sp.ID, Name: sp.Name, Project: sp.Project, Create: sp.Create}
+		if sp.Create {
+			for name, t := range sp.Types {
+				view.Types = append(view.Types, model.TypeView{Name: name, Tag: t.Tag})
+			}
+			sort.Slice(view.Types, func(i, j int) bool { return view.Types[i].Name < view.Types[j].Name })
+		}
 		index := map[string]int{}
 		for _, z := range sp.Zones {
 			zv := model.ZoneView{ID: z.ID, Name: z.Name, Kind: z.Kind, Approval: z.Approval}

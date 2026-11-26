@@ -1,0 +1,146 @@
+package main
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/sizzlei/argusDesk/internal/jira"
+)
+
+// Some spaces only receive tickets; in others the team writes its own (the
+// settings mark those with "create: true"). For those the app offers a form,
+// laid out like a waybill, and makes the ticket in Jira.
+
+// CreateForm is the waybill for one kind of ticket.
+type CreateForm struct {
+	Space  string             `json:"space"`
+	Type   string             `json:"type"`
+	Fields []jira.CreateField `json:"fields"` // what is filled in here: summary, description and the required fields
+	// Blocked names required fields the app cannot fill in. With any, the
+	// ticket has to be made in Jira: JiraURL is the page for it.
+	Blocked []string `json:"blocked"`
+	JiraURL string   `json:"jiraUrl"`
+}
+
+type createMeta struct {
+	typeID string
+	fields []jira.CreateField
+	form   *CreateForm
+	at     time.Time
+}
+
+var (
+	metaMu    sync.Mutex
+	metaCache = map[string]*createMeta{} // by project + "/" + type name
+)
+
+// createMetaFor reads what Jira wants for one kind of ticket. It is kept for
+// ten minutes: the form is opened far more often than it changes.
+func (a *App) createMetaFor(ctx context.Context, spaceID, typeName string) (*createMeta, string, error) {
+	a.mu.Lock()
+	cfg, client := a.cfg, a.client
+	a.mu.Unlock()
+	if cfg == nil || client == nil {
+		return nil, "", errors.New("먼저 로그인해 주세요")
+	}
+	sp := cfg.Space(spaceID)
+	if sp == nil || !sp.Create {
+		return nil, "", errors.New("이 층에서는 티켓을 만들 수 없습니다")
+	}
+	if _, ok := sp.Types[typeName]; !ok {
+		return nil, "", errors.New("설정에 없는 유형입니다")
+	}
+	id := sp.Project + "/" + typeName
+	metaMu.Lock()
+	m := metaCache[id]
+	metaMu.Unlock()
+	if m != nil && time.Since(m.at) < 10*time.Minute {
+		return m, sp.Project, nil
+	}
+	types, err := client.IssueTypes(ctx, sp.Project)
+	if err != nil {
+		return nil, "", err
+	}
+	typeID := ""
+	for _, t := range types {
+		if t.Name == typeName {
+			typeID = t.ID
+		}
+	}
+	if typeID == "" {
+		return nil, "", fmt.Errorf("%s 프로젝트에서 %q 유형으로 티켓을 만들 수 없습니다. 권한이나 설정의 유형 이름을 확인해 주세요", sp.Project, typeName)
+	}
+	fields, err := client.CreateFields(ctx, sp.Project, typeID)
+	if err != nil {
+		return nil, "", err
+	}
+	m = &createMeta{typeID: typeID, at: time.Now(), form: &CreateForm{Space: spaceID, Type: typeName, Fields: []jira.CreateField{}, Blocked: []string{}}}
+	for _, f := range fields {
+		wanted := f.ID == "summary" || f.ID == "description" || (f.Required && !f.HasDefault)
+		switch {
+		case !wanted:
+		case f.Kind == jira.KindOther:
+			m.form.Blocked = append(m.form.Blocked, f.Name)
+		default:
+			m.fields = append(m.fields, f)
+			m.form.Fields = append(m.form.Fields, f)
+		}
+	}
+	if pid, err := client.ProjectID(ctx, sp.Project); err == nil {
+		m.form.JiraURL = client.CreateURL(pid, typeID)
+	}
+	metaMu.Lock()
+	metaCache[id] = m
+	metaMu.Unlock()
+	return m, sp.Project, nil
+}
+
+// CreateForm returns the waybill for one kind of ticket in a space.
+func (a *App) CreateForm(spaceID, typeName string) (*CreateForm, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	m, _, err := a.createMetaFor(ctx, spaceID, typeName)
+	if err != nil {
+		return nil, err
+	}
+	return m.form, nil
+}
+
+// CreateTicket makes a ticket from a filled-in waybill and returns its key.
+// values holds the form by field id (a string, or a list of option ids);
+// assignee is "me", an account id, or "" for nobody.
+func (a *App) CreateTicket(spaceID, typeName string, values map[string]any, assignee string) (string, error) {
+	c, me, err := a.jira()
+	if err != nil {
+		return "", err
+	}
+	if assignee == "me" {
+		if err := a.spent(); err != nil {
+			return "", fmt.Errorf("%s 담당자를 비우거나 다른 사람으로 정해 주세요", strings.TrimSuffix(err.Error(), "."))
+		}
+		assignee = me.AccountID
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 40*time.Second)
+	defer cancel()
+	m, project, err := a.createMetaFor(ctx, spaceID, typeName)
+	if err != nil {
+		return "", err
+	}
+	if len(m.form.Blocked) > 0 {
+		return "", fmt.Errorf("이 유형은 앱에서 입력할 수 없는 필수 항목(%s)이 있어 Jira에서 만들어야 합니다", strings.Join(m.form.Blocked, ", "))
+	}
+	a.mu.Lock()
+	offset := time.Now().In(a.cfg.Location()).Format("-0700")
+	a.mu.Unlock()
+	key, err := c.CreateIssue(ctx, project, m.typeID, m.fields, values, assignee, offset)
+	if err != nil {
+		return "", err
+	}
+	a.notify.touched(key) // my own new box is not news to me
+	a.Refresh()
+	return key, nil
+}

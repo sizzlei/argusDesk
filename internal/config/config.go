@@ -128,9 +128,12 @@ func (g *Game) Season(now time.Time, loc *time.Location) time.Time {
 
 // Space is one Jira project shown as one room.
 type Space struct {
-	ID          string              `yaml:"id"`
-	Name        string              `yaml:"name"`
-	Project     string              `yaml:"project"`
+	ID      string `yaml:"id"`
+	Name    string `yaml:"name"`
+	Project string `yaml:"project"`
+	// Create marks a space whose tickets the team writes itself: the app
+	// offers a form to make one. Without it the space only receives.
+	Create      bool                `yaml:"create"`
 	JQL         string              `yaml:"jql"` // optional; replaces the generated query
 	Zones       []Zone              `yaml:"zones"`
 	StatusZones map[string]string   `yaml:"status_zones"` // status id -> zone id
