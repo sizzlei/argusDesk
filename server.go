@@ -100,6 +100,7 @@ func (a *App) restoreServer() {
 	if good, err := secret.LastGoodConfigPath(); err == nil {
 		if cfg, err := config.Load(good); err == nil {
 			a.cfg, a.cfgFallback = cfg, true // until the server confirms it
+			a.srv.cfgVer = a.prefs.ServerConfig
 		}
 	}
 	blob, err := secret.LoadServerToken(base)
@@ -109,7 +110,7 @@ func (a *App) restoreServer() {
 		return
 	}
 	a.srv.client = argus.New(base, argus.DefaultEndpoints(), &tok, a.keepServerToken(base))
-	go a.syncServer(false)
+	go a.syncAndTell()
 	a.watchServer()
 }
 
@@ -133,7 +134,7 @@ func (a *App) watchServer() {
 			case <-ctx.Done():
 				return
 			case <-t.C:
-				a.syncServer(false)
+				a.syncAndTell()
 			case <-f.C:
 				a.readFeed(ctx)
 			}
@@ -239,7 +240,7 @@ func (a *App) dropServer(forget bool) {
 	a.srv = serverState{needs: needLogin}
 	a.client, a.me, a.engine, a.authError = nil, nil, nil, ""
 	a.cfg, a.cfgError, a.cfgFallback = nil, "", false
-	a.prefs.Site, a.prefs.Email = "", ""
+	a.prefs.Site, a.prefs.Email, a.prefs.ServerConfig = "", "", 0
 	if forget {
 		a.prefs.Server, a.srv.needs = "", ""
 	}
@@ -261,6 +262,16 @@ func (a *App) dropServer(forget bool) {
 	_ = secret.DeleteToken(site, email) // the Jira key came from the server
 	if good, err := secret.LastGoodConfigPath(); err == nil {
 		_ = os.Remove(good)
+	}
+}
+
+// syncAndTell asks the server on the app's own account (at the start, on the
+// timer) and tells the screen where things stand afterwards: the settings'
+// version, or what the server still needs, may have changed.
+func (a *App) syncAndTell() {
+	a.syncServer(false)
+	if a.app != nil {
+		a.app.Event.Emit(evServer, a.State())
 	}
 }
 
@@ -318,6 +329,8 @@ func (a *App) syncServer(force bool) {
 			if good, gerr := secret.LastGoodConfigPath(); gerr == nil {
 				_ = os.WriteFile(good, []byte(got.YAML), 0o600)
 			}
+			a.prefs.ServerConfig = got.Version // known at the next start, before the server has answered
+			_ = secret.SavePrefs(a.prefs)
 		}
 		if a.srv.needs == needConfig {
 			a.srv.needs = ""

@@ -83,8 +83,9 @@ type Prefs struct {
 	VacationKind    string `json:"vacationKind"`
 	VacationCoverID string `json:"vacationCoverId"`
 	VacationCover   string `json:"vacationCover"`
-	Avatar          int    `json:"avatar"` // chosen look + 1; 0 = not chosen
-	Server          string `json:"server"` // team server address ("" = none: settings file and Jira token)
+	Avatar          int    `json:"avatar"`       // chosen look + 1; 0 = not chosen
+	ServerConfig    int    `json:"serverConfig"` // the server's version of the settings kept from last time; 0 = none
+	Server          string `json:"server"`       // team server address ("" = none: settings file and Jira token)
 }
 
 // Dir is the folder argusDesk keeps its own files in.

@@ -441,6 +441,11 @@ async function boot() {
   });
   backend.onGame(score);
   backend.onServer(apply);
+  // What Argus answered while this screen was starting was told before anyone
+  // listened: ask once more now, and once the first sync has had time to end.
+  const recheck = () => void backend.state().then((next) => (next.configVersion !== state.configVersion || next.serverNeeds !== state.serverNeeds || next.signedIn !== state.signedIn) && apply(next), () => {});
+  recheck();
+  window.setTimeout(recheck, 5000);
   const fed = (f: Parameters<typeof setServerFeed>[0]) => {
     setServerFeed(f);
     // the server room's lamps show how Argus says it is doing

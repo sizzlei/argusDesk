@@ -2948,3 +2948,77 @@ ul.files button.file:disabled {
     transition: none;
   }
 }
+
+/* ---- the top bar in a narrow window ----
+   Nothing leaves the window: the pieces give way one after another, the least
+   needed first, and what is left wraps inside its card as the last resort. */
+#hud .title {
+  flex: none;
+}
+
+#hud .tools {
+  flex: 0 1 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  row-gap: 6px;
+  min-width: 0;
+  margin-left: auto;
+}
+
+#hud .tools button.refresh .ico {
+  display: none;
+  font-size: 15px;
+  line-height: 1;
+}
+
+@media (max-width: 1420px) {
+  #hud .tools .when,
+  #hud .tools button.find kbd {
+    display: none;
+  }
+}
+
+@media (max-width: 1300px) {
+  #hud .title .ver,
+  #hud .game-chip .xp {
+    display: none;
+  }
+
+  #hud .tools button.refresh .txt {
+    display: none;
+  }
+
+  #hud .tools button.refresh .ico {
+    display: inline;
+  }
+}
+
+@media (max-width: 1160px) {
+  /* teammates give way; my own state stays */
+  #hud .team .member:not(.me) {
+    display: none;
+  }
+
+  #hud .title .chip:not(.warn) {
+    display: none;
+  }
+}
+
+@media (max-width: 1040px) {
+  #hud .game-chip .lv.team {
+    display: none;
+  }
+
+  #hud .team .member.me .pct {
+    display: none;
+  }
+
+  #hud {
+    gap: 6px;
+  }
+
+  #hud .tools {
+    gap: 5px;
+    padding-left: 6px;
+  }
+}
