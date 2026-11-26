@@ -14,7 +14,7 @@ import type { AppState, Box, Change, GameStats, Snapshot } from './types';
 import { checkForUpdates, initUpdates } from './update';
 import { openAvatarPicker, openVacation, cancelVacation } from './vacation';
 import { startTour, tourRunning, tourSeen } from './tour';
-import { errText, toast } from './ui';
+import { errText, openDiagnostics, toast } from './ui';
 import { openWaybill } from './waybill';
 import { type Filter, applyFilter, loadFilter, saveFilter, unassigned } from './view';
 
@@ -190,6 +190,7 @@ async function boot() {
       { label: scene.hours ? '시간대 조명 끄기' : '시간대 조명 켜기', run: () => setHours(!scene.hours), note: '저녁과 밤에 센터 조명이 어두워집니다' },
       { label: '둘러보기 다시 보기', run: () => tour() },
       { label: '단축키 설정', run: () => openKeySettings(), note: `송장 쓰기 ${keyLabel('write') || '없음'} · 상자 찾기 ${keyLabel('search') || '없음'} · Esc 창 닫기` },
+      { label: '진단 정보', run: () => void openDiagnostics(() => backend.diagnostics()) },
       { label: '업데이트 확인', run: () => void checkForUpdates(true) },
       { label: '로그아웃', run: () => void backend.logout().then(apply, fail), danger: true },
     ];

@@ -160,3 +160,31 @@ export function confirmAction(title: string, detail: string, okLabel: string, da
     ok.focus();
   });
 }
+
+/**
+ * Shows where the app stands and what it did lately, to read or to copy for
+ * whoever looks after the app. `read` fetches the text.
+ */
+export async function openDiagnostics(read: () => Promise<string>) {
+  const dlg = h('dialog', { class: 'confirm diag' });
+  const close = () => {
+    dlg.close();
+    dlg.remove();
+  };
+  const text = h('pre', { tabindex: '0' }, '읽는 중…');
+  const load = () =>
+    read().then(
+      (t) => (text.textContent = t),
+      (e) => (text.textContent = `진단 정보를 읽지 못했습니다: ${errText(e)}`),
+    );
+  dlg.append(
+    h('h3', {}, '진단 정보'),
+    h('p', { class: 'quiet' }, '앱이 어디까지 진행했고 무엇에서 멈췄는지입니다. 토큰과 메일 주소는 들어 있지 않습니다.'),
+    text,
+    h('div', { class: 'buttons' }, h('button', { onclick: () => void load() }, '다시 읽기'), copyButton(() => text.textContent ?? '', '복사'), h('button', { class: 'primary', onclick: close }, '닫기')),
+  );
+  dlg.addEventListener('cancel', (e) => (e.preventDefault(), close()));
+  document.body.append(dlg);
+  dlg.showModal();
+  await load();
+}

@@ -34,6 +34,8 @@ export interface Backend {
   addComment(key: string, text: string, mode: 'internal' | 'public' | 'plain'): Promise<void>;
   /** People in Jira whose name holds the text, for the person fields of a waybill. */
   findPeople(query: string): Promise<{ id: string; name: string }[]>;
+  /** Where the app stands and what it did lately, as text. */
+  diagnostics(): Promise<string>;
   attachFile(key: string, name: string, base64: string): Promise<void>;
   /** Saves an attached file in the Downloads folder; resolves to where it is. */
   saveAttachment(id: string): Promise<string>;
@@ -86,6 +88,7 @@ async function real(): Promise<Backend> {
     createTicket: (space, type, values, assignee) => call('CreateTicket', space, type, values, assignee),
     addComment: (key, text, mode) => call('AddComment', key, text, mode),
     findPeople: (query) => call('FindPeople', query),
+    diagnostics: () => call('Diagnostics'),
     attachFile: (key, name, base64) => call('AttachFile', key, name, base64),
     saveAttachment: (id) => call('SaveAttachment', id),
     revealFile: (path) => call('RevealFile', path),

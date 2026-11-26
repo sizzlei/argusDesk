@@ -52,6 +52,7 @@ type App struct {
 	engine      *board.Engine
 	stopPolling context.CancelFunc
 	saved       map[string]bool // attached files saved to the Downloads folder in this run
+	diary       diary           // what the app did lately (see diary.go)
 	kick        chan struct{}
 
 	srv serverState // the optional team server
@@ -118,14 +119,21 @@ func (a *App) ServiceStartup(ctx context.Context, options application.ServiceOpt
 	a.notify.start(ctx, options)
 	a.kick = make(chan struct{}, 1)
 	a.prefs, _ = secret.LoadPrefs()
+	a.note("시작: 버전 %s", Version)
 	if a.prefs.Server == "" {
+		a.note("기억해 둔 Argus 없음: 첫 화면에서 주소를 묻습니다")
 		return nil // nothing to pick up: the first page asks for the server
 	}
 	a.restoreServer() // the settings and the Jira key come from the team server
 	if a.prefs.Site != "" && a.prefs.Email != "" {
-		if token, err := secret.LoadToken(a.prefs.Site, a.prefs.Email); err == nil {
+		token, err := secret.LoadToken(a.prefs.Site, a.prefs.Email)
+		if err != nil {
+			a.note("보관해 둔 Jira 토큰을 읽지 못함: %v", err)
+		}
+		if err == nil {
 			// Checked in the background so a slow network does not delay the window.
 			go func() {
+				a.note("보관해 둔 Jira 토큰으로 로그인 시도")
 				if err := a.signIn(a.prefs.Site, a.prefs.Email, token); err != nil {
 					a.emitError(err)
 				}
@@ -205,7 +213,13 @@ func (a *App) signIn(site, email, token string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 	client := jira.New(site, email, token)
+	began := time.Now()
 	me, err := client.Myself(ctx)
+	if err != nil {
+		a.note("Jira 로그인 실패 (%s, %s 걸림): %v", site, time.Since(began).Round(time.Millisecond), err)
+	} else {
+		a.note("Jira 로그인 성공 (%s, %s 걸림)", site, time.Since(began).Round(time.Millisecond))
+	}
 	if err != nil {
 		if errors.Is(err, jira.ErrUnauthorized) {
 			a.mu.Lock()
@@ -557,10 +571,14 @@ func (a *App) startPolling() {
 			snap, changes, err := engine.Refresh(rctx)
 			done()
 			var limited *jira.RateLimitError
+			if err != nil && ctx.Err() == nil {
+				a.note("Jira 읽기 실패: %v", err)
+			}
 			switch {
 			case ctx.Err() != nil:
 				return
 			case err == nil:
+				a.note("Jira 읽기 성공: 상자 %d개", len(snap.Boxes))
 				notes := board.Notes(snap, changes, a.notify.skip())
 				if notes == nil {
 					notes = []board.Note{}

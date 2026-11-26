@@ -5,7 +5,7 @@
 import type { Backend } from './backend';
 import { SERVER_NEEDS } from './hud';
 import type { AppState } from './types';
-import { errText, h } from './ui';
+import { errText, h, openDiagnostics } from './ui';
 
 let draft = ''; // a server address typed but not yet confirmed
 let waiting = false; // the browser sign-in is under way
@@ -55,6 +55,7 @@ export function renderSetup(state: AppState, backend: Backend, done: (next: AppS
       ),
       where,
       error,
+      h('button', { class: 'link', onclick: () => void openDiagnostics(() => backend.diagnostics()) }, '진단 정보 보기'),
     ),
   );
   address.focus();
@@ -94,6 +95,7 @@ function serverPage(host: HTMLElement, state: AppState, backend: Backend, done: 
         ...body,
         error,
         leave,
+        h('button', { class: 'link', onclick: () => void openDiagnostics(() => backend.diagnostics()) }, '진단 정보 보기'),
       ),
     );
 

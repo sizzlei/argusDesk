@@ -519,6 +519,7 @@ export function mockBackend(): Backend {
       const all = [...people.map(([id, name]) => ({ id, name })), { id: 'u8', name: '오세린 내부통제' }, { id: 'u9', name: '한지우 인프라' }, { id: 'u10', name: '한서연 플랫폼' }, { id: 'u11', name: '정민서 커머스' }, { id: 'u12', name: '문가은 데이터' }];
       return all.filter((p) => p.name.toLowerCase().includes(query.toLowerCase()));
     },
+    diagnostics: async () => 'ArgusDesk (프로토타입) · 가짜 데이터\n\n최근 기록\n11:00:01  시작\n11:00:02  Argus에서 Jira 토큰 받음\n11:00:03  Jira 로그인 성공\n11:00:04  Jira 읽기 성공: 상자 42개\n',
     saveAttachment: async (id) => {
       await pause();
       return `~/Downloads/${[...attached.values()].flat().find((f) => f.id === id)?.name ?? '요청서.pdf'}`;

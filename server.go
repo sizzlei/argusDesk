@@ -87,7 +87,9 @@ func (a *App) keepServerToken(base string) func(*argus.Token) {
 			return
 		}
 		if b, err := json.Marshal(t); err == nil {
-			_ = secret.SaveServerToken(base, string(b))
+			if serr := secret.SaveServerToken(base, string(b)); serr != nil {
+				a.note("Argus 로그인을 자격 증명 저장소에 보관하지 못함 (%d바이트): %v", len(b), serr)
+			}
 		}
 	}
 }
@@ -106,9 +108,11 @@ func (a *App) restoreServer() {
 	blob, err := secret.LoadServerToken(base)
 	var tok argus.Token
 	if err != nil || json.Unmarshal([]byte(blob), &tok) != nil {
+		a.note("보관해 둔 Argus 로그인을 읽지 못함: %v", err)
 		a.srv.needs = needLogin
 		return
 	}
+	a.note("보관해 둔 Argus 로그인으로 시작 (%s)", base)
 	a.srv.client = argus.New(base, argus.DefaultEndpoints(), &tok, a.keepServerToken(base))
 	go a.syncAndTell()
 	a.watchServer()
@@ -165,11 +169,13 @@ func (a *App) ConnectServer(addr string) (*AppState, error) {
 
 	ep := argus.DefaultEndpoints()
 	// Asked first, without a sign-in: a wrong address or a switched-off server is told apart before the browser opens.
+	a.note("Argus 로그인 시작 (%s)", base)
 	st, err := argus.ServerStatus(ctx, base, ep)
 	if err == nil && !st.Enabled {
 		err = argus.ErrDisabled
 	}
 	if err != nil {
+		a.note("Argus 상태 확인 실패: %v", err)
 		cancel()
 		a.mu.Lock()
 		a.srv.busy, a.srv.cancel, a.srv.needs, a.srv.problem = false, nil, needLogin, err.Error()
@@ -179,6 +185,11 @@ func (a *App) ConnectServer(addr string) (*AppState, error) {
 	tok, err := argus.Login(ctx, base, ep, openBrowser)
 	cancelled := ctx.Err() != nil
 	cancel()
+	if err != nil {
+		a.note("Argus 로그인 실패 (취소 %v): %v", cancelled, err)
+	} else {
+		a.note("Argus 로그인 성공")
+	}
 	a.mu.Lock()
 	a.srv.busy, a.srv.cancel = false, nil
 	if err != nil {
@@ -317,8 +328,17 @@ func (a *App) syncServer(force bool) {
 	restart := false
 	got, changed, err := c.Config(ctx, &tag)
 	switch {
+	case err != nil:
+		a.note("Argus 설정 받기 실패: %v", err)
+	case changed:
+		a.note("Argus 설정 받음: 버전 %d, %d바이트", got.Version, len(got.YAML))
+	}
+	switch {
 	case err == nil && changed:
 		cfg, perr := config.Parse([]byte(got.YAML))
+		if perr != nil {
+			a.note("Argus에서 받은 설정을 쓸 수 없음: %v", perr)
+		}
 		a.mu.Lock()
 		if perr != nil {
 			// A broken upload does not stop the centre: it keeps the settings it had.
@@ -365,6 +385,11 @@ func (a *App) syncServer(force bool) {
 		return
 	}
 	key, err := c.JiraKey(ctx)
+	if err != nil {
+		a.note("Argus에서 Jira 토큰 받기 실패: %v", err)
+	} else {
+		a.note("Argus에서 Jira 토큰 받음: 사이트 %q, 메일 %d자, 토큰 %d자", key.Site, len(key.Email), len(key.Token))
+	}
 	switch {
 	case err == nil:
 		if jerr := a.signIn(key.Site, key.Email, key.Token); jerr != nil {
@@ -384,6 +409,9 @@ func (a *App) syncServer(force bool) {
 			return
 		}
 		kept := secret.SaveToken(key.Site, key.Email, key.Token) // so the centre opens without the server next time
+		if kept != nil {
+			a.note("Jira 토큰을 자격 증명 저장소에 보관하지 못함: %v", kept)
+		}
 		a.mu.Lock()
 		if kept != nil {
 			a.srv.problem = fmt.Sprintf("Jira 토큰을 이 컴퓨터의 자격 증명 저장소에 보관하지 못했습니다(%v). 앱을 켤 때마다 Argus에서 다시 받아 옵니다.", kept)
@@ -401,7 +429,11 @@ func (a *App) syncServer(force bool) {
 				n := avatar - 1
 				look = &n
 			}
-			if err := c.SetMe(ctx, me.AccountID, look); errors.Is(err, argus.ErrConflict) {
+			err := c.SetMe(ctx, me.AccountID, look)
+			if err != nil {
+				a.note("Argus에 내 Jira 계정 알리기 실패: %v", err)
+			}
+			if errors.Is(err, argus.ErrConflict) {
 				a.mu.Lock()
 				a.srv.problem = "이 Jira 계정은 서버에 다른 사람의 것으로 등록되어 있습니다. 서버 관리자에게 알려 주세요."
 				a.mu.Unlock()

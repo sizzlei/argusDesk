@@ -3022,3 +3022,22 @@ ul.files button.file:disabled {
     padding-left: 6px;
   }
 }
+
+dialog.diag {
+  width: min(720px, calc(100vw - 32px));
+}
+
+dialog.diag pre {
+  max-height: min(52vh, 460px);
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--paper);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
