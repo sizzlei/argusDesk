@@ -247,7 +247,6 @@ export function mockBackend(): Backend {
   let listeners: ((ev: BoardEvent) => void)[] = [];
   const state: AppState = {
     version: '0.1.0',
-    configPath: '(프로토타입: 가짜 데이터)',
     configName: '요청 센터',
     configVersion: '2026-11-25.1',
     configError: '',
@@ -403,9 +402,7 @@ export function mockBackend(): Backend {
   return {
     mock: true,
     state: async () => state,
-    chooseConfig: nothing,
     reloadConfig: nothing,
-    login: nothing,
     logout: nothing,
     // With "?first" in the address the prototype starts at the first-run pages.
     connectServer: async (address) => {

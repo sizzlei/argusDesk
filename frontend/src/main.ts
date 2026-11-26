@@ -138,8 +138,7 @@ async function boot() {
       },
       { label: state.notify ? '알림 끄기' : '알림 켜기', run: () => setNotify(!state.notify), note: state.notify && state.notifyProblem ? `알림을 보낼 수 없습니다: ${state.notifyProblem}` : undefined },
       openTickets() > 1 && { label: `티켓 창 모두 닫기 (${openTickets()})`, run: () => closeTickets(tickets) },
-      { label: state.server ? '서버에서 설정 다시 받기' : '설정 다시 읽기', run: () => void backend.reloadConfig().then(apply, fail) },
-      !state.server && { label: '설정 파일 바꾸기', run: () => void backend.chooseConfig().then(apply, fail) },
+      { label: 'Argus에서 설정 다시 받기', run: () => void backend.reloadConfig().then(apply, fail) },
       !!state.server &&
         state.serverNeeds === 'login' && {
           label: 'Argus에 다시 로그인',

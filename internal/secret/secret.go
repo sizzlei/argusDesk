@@ -73,7 +73,6 @@ func DeleteServerToken(base string) error {
 // Prefs are this person's settings on this computer. Nothing here is secret
 // and no ticket data is ever written.
 type Prefs struct {
-	ConfigPath      string `json:"configPath"`      // where the shared settings file lives
 	Site            string `json:"site"`            // Jira site last signed in to
 	Email           string `json:"email"`           // Jira e-mail last signed in with
 	LastUpdateCheck int64  `json:"lastUpdateCheck"` // unix ms

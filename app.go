@@ -68,7 +68,6 @@ type App struct {
 // AppState is what the screen needs to decide which page to show.
 type AppState struct {
 	Version       string `json:"version"`
-	ConfigPath    string `json:"configPath"`
 	ConfigName    string `json:"configName"`
 	ConfigVersion string `json:"configVersion"`
 	// ConfigFileVersion is the version written in the settings themselves,
@@ -112,11 +111,10 @@ func (a *App) ServiceStartup(ctx context.Context, options application.ServiceOpt
 	a.notify.start(ctx, options)
 	a.kick = make(chan struct{}, 1)
 	a.prefs, _ = secret.LoadPrefs()
-	if a.prefs.Server != "" {
-		a.restoreServer() // the settings come from the team server
-	} else if a.prefs.ConfigPath != "" {
-		a.loadConfig(a.prefs.ConfigPath)
+	if a.prefs.Server == "" {
+		return nil // nothing to pick up: the first page asks for the server
 	}
+	a.restoreServer() // the settings and the Jira key come from the team server
 	if a.prefs.Site != "" && a.prefs.Email != "" {
 		if token, err := secret.LoadToken(a.prefs.Site, a.prefs.Email); err == nil {
 			// Checked in the background so a slow network does not delay the window.
@@ -150,7 +148,6 @@ func (a *App) State() *AppState {
 func (a *App) stateLocked() *AppState {
 	s := &AppState{
 		Version:       Version,
-		ConfigPath:    a.prefs.ConfigPath,
 		ConfigError:   a.cfgError,
 		UsingLastGood: a.cfgFallback,
 		Site:          a.prefs.Site,
@@ -180,94 +177,22 @@ func (a *App) stateLocked() *AppState {
 	return s
 }
 
-// ---- settings file --------------------------------------------------------
+// ---- settings -------------------------------------------------------------
 
-// loadConfig reads the settings file. A file that loads becomes the "last
-// good" copy; a file that does not leaves the app running on that copy and
-// records why.
-func (a *App) loadConfig(path string) {
-	cfg, err := config.Load(path)
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	if err == nil {
-		a.cfg, a.cfgError, a.cfgFallback = cfg, "", false
-		if b, rerr := os.ReadFile(path); rerr == nil {
-			if good, gerr := secret.LastGoodConfigPath(); gerr == nil {
-				_ = os.WriteFile(good, b, 0o600)
-			}
-		}
-		return
-	}
-	a.cfgError = err.Error()
-	if good, gerr := secret.LastGoodConfigPath(); gerr == nil {
-		if old, lerr := config.Load(good); lerr == nil {
-			a.cfg, a.cfgFallback = old, true
-			return
-		}
-	}
-	a.cfg, a.cfgFallback = nil, false
-}
-
-// ChooseConfig asks for the settings file and remembers where it is. The
-// file is read again from that place on every start.
-func (a *App) ChooseConfig() (*AppState, error) {
-	path, err := a.app.Dialog.OpenFile().
-		SetTitle("argusDesk 설정 파일 선택").
-		AddFilter("설정 파일 (*.yaml, *.yml)", "*.yaml;*.yml").
-		PromptForSingleSelection()
-	if err != nil {
-		return nil, err
-	}
-	if path == "" {
-		return a.State(), nil // cancelled
-	}
-	a.mu.Lock()
-	a.prefs.ConfigPath = path
-	_ = secret.SavePrefs(a.prefs)
-	a.mu.Unlock()
-	return a.ReloadConfig()
-}
-
-// ReloadConfig reads the settings file again and restarts the refresh loop.
+// ReloadConfig asks the team server for the settings again, whether or not
+// it says they have changed.
 func (a *App) ReloadConfig() (*AppState, error) {
 	a.mu.Lock()
-	path, server := a.prefs.ConfigPath, a.prefs.Server
-	a.mu.Unlock()
-	if server != "" {
-		a.mu.Lock()
-		a.srv.cfgTag = "" // read it even if the server says it has not changed
+	if a.prefs.Server == "" {
 		a.mu.Unlock()
-		return a.SyncServer(), nil
+		return nil, errors.New("먼저 Argus에 로그인해 주세요")
 	}
-	if path == "" {
-		return nil, errors.New("설정 파일을 먼저 선택해 주세요")
-	}
-	a.loadConfig(path)
-	a.startPolling()
-	return a.State(), nil
+	a.srv.cfgTag = ""
+	a.mu.Unlock()
+	return a.SyncServer(), nil
 }
 
 // ---- sign-in --------------------------------------------------------------
-
-// Login checks the token with Jira and, if it works, stores it in the
-// operating system's credential store.
-func (a *App) Login(site, email, token string) (*AppState, error) {
-	site, email, token = strings.TrimSpace(site), strings.TrimSpace(email), strings.TrimSpace(token)
-	if site == "" || email == "" || token == "" {
-		return nil, errors.New("Jira 사이트 주소, 이메일, API 토큰을 모두 입력해 주세요")
-	}
-	if err := a.signIn(site, email, token); err != nil {
-		return nil, err
-	}
-	if err := secret.SaveToken(site, email, token); err != nil {
-		return nil, fmt.Errorf("토큰을 저장할 수 없습니다: %w", err)
-	}
-	a.mu.Lock()
-	a.prefs.Site, a.prefs.Email = site, email
-	_ = secret.SavePrefs(a.prefs)
-	a.mu.Unlock()
-	return a.State(), nil
-}
 
 func (a *App) signIn(site, email, token string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
@@ -289,24 +214,10 @@ func (a *App) signIn(site, email, token string) error {
 	return nil
 }
 
-// Logout forgets the token.
+// Logout signs out of the team server and forgets the Jira key that came
+// from it. The server's address is kept for the next sign-in.
 func (a *App) Logout() (*AppState, error) {
-	a.mu.Lock()
-	if a.prefs.Server != "" { // signed in through the team server: sign out there
-		a.mu.Unlock()
-		a.dropServer(false)
-		return a.State(), nil
-	}
-	if a.stopPolling != nil {
-		a.stopPolling()
-		a.stopPolling = nil
-	}
-	site, email := a.prefs.Site, a.prefs.Email
-	a.client, a.me, a.engine = nil, nil, nil
-	a.mu.Unlock()
-	if err := secret.DeleteToken(site, email); err != nil {
-		return nil, err
-	}
+	a.dropServer(false)
 	return a.State(), nil
 }
 

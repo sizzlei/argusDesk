@@ -232,7 +232,6 @@ func (a *App) dropServer(forget bool) {
 		a.prefs.Server, a.srv.needs = "", ""
 	}
 	_ = secret.SavePrefs(a.prefs)
-	path := a.prefs.ConfigPath
 	a.mu.Unlock()
 
 	if c != nil {
@@ -250,9 +249,6 @@ func (a *App) dropServer(forget bool) {
 	_ = secret.DeleteToken(site, email) // the Jira key came from the server
 	if good, err := secret.LastGoodConfigPath(); err == nil {
 		_ = os.Remove(good)
-	}
-	if forget && path != "" {
-		a.loadConfig(path)
 	}
 }
 

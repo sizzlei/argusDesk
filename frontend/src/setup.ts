@@ -1,8 +1,6 @@
 // First-run pages. The way in is Argus: type its address, sign in there in
 // the browser, and the settings and the Jira key come from it. Nothing about
 // Jira is asked here.
-// Without a server (a link at the bottom of the first page): pick the
-// settings file, then sign in to Jira here.
 
 import type { Backend } from './backend';
 import { SERVER_NEEDS } from './hud';
@@ -12,7 +10,6 @@ import { errText, h } from './ui';
 let draft = ''; // a server address typed but not yet confirmed
 let waiting = false; // the browser sign-in is under way
 let start = false; // the address was just confirmed: go straight to the sign-in
-let byFile = false; // the way in without a server was asked for
 
 /** Shows the page the state calls for; resolves to false when nothing is missing. */
 export function renderSetup(state: AppState, backend: Backend, done: (next: AppState) => void): boolean {
@@ -21,7 +18,6 @@ export function renderSetup(state: AppState, backend: Backend, done: (next: AppS
     host.hidden = true;
     host.replaceChildren();
     draft = '';
-    byFile = false;
     return false;
   }
   host.hidden = false;
@@ -31,93 +27,37 @@ export function renderSetup(state: AppState, backend: Backend, done: (next: AppS
 
   if (state.server || draft) return serverPage(host, state, backend, done, error, fail, again);
 
-  if (!byFile) {
-    const address = h('input', { id: 'server', placeholder: 'argus.example.com', autocomplete: 'off', spellcheck: 'false', autocapitalize: 'off' });
-    const where = h('p', { class: 'quiet' }, 'Argus 주소를 입력하면 브라우저에서 Argus 로그인 화면이 열립니다.');
-    // The address is shown in full, as it will be opened, before the browser goes there.
-    address.addEventListener('input', () => (where.textContent = address.value.trim() ? `${shown(address.value.trim())} 에 로그인합니다. 주소가 맞는지 확인하세요.` : 'Argus 주소를 입력하면 브라우저에서 Argus 로그인 화면이 열립니다.'));
-    host.replaceChildren(
+  const address = h('input', { id: 'server', placeholder: 'argus.example.com', autocomplete: 'off', spellcheck: 'false', autocapitalize: 'off' });
+  const where = h('p', { class: 'quiet' }, 'Argus 주소를 입력하면 브라우저에서 Argus 로그인 화면이 열립니다.');
+  // The address is shown in full, as it will be opened, before the browser goes there.
+  address.addEventListener('input', () => (where.textContent = address.value.trim() ? `${shown(address.value.trim())} 에 로그인합니다. 주소가 맞는지 확인하세요.` : 'Argus 주소를 입력하면 브라우저에서 Argus 로그인 화면이 열립니다.'));
+  host.replaceChildren(
+    h(
+      'section',
+      { class: 'card' },
+      h('h1', {}, 'Argus Desk'),
+      h('p', {}, 'Argus에 로그인하면 시작합니다. 설정과 Jira 연결은 Argus에 등록된 것을 받아 옵니다.'),
       h(
-        'section',
-        { class: 'card' },
-        h('h1', {}, 'Argus Desk'),
-        h('p', {}, 'Argus에 로그인하면 시작합니다. 설정과 Jira 연결은 Argus에 등록된 것을 받아 옵니다.'),
-        h(
-          'form',
-          {
-            class: 'inline',
-            onsubmit: (e: Event) => {
-              e.preventDefault();
-              if (!address.value.trim()) return fail('Argus 주소를 입력하세요');
-              draft = address.value.trim();
-              start = true;
-              again();
-            },
+        'form',
+        {
+          class: 'inline',
+          onsubmit: (e: Event) => {
+            e.preventDefault();
+            if (!address.value.trim()) return fail('Argus 주소를 입력하세요');
+            draft = address.value.trim();
+            start = true;
+            again();
           },
-          h('label', { for: 'server', class: 'sr' }, 'Argus 주소'),
-          address,
-          h('button', { class: 'primary', type: 'submit' }, 'Argus로 로그인'),
-        ),
-        where,
-        error,
-        h('button', { class: 'link', onclick: () => ((byFile = true), again()) }, 'Argus 없이 시작 (설정 파일과 Jira 토큰)'),
+        },
+        h('label', { for: 'server', class: 'sr' }, 'Argus 주소'),
+        address,
+        h('button', { class: 'primary', type: 'submit' }, 'Argus로 로그인'),
       ),
-    );
-    address.focus();
-    return true;
-  }
-
-  const toArgus = h('button', { class: 'link', type: 'button', onclick: () => ((byFile = false), again()) }, 'Argus로 로그인');
-  if (!state.configLoaded) {
-    host.replaceChildren(
-      h(
-        'section',
-        { class: 'card' },
-        h('h1', {}, 'Argus 없이 시작'),
-        h('p', { class: 'quiet' }, '설정 파일(YAML)을 고르고 Jira 토큰으로 로그인합니다. 앱은 파일의 위치를 기억하고 실행할 때마다 다시 읽습니다.'),
-        state.configError ? h('pre', { class: 'error' }, state.configError) : null,
-        h('button', { onclick: () => backend.chooseConfig().then(done, fail) }, state.configPath ? '다른 설정 파일 선택' : '설정 파일 선택'),
-        state.configPath ? h('button', { onclick: () => backend.reloadConfig().then(done, fail) }, '같은 파일 다시 읽기') : null,
-        error,
-        toArgus,
-      ),
-    );
-    return true;
-  }
-
-  const site = h('input', { id: 'site', value: state.site, autocomplete: 'off', spellcheck: 'false' });
-  const email = h('input', { id: 'email', type: 'email', value: state.email, autocomplete: 'username' });
-  const token = h('input', { id: 'token', type: 'password', autocomplete: 'off' });
-  const submit = h('button', { class: 'primary', type: 'submit' }, '로그인');
-  const form = h(
-    'form',
-    {
-      class: 'card',
-      onsubmit: (e: Event) => {
-        e.preventDefault();
-        submit.disabled = true;
-        error.textContent = '';
-        backend
-          .login(site.value, email.value, token.value)
-          .then(done, fail)
-          .finally(() => (submit.disabled = false));
-      },
-    },
-    h('h1', {}, 'Jira 로그인'),
-    state.authError ? h('p', { class: 'error' }, state.authError) : null,
-    h('label', { for: 'site' }, 'Jira 사이트 주소'),
-    site,
-    h('label', { for: 'email' }, '이메일'),
-    email,
-    h('label', { for: 'token' }, 'API 토큰'),
-    token,
-    h('p', { class: 'quiet' }, '토큰은 이 컴퓨터의 자격 증명 저장소에만 보관합니다. Atlassian 계정 설정의 보안 메뉴에서 발급할 수 있습니다.'),
-    submit,
-    error,
-    toArgus,
+      where,
+      error,
+    ),
   );
-  host.replaceChildren(form);
-  (state.email ? token : email).focus();
+  address.focus();
   return true;
 }
 

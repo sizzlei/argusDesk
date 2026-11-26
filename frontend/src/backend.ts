@@ -9,9 +9,7 @@ import type { AppState, BoardError, BoardEvent, CreateForm, GameStats, Release, 
 export interface Backend {
   mock: boolean;
   state(): Promise<AppState>;
-  chooseConfig(): Promise<AppState>;
   reloadConfig(): Promise<AppState>;
-  login(site: string, email: string, token: string): Promise<AppState>;
   logout(): Promise<AppState>;
   connectServer(address: string): Promise<AppState>; // resolves when the browser sign-in is over
   cancelServerLogin(): Promise<void>;
@@ -62,9 +60,7 @@ async function real(): Promise<Backend> {
   return {
     mock: false,
     state: () => call('State'),
-    chooseConfig: () => call('ChooseConfig'),
     reloadConfig: () => call('ReloadConfig'),
-    login: (site, email, token) => call('Login', site, email, token),
     logout: () => call('Logout'),
     connectServer: (address) => call('ConnectServer', address),
     cancelServerLogin: () => call('CancelServerLogin'),
@@ -86,7 +82,8 @@ async function real(): Promise<Backend> {
     addComment: (key, text, mode) => call('AddComment', key, text, mode),
     attachFile: (key, name, base64) => call('AttachFile', key, name, base64),
     // Only web pages are handed to the system: never a file or another app's link.
-    openUrl: (url) => void (/^https:\/\//i.test(url) && Browser.OpenURL(url)),
+    // https only, except a server on this computer (development)
+    openUrl: (url) => void (/^https:\/\/|^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/|$)/i.test(url) && Browser.OpenURL(url)),
     onBoard: (cb) => void Events.On('board:snapshot', (ev: { data: BoardEvent }) => cb(ev.data)),
     onError: (cb) => void Events.On('board:error', (ev: { data: BoardError }) => cb(ev.data)),
     gameStats: () => call('GameStats'),

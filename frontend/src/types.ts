@@ -145,7 +145,6 @@ export interface BoardError {
 
 export interface AppState {
   version: string;
-  configPath: string;
   configName: string;
   configVersion: string;
   configFileVersion?: string; // what the settings call themselves, when configVersion is the team server's
