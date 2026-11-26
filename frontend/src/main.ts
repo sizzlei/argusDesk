@@ -6,7 +6,7 @@ import { finderOpen, initFinder, openFinder, toggleFinder } from './finder';
 import { initKeys, keyLabel, openKeySettings } from './keys';
 import { renderHud } from './hud';
 import { addNotes, noticeCount, noticesOpen, renderNotices, setServerFeed, toggleNotices } from './notices';
-import { closeFront, closeTickets, openTicket, openTickets, setStrength, syncTickets } from './panel';
+import { closeFront, closeTickets, onAnswered, openTicket, openTickets, setStrength, syncTickets } from './panel';
 import { AGE, Scene, TAGS } from './scene';
 import { type ProfileAction, profileOpen, renderProfile, toggleProfile } from './profile';
 import { renderSetup } from './setup';
@@ -70,7 +70,10 @@ async function boot() {
     const seen = new Set<string>();
     const people = snap.members.filter((m) => !m.me && !seen.has(m.id) && seen.add(m.id)).map((m) => ({ id: m.id, name: m.name.trim().split(/\s+/)[0] }));
     const tickets = snap.boxes.filter((b) => b.space === sp.id).map((b) => ({ key: b.key, summary: b.summary }));
-    openWaybill(backend, sp, state.me.trim().split(/\s+/)[0] ?? '', people, tickets, game?.myFatigue === 0, (key) => (awaited = key));
+    openWaybill(backend, sp, state.me.trim().split(/\s+/)[0] ?? '', people, tickets, game?.myFatigue === 0, (key, tag) => {
+      awaited = key;
+      scene.pack(tag);
+    });
   };
   const scene = new Scene(document.getElementById('scene')!, {
     onWrite: () => write(),
@@ -90,6 +93,24 @@ async function boot() {
     },
   });
   await scene.init();
+  onAnswered((key, approve) => scene.stamp(key, approve));
+  // The room dims in the evening; whoever would rather not has it switched off, on this computer.
+  const HOURS = 'argusdesk.hours';
+  try {
+    scene.hours = localStorage.getItem(HOURS) !== 'off';
+  } catch {
+    // not readable: the room follows the hour
+  }
+  const setHours = (on: boolean) => {
+    scene.hours = on;
+    try {
+      localStorage.setItem(HOURS, on ? 'on' : 'off');
+    } catch {
+      // it stays for this run only
+    }
+    draw([]);
+    hud();
+  };
   document.getElementById('zoom-in')!.addEventListener('click', () => scene.zoom(1.25));
   document.getElementById('zoom-out')!.addEventListener('click', () => scene.zoom(0.8));
   document.getElementById('zoom-fit')!.addEventListener('click', () => scene.resetView());
@@ -152,6 +173,7 @@ async function boot() {
           },
         },
       !!state.server && { label: 'Argus 연결 끊기', run: () => void backend.forgetServer().then(apply, fail) },
+      { label: scene.hours ? '시간대 조명 끄기' : '시간대 조명 켜기', run: () => setHours(!scene.hours), note: '저녁과 밤에 센터 조명이 어두워집니다' },
       { label: '단축키 설정', run: () => openKeySettings(), note: `송장 쓰기 ${keyLabel('write') || '없음'} · 상자 찾기 ${keyLabel('search') || '없음'} · Esc 창 닫기` },
       { label: '업데이트 확인', run: () => void checkForUpdates(true) },
       { label: '로그아웃', run: () => void backend.logout().then(apply, fail), danger: true },
@@ -376,6 +398,11 @@ async function boot() {
   backend.onServer(apply);
   const fed = (f: Parameters<typeof setServerFeed>[0]) => {
     setServerFeed(f);
+    // the server room's lamps show how Argus says it is doing
+    if (scene.system !== (f?.system ?? '')) {
+      scene.system = f?.system ?? '';
+      draw([]);
+    }
     hud();
   };
   backend.onFeed(fed);

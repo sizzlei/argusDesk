@@ -18,6 +18,22 @@ import { drawLodge } from './scene/lodge';
 
 export { AGE, TAGS, ageStep, shortName } from './scene/palette';
 
+type Light = 'day' | 'dusk' | 'night' | 'sleep';
+/** The tint of the room and the colour behind it, for each light. */
+const LIGHTS: Record<Light, [number, number]> = {
+  day: [0xffffff, 0xedf0f4],
+  dusk: [0xffe9d6, 0xefe6e2],
+  night: [0xb9c3e6, 0x2a3350],
+  sleep: [0x4f5d8f, 0x131929],
+};
+/** Which light an hour of the day calls for. */
+export function hourLight(now: Date): Light {
+  const h = now.getHours() + now.getMinutes() / 60;
+  if (h >= 19.5 || h < 6.5) return 'night';
+  if (h >= 17.5 || h < 7.5) return 'dusk';
+  return 'day';
+}
+
 export interface SceneHooks {
   onSelect(box: Box | null): void;
   onHover(box: Box | null, x: number, y: number): void;
@@ -59,7 +75,13 @@ export class Scene {
   private held = false; // the user zoomed or moved the view: leave it alone
   private push = 0; // how far the view has slid aside for the panel
   private pushTo = 0;
-  private bench: { sign: Container; y: number } | null = null; // the packing bench's sign, which bobs
+  private bench: { sign: Container; y: number; gx: number; gy: number } | null = null; // the packing bench and its sign, which bobs
+  private shows = new Container(); // short shows over the room: a box being packed
+  private acts: { g: Container; ms: number; life: number; step(t: number, g: Container): void }[] = [];
+  /** How the team server says it is doing: the server room's lamps show it. */
+  system: '' | 'ok' | 'warn' | 'fail' = '';
+  /** The room follows the hour: dim in the evening and at night. Off: always day. */
+  hours = true;
 
   constructor(
     private host: HTMLElement,
@@ -75,7 +97,7 @@ export class Scene {
       resolution: Math.min(2, window.devicePixelRatio || 1),
     });
     this.host.appendChild(this.app.canvas);
-    this.world.addChild(this.ground, this.things, this.lampLayer, this.signs);
+    this.world.addChild(this.ground, this.things, this.lampLayer, this.shows, this.signs);
     this.things.sortableChildren = true;
     this.lift.addChild(this.world);
     this.app.stage.addChild(this.lift);
@@ -129,6 +151,8 @@ export class Scene {
     this.space = index;
     this.sprites.forEach((s) => s.root.destroy({ children: true }));
     this.sprites.clear();
+    this.acts.forEach((a) => a.g.destroy({ children: true }));
+    this.acts = [];
     if (this.snap) this.update(this.snap, []);
   }
 
@@ -212,12 +236,88 @@ export class Scene {
     this.held = true;
   }
 
-  /** Lights out: the lodge is where people sleep. Signs and name tags stay readable. */
-  night(on: boolean) {
-    const dim = on ? 0x4f5d8f : 0xffffff;
+  /**
+   * The light in the room. "sleep" is the lodge with the lights out; "dusk"
+   * and "night" follow the hour and stay bright enough to read a box's
+   * colour. Signs and name tags are never dimmed.
+   */
+  light(mode: Light) {
+    const [dim, back] = LIGHTS[mode];
     this.ground.tint = dim;
     this.things.tint = dim;
-    this.app.renderer.background.color = on ? 0x131929 : 0xedf0f4;
+    this.app.renderer.background.color = back;
+  }
+
+  /** Plays a short show: `step` draws it from 0 to 1, then it is gone. */
+  private show(g: Container, life: number, step: (t: number, g: Container) => void, host: Container = this.shows) {
+    if (CALM) return void g.destroy({ children: true });
+    host.addChild(g);
+    step(0, g);
+    this.acts.push({ g, ms: 0, life, step });
+  }
+
+  /**
+   * A ticket was written: at the packing bench a waybill drops onto a box,
+   * which hops down to the floor. The real box follows when Jira has it.
+   */
+  pack(tag: number) {
+    const at = this.bench;
+    if (!at) return;
+    const g = new Graphics();
+    this.show(g, 1500, (t) => {
+      g.clear();
+      // on the bench until the waybill lands, then an arc down to the floor in front
+      const go = easeInOut(Math.min(1, Math.max(0, (t - 0.38) / 0.42)));
+      const gx = at.gx + 4.8 + go * -0.6;
+      const gy = at.gy + 0.8 + go * 1.5;
+      const up = 18 * (1 - go) + Math.sin(go * Math.PI) * 26;
+      const squash = t > 0.3 && t < 0.4 ? 3 : 0; // the thump of the waybill
+      block(g, gx - 0.36, gy - 0.25, 0.72, 0.5, 13 - squash, 0xd9a866, up);
+      block(g, gx - 0.36, gy - 0.25, 0.72, 0.5, 1, 0xe7bd82, up + 13 - squash);
+      // the waybill: falls from above, then rides on the lid
+      const fall = Math.min(1, t / 0.32);
+      const p = iso(gx, gy);
+      const wy = p.y - up - 14 + squash - (1 - fall) * 46;
+      g.poly([p.x - 9, wy, p.x + 3, wy - 6, p.x + 12, wy - 1.5, p.x, wy + 4.5]).fill({ color: 0xffffff, alpha: Math.min(1, t / 0.12) });
+      g.poly([p.x - 9, wy, p.x - 6, wy - 1.5, p.x + 3, wy + 3, p.x, wy + 4.5]).fill({ color: tag, alpha: Math.min(1, t / 0.12) });
+      g.alpha = t > 0.86 ? (1 - t) / 0.14 : 1;
+    });
+    if (!CALM) {
+      const p = iso(at.gx + 4.8, at.gy + 0.8);
+      const w = this.world.toGlobal({ x: p.x, y: p.y - 40 });
+      this.burst(w.x, w.y, 10, 0.7);
+    }
+  }
+
+  /** My answer to an approval lands on the box as a stamp, and travels with it. */
+  stamp(key: string, approve: boolean) {
+    const sp = this.sprites.get(key);
+    if (!sp) return;
+    const colour = approve ? 0x2f9e63 : 0xc7352f;
+    const mark = new Container();
+    const ring = new Graphics();
+    ring.roundRect(-25, -13, 50, 26, 6).fill({ color: 0xffffff, alpha: 0.92 }).stroke({ width: 3, color: colour });
+    ring.roundRect(-21, -9, 42, 18, 3).stroke({ width: 1, color: colour });
+    const word = label(approve ? '승인' : '반려', 13, colour, '700');
+    word.position.set(-word.width / 2, -word.height / 2);
+    mark.addChild(ring, word);
+    mark.position.set(0, -BOX_H - 22);
+    mark.rotation = -0.2;
+    this.show(
+      mark,
+      1700,
+      (t) => {
+        // comes down hard, sits, then fades
+        const down = Math.min(1, t / 0.14);
+        mark.scale.set(2.4 - 1.4 * down + (t > 0.14 && t < 0.2 ? 0.08 : 0));
+        mark.alpha = t < 0.14 ? down : t > 0.75 ? (1 - t) / 0.25 : 1;
+      },
+      sp.root,
+    );
+    if (approve && !CALM) {
+      const w = sp.root.toGlobal({ x: 0, y: -BOX_H - 22 });
+      this.burst(w.x, w.y, 14, 0.8);
+    }
   }
 
   /** Marks a box as the chosen one without telling anyone (its window did). */
@@ -232,11 +332,11 @@ export class Scene {
     this.snap = snap;
     this.hidden = hidden;
     if (this.space < 0) {
-      this.night(true);
+      this.light('sleep');
       drawLodge(this);
       return;
     }
-    this.night(false);
+    this.light(this.hours ? hourLight(new Date()) : 'day');
     const space: SpaceView | undefined = snap.spaces[this.space] ?? snap.spaces[0];
     if (!space) return;
     // Returned boxes leave the building: their zones are not rooms.
@@ -481,7 +581,7 @@ export class Scene {
         prop(o.gx + 1.6, o.gy + o.d - 0.9, (g) => desk(g, o.gx + 1.6, o.gy + o.d - 0.9, 'desk'));
         prop(o.gx + 0.45, o.gy + o.d - 0.45, (g) => purifier(g, o.gx + 0.2, o.gy + o.d - 0.7));
         prop(o.gx + 4.6, o.gy + o.d - 0.3, (g) => hedge(g, o.gx + 3.4, o.gy + o.d - 0.5, 'x', 2.4));
-        this.plate('서버실', o.gx + ZW / 2, o.gy + 0.15);
+        this.plate(this.system === 'fail' ? '서버실 · Argus 장애' : this.system === 'warn' ? '서버실 · Argus 주의' : '서버실', o.gx + ZW / 2, o.gy + 0.15);
       } else {
         const rug = new Graphics();
         rug.poly(floorPoly(o.gx + 2.2, o.gy + 1.6, 3.6, 3.0)).fill(0xd9c7b0);
@@ -627,7 +727,7 @@ export class Scene {
     const y = p.y - 26 - 30;
     sign.position.set(p.x - w / 2, y);
     this.signs.addChild(sign);
-    this.bench = { sign, y };
+    this.bench = { sign, y, gx, gy };
     const draw = (lit: boolean) => {
       g.clear();
       packing(g, gx, gy, lit);
@@ -807,6 +907,14 @@ export class Scene {
     if (this.lift.alpha < 1) this.lift.alpha = Math.min(1, this.lift.alpha + ms / 260);
     this.clock += ms;
     if (this.bench && !CALM) this.bench.sign.y = this.bench.y - Math.abs(Math.sin(this.clock / 520)) * 4;
+    for (let i = this.acts.length - 1; i >= 0; i--) {
+      const a = this.acts[i];
+      a.ms += ms;
+      if (a.g.destroyed || a.ms >= a.life) {
+        if (!a.g.destroyed) a.g.destroy({ children: true });
+        this.acts.splice(i, 1);
+      } else a.step(a.ms / a.life, a.g);
+    }
     const T = this.clock / 1000;
 
     this.sprites.forEach((s, key) => {
@@ -893,10 +1001,14 @@ export class Scene {
     for (const p of this.people) p.g.y = p.y + Math.sin(T * (p.slow ? 1.2 : 2.4) + p.phase) * (p.slow ? 2.2 : 1.4);
     // server lamps: each blinks at its own pace
     this.lampLayer.clear();
-    for (const l of this.lamps) {
-      const on = Math.sin(T * l.rate + l.phase) > -0.3;
-      this.lampLayer.rect(l.x - 1.3, l.y - 1.3, 2.6, 2.6).fill({ color: l.colour, alpha: on ? 1 : 0.25 });
-    }
+    // They also say how the team server is doing: all red and in step when it
+    // is in trouble, half of them amber when something needs a look.
+    this.lamps.forEach((l, i) => {
+      const fail = this.system === 'fail';
+      const colour = fail ? 0xff4d4d : this.system === 'warn' && i % 2 === 0 ? 0xffc145 : l.colour;
+      const on = fail ? Math.sin(T * 6) > 0 : Math.sin(T * l.rate + l.phase) > -0.3;
+      this.lampLayer.rect(l.x - 1.3, l.y - 1.3, 2.6, 2.6).fill({ color: colour, alpha: on ? 1 : 0.25 });
+    });
     for (const b of this.belts) this.drawBelt(b, T * 1.6);
 
     // the truck: waits for its load, drives off, comes back empty

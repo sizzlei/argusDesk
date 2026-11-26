@@ -115,7 +115,7 @@ function control(f: CreateField, ctx: Ctx): { el: HTMLElement; value: () => Valu
  * box can be addressed to; `tickets` are the ones on the floor, offered where
  * another ticket is linked. `made` is told the key of the new ticket.
  */
-export function openWaybill(backend: Backend, space: SpaceView, me: string, people: Who[], tickets: Ctx['tickets'], spent: boolean, made: (key: string) => void) {
+export function openWaybill(backend: Backend, space: SpaceView, me: string, people: Who[], tickets: Ctx['tickets'], spent: boolean, made: (key: string, tag: number) => void) {
   const ctx: Ctx = { me, people, tickets };
   const types = space.types ?? [];
   if (!types.length) return void toast('이 층의 설정에 만들 수 있는 유형이 없습니다.', 'error');
@@ -225,7 +225,7 @@ export function openWaybill(backend: Backend, space: SpaceView, me: string, peop
             const sent = await sendFiles(backend, key, picked);
             if (sent) toast(`${key}에 파일 ${sent}개를 붙였습니다.`);
           }
-          made(key);
+          made(key, TAGS[types.find((x) => x.name === type.value)?.tag ?? ''] ?? TAGS.gray);
         } catch (err) {
           error.textContent = errText(err);
           send.disabled = false;

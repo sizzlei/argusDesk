@@ -123,6 +123,13 @@ const DECISION: Record<string, string> = { pending: '대기', approved: '승인'
 let spent = false;
 const SPENT = '이번 주 피로도를 다 써서 상자를 더 가져올 수 없습니다. 월요일에 다시 채워집니다.';
 
+let answered: (key: string, approve: boolean) => void = () => {};
+
+/** Asks to be told when an approval has been answered from a window. */
+export function onAnswered(cb: (key: string, approve: boolean) => void) {
+  answered = cb;
+}
+
 /** Tells the windows how much strength is left for the week. */
 export function setStrength(left: number | undefined) {
   spent = left === 0;
@@ -218,7 +225,7 @@ function renderActions(w: Win, snap: Snapshot, backend: Backend) {
                 disabled: off,
                 onclick: async () => {
                   if (await confirmAction('승인', `${b.key} "${b.summary}"을(를) 승인합니다. Jira에 바로 반영되며 되돌릴 수 없습니다.`, '승인'))
-                    void act(w, '승인했습니다.', () => backend.answerApproval(b.key, ap.id, true), redraw);
+                    void act(w, '승인했습니다.', () => backend.answerApproval(b.key, ap.id, true).then(() => answered(b.key, true)), redraw);
                 },
               },
               '승인',
@@ -230,7 +237,7 @@ function renderActions(w: Win, snap: Snapshot, backend: Backend) {
                 disabled: off,
                 onclick: async () => {
                   if (await confirmAction('반려', `${b.key} "${b.summary}"을(를) 반려합니다. Jira에 바로 반영되며 되돌릴 수 없습니다.`, '반려', true))
-                    void act(w, '반려했습니다.', () => backend.answerApproval(b.key, ap.id, false), redraw);
+                    void act(w, '반려했습니다.', () => backend.answerApproval(b.key, ap.id, false).then(() => answered(b.key, false)), redraw);
                 },
               },
               '반려',
