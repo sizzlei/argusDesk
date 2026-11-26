@@ -115,9 +115,28 @@ export function copyButton(text: () => string, name = '복사') {
   return b;
 }
 
-/** A block of code with a copy button in its corner. */
+// Long lines of code either scroll inside their block or wrap. The choice
+// holds for every block and is kept for next time.
+const WRAP = 'argusdesk.wrapCode';
+try {
+  document.body.classList.toggle('wrap-code', localStorage.getItem(WRAP) === '1');
+} catch {
+  // no storage: long lines scroll
+}
+
+/** A block of code with a copy button and a line-wrap switch in its corner. */
 export function codeBlock(pre: HTMLElement) {
-  return h('div', { class: 'code' }, copyButton(() => pre.textContent ?? ''), pre);
+  const wrap = h('button', { class: 'copy wrap', type: 'button', title: '긴 줄을 창 너비에 맞춰 접거나, 한 줄로 두고 옆으로 넘깁니다' }, '줄바꿈');
+  wrap.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const on = document.body.classList.toggle('wrap-code');
+    try {
+      localStorage.setItem(WRAP, on ? '1' : '0');
+    } catch {
+      // not kept
+    }
+  });
+  return h('div', { class: 'code' }, h('span', { class: 'code-tools' }, wrap, copyButton(() => pre.textContent ?? '')), pre);
 }
 
 /** Asks before something is changed in Jira. Resolves true when confirmed. */

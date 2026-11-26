@@ -754,23 +754,34 @@ button.copy.done {
   color: var(--accent);
 }
 
-.code > button.copy {
+.code-tools {
   position: absolute;
   top: 6px;
   right: 6px;
   z-index: 1;
+  display: flex;
+  gap: 4px;
+}
+
+.code-tools > button.copy {
+  margin: 0;
   border-color: #46557a;
   background: #2b3859;
   color: #cdd6ea;
   opacity: 0.75;
 }
 
-.code:hover > button.copy,
-.code > button.copy:focus-visible {
+.code:hover .code-tools > button.copy,
+.code-tools > button.copy:focus-visible {
   opacity: 1;
 }
 
-.code > button.copy.done {
+body.wrap-code .code-tools > button.wrap {
+  border-color: #8fa6e8;
+  color: #fff;
+}
+
+.code-tools > button.copy.done {
   color: #9be3b4;
 }
 
@@ -2094,4 +2105,34 @@ button.filter-btn .n {
   border: 1px solid #e2a800;
   border-radius: 8px;
   background: #fff8dc;
+}
+
+/* A wide answer or code block scrolls inside itself: it never widens the window's content. */
+.form .answer {
+  grid-template-columns: 160px minmax(0, 1fr);
+}
+
+.form .answer.wide {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.form dd,
+.rich,
+.code {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.tw-body {
+  overflow-x: hidden;
+}
+
+body.wrap-code .code pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* room for the buttons in the corner of a code block */
+.code pre {
+  padding-top: 30px;
 }
