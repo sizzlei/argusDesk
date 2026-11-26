@@ -267,6 +267,10 @@ func (a *App) dropServer(forget bool) {
 // syncServer brings the app in line with the server: the settings in force
 // and, when Jira is not signed in yet (or force), the user's Jira key.
 func (a *App) syncServer(force bool) {
+	// One at a time: the timer, the start and a button can all ask at once,
+	// and two answers would sign in to Jira twice.
+	a.syncMu.Lock()
+	defer a.syncMu.Unlock()
 	a.mu.Lock()
 	c := a.srv.client
 	tag := a.srv.cfgTag

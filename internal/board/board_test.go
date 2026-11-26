@@ -3,6 +3,7 @@ package board
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -155,6 +156,7 @@ type fake struct {
 	issues  []jira.Issue
 	pending []jira.Issue // what waits for this user's approval
 	history int
+	broken  error // what a history lookup fails with (nil = it works)
 }
 
 func (f *fake) Fields(context.Context) ([]jira.Field, error) {
@@ -171,6 +173,9 @@ func (f *fake) Search(_ context.Context, jql string, _ []string) ([]jira.Issue, 
 }
 func (f *fake) StatusEnteredAt(context.Context, string, string) (time.Time, bool, error) {
 	f.history++
+	if f.broken != nil {
+		return time.Time{}, false, f.broken
+	}
 	return now.Add(-4 * time.Hour), true, nil
 }
 func (f *fake) BrowseURL(k string) string { return "https://x/browse/" + k }
@@ -283,5 +288,31 @@ func TestRefreshMarksMyApprovals(t *testing.T) {
 	}
 	if q := ApprovalJQL(cfg); !strings.Contains(q, "approvals = myPending()") || !strings.Contains(q, "project in (") {
 		t.Fatalf("jql = %s", q)
+	}
+}
+
+func TestOneBrokenHistoryDoesNotStopTheCentre(t *testing.T) {
+	f := &fake{issues: []jira.Issue{issue("REQ-1", "10002", "검토 중")}, broken: errors.New("HTTP 500")}
+	e := NewEngine(example(t), f, "u1")
+	e.now = func() time.Time { return now }
+	snap, _, err := e.Refresh(context.Background())
+	if err != nil || len(snap.Boxes) != 1 {
+		t.Fatalf("the refresh failed with one ticket's history: %v", err)
+	}
+	// asked again next time, and then it is kept
+	f.broken = nil
+	if _, _, err := e.Refresh(context.Background()); err != nil || f.history != 2 {
+		t.Fatalf("history lookups: %d, %v", f.history, err)
+	}
+	if _, _, err := e.Refresh(context.Background()); err != nil || f.history != 2 {
+		t.Fatalf("a history that was read is asked for again: %d", f.history)
+	}
+	// a refused sign-in still stops it
+	f2 := &fake{issues: []jira.Issue{issue("REQ-1", "10002", "검토 중")}, broken: jira.ErrUnauthorized}
+	if _, _, err := NewEngine(example(t), f2, "u1").Refresh(context.Background()); !errors.Is(err, jira.ErrUnauthorized) {
+		t.Fatalf("a refused sign-in was swallowed: %v", err)
+	}
+	if e.Last() == nil {
+		t.Error("the last snapshot is not kept")
 	}
 }

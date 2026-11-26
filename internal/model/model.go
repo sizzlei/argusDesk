@@ -114,6 +114,7 @@ type Snapshot struct {
 type Change struct {
 	Kind     string `json:"kind"` // "added" | "moved" | "updated" | "removed"
 	Key      string `json:"key"`
+	Space    string `json:"space,omitempty"` // the space the box is in (was in, when removed)
 	FromZone string `json:"fromZone,omitempty"`
 	ToZone   string `json:"toZone,omitempty"`
 }

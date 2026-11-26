@@ -677,6 +677,9 @@ function front(w: Win, hooks: TicketHooks) {
 function close(w: Win, hooks: TicketHooks) {
   w.el.remove();
   wins.delete(w.key);
+  // What was read for the window goes with it: opened again, the ticket is read again.
+  details.delete(w.key);
+  actions.delete(w.key);
   hooks.onClose(w.key);
 }
 
@@ -801,6 +804,7 @@ export function closeFront(hooks: TicketHooks) {
 
 export function closeTickets(hooks?: TicketHooks) {
   const keys = [...wins.keys()];
+  keys.forEach((k) => (details.delete(k), actions.delete(k)));
   wins.forEach((w) => w.el.remove());
   wins.clear();
   if (hooks) keys.forEach((k) => hooks.onClose(k));

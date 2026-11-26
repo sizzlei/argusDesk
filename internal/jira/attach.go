@@ -36,7 +36,9 @@ func (c *Client) Attach(ctx context.Context, key, name string, data []byte) erro
 	req.Header.Set("User-Agent", "argusDesk")
 	req.Header.Set("Content-Type", form.FormDataContentType())
 	req.Header.Set("X-Atlassian-Token", "no-check") // Jira asks for it on uploads
-	res, err := c.http.Do(req)
+	// Its own client: sending a file can take longer than the 30 seconds an
+	// API call gets. The caller's context sets the limit.
+	res, err := (&http.Client{}).Do(req)
 	if err != nil {
 		return fmt.Errorf("Jira에 연결할 수 없습니다: %w", err)
 	}

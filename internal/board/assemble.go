@@ -216,19 +216,19 @@ func Diff(prev, next *model.Snapshot) []model.Change {
 		o, had := old[b.Key]
 		switch {
 		case !had:
-			changes = append(changes, model.Change{Kind: "added", Key: b.Key, ToZone: b.Zone})
+			changes = append(changes, model.Change{Kind: "added", Key: b.Key, Space: b.Space, ToZone: b.Zone})
 		case !o.MyApproval && b.MyApproval && o.Zone == b.Zone:
 			// stayed where it was, and now waits for this user's approval
-			changes = append(changes, model.Change{Kind: "approval", Key: b.Key, ToZone: b.Zone})
+			changes = append(changes, model.Change{Kind: "approval", Key: b.Key, Space: b.Space, ToZone: b.Zone})
 		case o.Zone != b.Zone || o.Space != b.Space || o.AssigneeID != b.AssigneeID:
-			changes = append(changes, model.Change{Kind: "moved", Key: b.Key, FromZone: o.Zone, ToZone: b.Zone})
+			changes = append(changes, model.Change{Kind: "moved", Key: b.Key, Space: b.Space, FromZone: o.Zone, ToZone: b.Zone})
 		case o.Stale != b.Stale || o.Priority != b.Priority || o.Summary != b.Summary || o.StatusID != b.StatusID || o.Note != b.Note:
-			changes = append(changes, model.Change{Kind: "updated", Key: b.Key, ToZone: b.Zone})
+			changes = append(changes, model.Change{Kind: "updated", Key: b.Key, Space: b.Space, ToZone: b.Zone})
 		}
 	}
 	for _, b := range prev.Boxes {
 		if !seen[b.Key] {
-			changes = append(changes, model.Change{Kind: "removed", Key: b.Key, FromZone: b.Zone})
+			changes = append(changes, model.Change{Kind: "removed", Key: b.Key, Space: b.Space, FromZone: b.Zone})
 		}
 	}
 	return changes

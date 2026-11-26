@@ -17,6 +17,19 @@ import { errText, toast } from './ui';
 import { openWaybill } from './waybill';
 import { type Filter, applyFilter, loadFilter, saveFilter, unassigned } from './view';
 
+// Something broke that nothing caught: say so once, instead of a screen that
+// silently stops answering. The same message is not repeated.
+const told = new Set<string>();
+function tell(what: unknown) {
+  const text = what instanceof Error ? what.message : String(what ?? '');
+  if (!text || told.has(text) || /ResizeObserver loop/.test(text)) return;
+  told.add(text);
+  console.error(what);
+  toast(`화면에서 오류가 났습니다: ${text.slice(0, 200)}`, 'error');
+}
+window.addEventListener('error', (e) => tell(e.error ?? e.message));
+window.addEventListener('unhandledrejection', (e) => tell(e.reason));
+
 async function boot() {
   const backend = await connect();
   let state: AppState = await backend.state();
@@ -368,8 +381,10 @@ async function boot() {
   /** Takes a new app state: shows a setup page if something is missing. */
   function apply(next: AppState) {
     const reloaded = next.configVersion !== state.configVersion && state.configLoaded;
+    // A problem with the settings is told when it appears, not again with every later state.
+    const problem = next.configLoaded && next.configError && next.configError !== state.configError;
     state = next;
-    if (state.configLoaded && state.configError) toast(state.configError, 'error');
+    if (problem) toast(state.configError, 'error');
     else if (reloaded) toast(`설정 ${state.configVersion}을 읽었습니다.`);
     const blocked = renderSetup(state, backend, apply);
     if (blocked) {

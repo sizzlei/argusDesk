@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/sizzlei/argusDesk/internal/config"
@@ -37,7 +38,9 @@ type Engine struct {
 	statusName map[string]string
 	notes      []string           // problems found while preparing, repeated as warnings
 	entered    map[string]entered // ticket key -> status entry time
-	last       *model.Snapshot
+	// last is read from other goroutines while a refresh is under way, so it
+	// does not sit behind mu: a refresh holds mu for as long as Jira takes.
+	last atomic.Pointer[model.Snapshot]
 }
 
 type entered struct {
@@ -51,11 +54,7 @@ func NewEngine(cfg *config.Config, src Source, me string) *Engine {
 }
 
 // Last returns the most recent snapshot (nil before the first refresh).
-func (e *Engine) Last() *model.Snapshot {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	return e.last
-}
+func (e *Engine) Last() *model.Snapshot { return e.last.Load() }
 
 // prepare looks up field ids and status names once, and compares the
 // settings file with what Jira has.
@@ -157,6 +156,7 @@ func (e *Engine) Refresh(ctx context.Context) (*model.Snapshot, []model.Change, 
 
 	tickets := map[string][]model.Ticket{}
 	alive := map[string]bool{}
+	unread := map[string]time.Time{} // tickets whose history could not be read this time
 	for si := range e.cfg.Spaces {
 		sp := &e.cfg.Spaces[si]
 		issues, err := e.src.Search(ctx, JQL(sp), fields)
@@ -177,8 +177,15 @@ func (e *Engine) Refresh(ctx context.Context) (*model.Snapshot, []model.Change, 
 				continue
 			}
 			at, ok, err := e.src.StatusEnteredAt(ctx, t.Key, t.StatusID)
-			if err != nil {
+			var limited *jira.RateLimitError
+			switch {
+			case errors.Is(err, jira.ErrUnauthorized) || errors.As(err, &limited) || ctx.Err() != nil:
 				return nil, nil, err
+			case err != nil:
+				// One ticket's history failing does not take the centre down: the
+				// box counts from when it was created, and is asked again next time.
+				unread[t.Key] = t.Created
+				continue
 			}
 			if !ok {
 				at = t.Created
@@ -193,6 +200,9 @@ func (e *Engine) Refresh(ctx context.Context) (*model.Snapshot, []model.Change, 
 			continue
 		}
 		enteredAt[key] = c.at
+	}
+	for key, at := range unread {
+		enteredAt[key] = at
 	}
 
 	snap := Assemble(Input{
@@ -219,8 +229,8 @@ func (e *Engine) Refresh(ctx context.Context) (*model.Snapshot, []model.Change, 
 			}
 		}
 	}
-	changes := Diff(e.last, snap)
-	e.last = snap
+	changes := Diff(e.last.Load(), snap)
+	e.last.Store(snap)
 	return snap, changes, nil
 }
 

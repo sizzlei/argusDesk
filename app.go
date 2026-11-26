@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -40,6 +41,7 @@ type App struct {
 	app *application.App
 
 	mu          sync.Mutex
+	syncMu      sync.Mutex // held while the team server is being asked (see syncServer)
 	prefs       *secret.Prefs
 	cfg         *config.Config
 	cfgError    string // why the chosen file could not be used ("" = fine)
@@ -57,9 +59,14 @@ type App struct {
 	notify notifier
 
 	gameStats *game.Stats
-	gameAt    time.Time // when the statistics were last read
-	gameBusy  atomic.Bool
-	gameForce atomic.Bool // read the statistics again at the next refresh
+	// The season's finished tickets, kept between reads (see seasonDones).
+	dones      map[string]game.Done
+	donesCfg   *config.Config
+	donesSince time.Time
+	donesFull  time.Time
+	gameAt     time.Time // when the statistics were last read
+	gameBusy   atomic.Bool
+	gameForce  atomic.Bool // read the statistics again at the next refresh
 
 	updating atomic.Bool
 	restart  func() error
@@ -591,6 +598,57 @@ func (a *App) startPolling() {
 	}()
 }
 
+// seasonDones returns every ticket finished this season. The whole season is
+// read once an hour; in between only what was finished since yesterday is
+// asked for and merged in, which is one small search instead of a page per
+// hundred tickets of the year.
+func (a *App) seasonDones(ctx context.Context, cfg *config.Config, src board.Source, since, now time.Time) ([]game.Done, error) {
+	a.mu.Lock()
+	cache, full := a.dones, a.dones == nil || a.donesCfg != cfg || !a.donesSince.Equal(since) || time.Since(a.donesFull) > time.Hour
+	a.mu.Unlock()
+	from := since
+	if !full {
+		y := now.AddDate(0, 0, -1)
+		if recent := time.Date(y.Year(), y.Month(), y.Day(), 0, 0, 0, 0, now.Location()); recent.After(since) {
+			from = recent
+		}
+	}
+	got, err := board.Dones(ctx, cfg, src, from)
+	if err != nil {
+		return nil, err
+	}
+	next := map[string]game.Done{}
+	if !full {
+		// Kept: what was finished before the window. Inside it, Jira's answer
+		// is the truth (a ticket opened again is no longer there).
+		for key, d := range cache {
+			if d.At.Before(from) {
+				next[key] = d
+			}
+		}
+	}
+	for _, d := range got {
+		next[d.Key] = d
+	}
+	a.mu.Lock()
+	a.dones, a.donesCfg, a.donesSince = next, cfg, since
+	if full {
+		a.donesFull = time.Now()
+	}
+	a.mu.Unlock()
+	out := make([]game.Done, 0, len(next))
+	for _, d := range next {
+		out = append(out, d)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if !out[i].At.Equal(out[j].At) {
+			return out[i].At.Before(out[j].At)
+		}
+		return out[i].Key < out[j].Key
+	})
+	return out, nil
+}
+
 // GameStats returns the season's statistics, or nil before they were read.
 func (a *App) GameStats() *game.Stats {
 	a.mu.Lock()
@@ -609,14 +667,15 @@ func (a *App) refreshGame(ctx context.Context, snap *model.Snapshot, changes []m
 		return
 	}
 	finished := false
+	// Zone ids are only unique within a space: two floors may both have a "done".
 	kinds := map[string]string{}
 	for _, sp := range snap.Spaces {
 		for _, z := range sp.Zones {
-			kinds[z.ID] = z.Kind
+			kinds[sp.ID+"/"+z.ID] = z.Kind
 		}
 	}
 	for _, c := range changes {
-		if (c.Kind == "moved" && kinds[c.ToZone] == config.KindDone) || (c.Kind == "removed" && kinds[c.FromZone] == config.KindDone) {
+		if (c.Kind == "moved" && kinds[c.Space+"/"+c.ToZone] == config.KindDone) || (c.Kind == "removed" && kinds[c.Space+"/"+c.FromZone] == config.KindDone) {
 			finished = true
 		}
 	}
@@ -627,6 +686,9 @@ func (a *App) refreshGame(ctx context.Context, snap *model.Snapshot, changes []m
 		return
 	}
 	if !a.gameBusy.CompareAndSwap(false, true) {
+		if finished {
+			a.gameForce.Store(true) // a read is under way: this one is not lost, the next refresh asks again
+		}
 		return
 	}
 	go func() {
@@ -635,7 +697,7 @@ func (a *App) refreshGame(ctx context.Context, snap *model.Snapshot, changes []m
 		defer cancel()
 		now := time.Now().In(cfg.Location())
 		since := cfg.Game.Season(now, cfg.Location())
-		dones, err := board.Dones(rctx, cfg, client, since)
+		dones, err := a.seasonDones(rctx, cfg, client, since, now)
 		if err != nil {
 			return // the next round tries again; the centre itself is unaffected
 		}

@@ -137,6 +137,17 @@ export class Scene {
       this.fit();
     });
     this.app.ticker.add((t) => this.animate(t.deltaMS));
+    // The centre is left open all day: it draws at a modest pace, slower when
+    // another window has the focus, and not at all while it cannot be seen.
+    const pace = () => {
+      if (document.hidden) return void this.app.ticker.stop();
+      this.app.ticker.maxFPS = document.hasFocus() ? 30 : 15;
+      this.app.ticker.start();
+    };
+    document.addEventListener('visibilitychange', pace);
+    window.addEventListener('focus', pace);
+    window.addEventListener('blur', pace);
+    pace();
     this.app.renderer.on('resize', () => this.refit());
   }
 
