@@ -98,7 +98,8 @@ func (c *Client) request(ctx context.Context, method, target string, body, out a
 	defer res.Body.Close()
 	switch {
 	case res.StatusCode == http.StatusUnauthorized:
-		return ErrUnauthorized
+		msg, _ := io.ReadAll(io.LimitReader(res.Body, 300))
+		return &DeniedError{Reason: strings.Join(strings.Fields(res.Header.Get("X-Seraph-Loginreason")+" "+res.Header.Get("WWW-Authenticate")+" "+string(msg)), " ")}
 	case res.StatusCode == http.StatusTooManyRequests:
 		wait := 30 * time.Second
 		if s, err := strconv.Atoi(res.Header.Get("Retry-After")); err == nil && s > 0 {
@@ -117,6 +118,13 @@ func (c *Client) request(ctx context.Context, method, target string, body, out a
 	}
 	return nil
 }
+
+// DeniedError is ErrUnauthorized with what Jira said about it, for the
+// diagnostics. It reads the same as ErrUnauthorized and errors.Is finds it.
+type DeniedError struct{ Reason string }
+
+func (e *DeniedError) Error() string        { return ErrUnauthorized.Error() }
+func (e *DeniedError) Is(target error) bool { return target == ErrUnauthorized }
 
 // User is a Jira account.
 type User struct {

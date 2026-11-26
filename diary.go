@@ -23,7 +23,7 @@ const diaryMax = 300
 
 // note adds a line. A line repeated in a row is counted instead of listed.
 func (a *App) note(format string, args ...any) {
-	text := fmt.Sprintf(format, args...)
+	text := strings.Join(strings.Fields(fmt.Sprintf(format, args...)), " ") // one line each
 	d := &a.diary
 	d.mu.Lock()
 	defer d.mu.Unlock()

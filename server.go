@@ -388,12 +388,22 @@ func (a *App) syncServer(force bool) {
 	if err != nil {
 		a.note("Argus에서 Jira 토큰 받기 실패: %v", err)
 	} else {
-		a.note("Argus에서 Jira 토큰 받음: 사이트 %q, 메일 %d자, 토큰 %d자", key.Site, len(key.Email), len(key.Token))
+		raw := len(key.Site) + len(key.Email) + len(key.Token)
+		key.Site, key.Email, key.Token = strings.TrimSpace(key.Site), strings.TrimSpace(key.Email), strings.TrimSpace(key.Token)
+		form := "알 수 없는 형식"
+		if strings.HasPrefix(key.Token, "ATATT") {
+			form = "Atlassian API 토큰 형식"
+		}
+		a.note("Argus에서 Jira 토큰 받음: 사이트 %q, 메일 %d자, 토큰 %d자(%s), 앞뒤 공백 %d자 제거", key.Site, len(key.Email), len(key.Token), form, raw-len(key.Site)-len(key.Email)-len(key.Token))
 	}
 	switch {
 	case err == nil:
 		if jerr := a.signIn(key.Site, key.Email, key.Token); jerr != nil {
 			if errors.Is(jerr, jira.ErrUnauthorized) {
+				var denied *jira.DeniedError
+				if errors.As(jerr, &denied) {
+					a.note("Jira가 거절하며 한 말: %s", denied.Reason)
+				}
 				a.mu.Lock()
 				a.srv.needs = needJira
 				a.authError = "서버에 등록한 Jira 토큰으로 로그인하지 못했습니다. 토큰이 만료되었는지 확인하고 서버에서 다시 등록해 주세요."

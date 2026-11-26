@@ -7,6 +7,9 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	// Windows has no time zone list of its own: without this, "Asia/Seoul"
+	// is unknown there and the settings are refused.
+	_ "time/tzdata"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
