@@ -40,12 +40,37 @@ function control(f: CreateField, ctx: Ctx): { el: HTMLElement; value: () => Valu
       return { el, value: () => el.value };
     }
     case 'options': {
+      // A drop-down that takes several: closed, it names what is picked.
       const boxes = (f.options ?? []).map((o) => {
         const box = h('input', { type: 'checkbox', value: o.id });
         box.checked = preset.includes(o.id);
-        return { box, label: h('label', { class: 'check' }, box, o.name) };
+        return { box, name: o.name, label: h('label', { class: 'check' }, box, o.name) };
       });
-      return { el: h('div', { id, class: 'checks', role: 'group', 'aria-label': f.name }, ...boxes.map((b) => b.label)), value: () => boxes.filter((b) => b.box.checked).map((b) => b.box.value) };
+      const face = h('summary', { id });
+      const el = h('details', { class: 'wb-multi' }, face, h('div', { class: 'checks', role: 'group', tabindex: '-1', 'aria-label': f.name }, ...boxes.map((b) => b.label)));
+      const show = () => {
+        const picked = boxes.filter((b) => b.box.checked).map((b) => b.name);
+        face.textContent = picked.length ? picked.join(', ') : f.required ? '선택하세요' : '없음';
+        face.classList.toggle('empty', !picked.length);
+      };
+      el.addEventListener('change', show);
+      // near the bottom of the waybill the list opens upwards, so the paper does not have to scroll
+      el.addEventListener('toggle', () => {
+        const r = el.getBoundingClientRect();
+        const d = (el.closest('dialog') ?? document.body).getBoundingClientRect();
+        el.classList.toggle('up', d.bottom - r.bottom < 250 && r.top - d.top > d.bottom - r.bottom);
+      });
+      // like a drop-down, it shuts when something else is clicked or Esc is pressed
+      el.addEventListener('focusout', (e) => !el.contains(e.relatedTarget as Node | null) && (el.open = false));
+      el.addEventListener('keydown', (e) => {
+        if (e.key !== 'Escape' || !el.open) return;
+        e.stopPropagation();
+        e.preventDefault();
+        el.open = false;
+        face.focus();
+      });
+      show();
+      return { el, value: () => boxes.filter((b) => b.box.checked).map((b) => b.box.value) };
     }
     case 'user': {
       // Whoever Jira starts the field with, then me and the team.

@@ -10,7 +10,7 @@ import { lookOf } from './avatars';
 import type { Away, Box, Change, Member, Snapshot, SpaceView, ZoneView } from './types';
 import { TW, TH, ZW, ZH, COL_GAP, ROW_GAP, ATRIUM_GAP, grid, COLS, PAD, WALL_H, STOREY, iso, DESK_EXTRA, rowY, roomOrigin } from './scene/grid';
 import { INK, QUIET, ACCENT, FLOOR, AGE, shade, ageStep, shortAge, shortName } from './scene/palette';
-import { hatch, label, block, BOX, BOX_H, drawBox, floorPoly, tree, hedge, purifier, cooler, bench, sofa, dbTank, Lamp, rack, chiller, desk, person, truck, decorate, furnish } from './scene/props';
+import { hatch, label, block, BOX, BOX_H, drawBox, floorPoly, tree, hedge, purifier, cooler, bench, sofa, dbTank, Lamp, rack, chiller, desk, person, truck, decorate, furnish, packing } from './scene/props';
 import { LANE_LEN, LANE_TOP, lanePitch, pallet, palletCols, slots } from './scene/layout';
 import { Sprite, Leg, BeltTile, Belt, BELT_SPEED, BELT_UP, CALM, easeInOut, SQUASH } from './scene/parts';
 import { drawBuilding, beltTile } from './scene/building';
@@ -23,6 +23,8 @@ export interface SceneHooks {
   onHover(box: Box | null, x: number, y: number): void;
   /** The zoom changed: 1 = drawn at its own size. */
   onZoom?(scale: number): void;
+  /** The packing bench was clicked: a ticket is to be written on this floor. */
+  onWrite?(): void;
 }
 
 export class Scene {
@@ -57,6 +59,7 @@ export class Scene {
   private held = false; // the user zoomed or moved the view: leave it alone
   private push = 0; // how far the view has slid aside for the panel
   private pushTo = 0;
+  private bench: { sign: Container; y: number } | null = null; // the packing bench's sign, which bobs
 
   constructor(
     private host: HTMLElement,
@@ -257,6 +260,7 @@ export class Scene {
     this.belts = [];
     this.belt = null;
     this.lamps = [];
+    this.bench = null;
     drawBuilding(this, width, depth, rows, cols, snap.spaces.indexOf(space), space.name, snap.spaces.length);
 
     const prop = (gx: number, gy: number, draw: (g: Graphics) => void, bias = 0) => {
@@ -353,7 +357,9 @@ export class Scene {
       }
       this.ground.addChild(floor);
 
-      if (zone.kind !== 'desk') prop(o.gx + 3, o.gy + 0.8, (g) => furnish(g, zone.kind, o.gx, o.gy), -50);
+      // Where the team writes its own tickets, the first waiting room's counter is the packing bench.
+      if (space.create && zone.kind === 'wait' && !this.bench) this.packingBench(o.gx, o.gy);
+      else if (zone.kind !== 'desk') prop(o.gx + 3, o.gy + 0.8, (g) => furnish(g, zone.kind, o.gx, o.gy), -50);
       decorate((px, py, draw) => prop(px, py, draw), zone.kind, rooms.slice(0, zi).filter((z) => z.kind === zone.kind).length, o.gx, o.gy, o.d);
       // The truck waits outside the building when the dock is in the front row.
       if (zone.kind === 'done' && o.row === rows - 1 && snap.spaces.indexOf(space) === 0) {
@@ -590,6 +596,51 @@ export class Scene {
     this.signs.addChild(box);
   }
 
+  /**
+   * The packing bench and the sign above it. Both are clicked to write a
+   * ticket; under the pointer the bench lights up and the sign fills in.
+   */
+  private packingBench(gx: number, gy: number) {
+    const g = new Graphics();
+    g.label = 'prop';
+    g.zIndex = (gx + 3 + gy + 0.8) * 100 - 50;
+    this.things.addChild(g);
+    const sign = new Container();
+    const pill = new Graphics();
+    const plus = label('+', 15, ACCENT, '700');
+    const text = label('송장 쓰기', 12, ACCENT, '700');
+    const w = 12 + plus.width + 5 + text.width + 12;
+    plus.position.set(12, (26 - plus.height) / 2 - 1);
+    text.position.set(12 + plus.width + 5, (26 - text.height) / 2);
+    sign.addChild(pill, plus, text);
+    const p = iso(gx + 6.2, gy + 0.7); // beside the bench: the room's own sign stands above it
+    const y = p.y - 26 - 30;
+    sign.position.set(p.x - w / 2, y);
+    this.signs.addChild(sign);
+    this.bench = { sign, y };
+    const draw = (lit: boolean) => {
+      g.clear();
+      packing(g, gx, gy, lit);
+      pill.clear();
+      pill.roundRect(0, 0, w, 26, 13).fill(lit ? ACCENT : 0xffffff).stroke({ width: 1.5, color: ACCENT });
+      pill.poly([w / 2 - 5, 26, w / 2 + 5, 26, w / 2, 32]).fill(lit ? ACCENT : 0xffffff).stroke({ width: 1.5, color: ACCENT });
+      pill.rect(w / 2 - 4, 24, 8, 2.5).fill(lit ? ACCENT : 0xffffff); // the tail joins the pill
+      plus.style.fill = text.style.fill = lit ? 0xffffff : ACCENT;
+    };
+    draw(false);
+    for (const part of [g, sign] as Container[]) {
+      part.eventMode = 'static';
+      part.cursor = 'pointer';
+      part.on('pointerover', () => draw(true));
+      part.on('pointerout', () => draw(false));
+      part.on('pointertap', (e) => {
+        e.stopPropagation();
+        if (!this.drag?.moved) this.hooks.onWrite?.();
+        this.drag = null;
+      });
+    }
+  }
+
   /** The name plate of a room that holds no tickets: lighter than a room's sign. */
   plate(text: string, gx: number, gy: number) {
     const p = iso(gx, gy);
@@ -745,6 +796,7 @@ export class Scene {
     if (Math.abs(this.lift.y) < 0.3) this.lift.y = 0;
     if (this.lift.alpha < 1) this.lift.alpha = Math.min(1, this.lift.alpha + ms / 260);
     this.clock += ms;
+    if (this.bench && !CALM) this.bench.sign.y = this.bench.y - Math.abs(Math.sin(this.clock / 520)) * 4;
     const T = this.clock / 1000;
 
     this.sprites.forEach((s, key) => {

@@ -58,7 +58,21 @@ async function boot() {
       if (selected?.key === key) scene.mark('');
     },
   };
+  /**
+   * Opens the waybill: for the floor shown when tickets are written there,
+   * otherwise for the first floor where they are.
+   */
+  const write = () => {
+    if (!snap || !state || document.querySelector('dialog[open]')) return;
+    const sp = snap.spaces[space]?.create ? snap.spaces[space] : snap.spaces.find((x) => x.create);
+    if (!sp) return;
+    const seen = new Set<string>();
+    const people = snap.members.filter((m) => !m.me && !seen.has(m.id) && seen.add(m.id)).map((m) => ({ id: m.id, name: m.name.trim().split(/\s+/)[0] }));
+    const tickets = snap.boxes.filter((b) => b.space === sp.id).map((b) => ({ key: b.key, summary: b.summary }));
+    openWaybill(backend, sp, state.me.trim().split(/\s+/)[0] ?? '', people, tickets, game?.myFatigue === 0, (key) => (awaited = key));
+  };
   const scene = new Scene(document.getElementById('scene')!, {
+    onWrite: () => write(),
     onSelect: (box) => {
       selected = box;
       if (box && snap) openTicket(box, snap, backend, tickets);
@@ -75,6 +89,13 @@ async function boot() {
     },
   });
   await scene.init();
+  // N writes a ticket from anywhere, as the packing bench does on its floor.
+  window.addEventListener('keydown', (e) => {
+    const typing = e.target instanceof HTMLElement && (e.target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName));
+    if (e.code !== 'KeyN' || typing || e.metaKey || e.ctrlKey || e.altKey || e.isComposing) return;
+    e.preventDefault();
+    write();
+  });
   document.getElementById('zoom-in')!.addEventListener('click', () => scene.zoom(1.25));
   document.getElementById('zoom-out')!.addEventListener('click', () => scene.zoom(0.8));
   document.getElementById('zoom-fit')!.addEventListener('click', () => scene.resetView());
@@ -158,14 +179,6 @@ async function boot() {
     );
     renderHud(state, shown, space, lastError, backend, {
       refresh: () => void backend.refresh(),
-      write: () => {
-        const sp = snap?.spaces[space];
-        if (!sp) return;
-        const seen = new Set<string>();
-        const people = (snap?.members ?? []).filter((m) => !m.me && !seen.has(m.id) && seen.add(m.id)).map((m) => ({ id: m.id, name: m.name.trim().split(/\s+/)[0] }));
-        const tickets = (snap?.boxes ?? []).filter((b) => b.space === sp.id).map((b) => ({ key: b.key, summary: b.summary }));
-        openWaybill(backend, sp, state.me.trim().split(/\s+/)[0] ?? '', people, tickets, game?.myFatigue === 0, (key) => (awaited = key));
-      },
       profileOpen: profileOpen(),
       toggleProfile: () => {
         const next = !profileOpen();

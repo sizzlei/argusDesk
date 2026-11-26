@@ -2355,11 +2355,6 @@ body.wrap-code .code pre {
 }
 
 /* ---- waybill: writing a ticket of our own ---- */
-#floors button.write {
-  margin-top: 6px;
-  border-style: dashed;
-  color: var(--accent);
-}
 
 dialog.waybill {
   width: min(560px, calc(100vw - 32px));
@@ -2475,18 +2470,77 @@ dialog.waybill::backdrop {
   resize: vertical;
 }
 
+.wb-multi {
+  position: relative;
+}
+
+.wb-multi summary {
+  padding: 7px 28px 7px 9px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+  cursor: pointer;
+  list-style: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wb-multi summary::-webkit-details-marker {
+  display: none;
+}
+
+.wb-multi summary::after {
+  content: '';
+  position: absolute;
+  top: 13px;
+  right: 11px;
+  width: 6px;
+  height: 6px;
+  border: solid var(--quiet);
+  border-width: 0 1.5px 1.5px 0;
+  transform: rotate(45deg);
+}
+
+.wb-multi summary.empty {
+  color: var(--quiet);
+}
+
 .wb-body .checks {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 14px;
+  position: absolute;
+  z-index: 2;
+  top: calc(100% + 4px);
+  right: 0;
+  left: 0;
+  display: grid;
+  gap: 2px;
+  max-height: 220px;
+  padding: 6px;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 10px 28px rgb(31 42 68 / 18%);
+}
+
+.wb-multi.up .checks {
+  top: auto;
+  bottom: calc(100% + 4px);
 }
 
 .wb-body .checks label {
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   margin: 0;
+  padding: 5px 6px;
+  border-radius: 5px;
   font-weight: 400;
+  cursor: pointer;
+}
+
+.wb-body .checks label:hover {
+  background: #f1f4f9;
 }
 
 .wb-links {

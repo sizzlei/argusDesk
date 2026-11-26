@@ -4,7 +4,7 @@ import { Graphics, Text } from 'pixi.js';
 import { type Look } from '../avatars';
 import type { Box, ZoneKind } from '../types';
 import { ZW, iso } from './grid';
-import { INK, ACCENT, TAGS, AGE, UNSCHEDULED, SKIN, shade, tint, ageStep } from './palette';
+import { INK, ACCENT, TAGS, AGE, UNSCHEDULED, SKIN, CARDBOARD, shade, tint, ageStep } from './palette';
 
 // ---- drawing blocks ---------------------------------------------------------
 
@@ -227,6 +227,32 @@ export function chiller(g: Graphics, gx: number, gy: number) {
   const cy = (l.y + r.y) / 2 - 15;
   g.ellipse(cx, cy, 8, 9).fill(0x9aa3b5);
   g.ellipse(cx, cy, 3, 3.5).fill(0xe6eaf0);
+}
+
+/**
+ * The packing bench: the waiting room's counter on a floor where the team
+ * writes its own tickets. A label printer, a roll of waybills and an open
+ * box wait on it. `lit` is the look under the pointer.
+ */
+export function packing(g: Graphics, gx: number, gy: number, lit: boolean) {
+  const x = gx + 2.6;
+  const y = gy + 0.5;
+  const top = 15;
+  shadow(g, x, y, 2.8, 0.6);
+  block(g, x, y, 2.8, 0.6, top, lit ? 0xd9b98c : 0xc9a77a);
+  block(g, x, y, 2.8, 0.6, 3, lit ? 0xfffaf0 : 0xf3ead9, top);
+  // label printer, a waybill coming out of it
+  block(g, x + 0.2, y + 0.1, 0.55, 0.4, 9, 0x2b3550, top + 3);
+  block(g, x + 0.28, y + 0.46, 0.4, 0.12, 1, 0xffffff, top + 6);
+  block(g, x + 0.3, y + 0.16, 0.12, 0.1, 2, lit ? 0x7cf0a8 : 0x4fd08a, top + 12);
+  // a pad of waybills, the top one with its coloured stripe
+  block(g, x + 1.0, y + 0.14, 0.5, 0.34, 3, 0xffffff, top + 3);
+  block(g, x + 1.0, y + 0.14, 0.1, 0.34, 1, ACCENT, top + 6);
+  // an open box, flaps up, waiting for its waybill
+  block(g, x + 1.85, y + 0.06, 0.72, 0.5, 13, CARDBOARD, top + 3);
+  block(g, x + 1.91, y + 0.1, 0.6, 0.42, 1, shade(CARDBOARD, 0.35), top + 15);
+  block(g, x + 1.85, y + 0.06, 0.06, 0.5, 6, tint(CARDBOARD, 0.25), top + 16);
+  block(g, x + 2.51, y + 0.06, 0.06, 0.5, 6, shade(CARDBOARD, 0.1), top + 16);
 }
 
 /** A desk with a monitor, seen from its side; the shelf variant is a low rack. */

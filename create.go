@@ -84,17 +84,20 @@ func (a *App) createMetaFor(ctx context.Context, spaceID, typeName string) (*cre
 	}
 	m = &createMeta{typeID: typeID, assign: assign, at: time.Now(), form: &CreateForm{Space: spaceID, Type: typeName, Fields: []jira.CreateField{}, Blocked: []string{}, Auto: []string{}}}
 	// Jira's own form for the kind is what the waybill shows: the title, the
-	// description, what must be filled in, then what may be.
+	// description, the dates (asked for or not, side by side), what must be
+	// filled in, then what may be.
 	rank := func(f jira.CreateField) int {
 		switch {
 		case f.ID == "summary":
 			return 0
 		case f.ID == "description":
 			return 1
-		case f.Required:
+		case f.Kind == jira.KindDate || f.Kind == jira.KindDateTime:
 			return 2
+		case f.Required:
+			return 3
 		}
-		return 3
+		return 4
 	}
 	sort.SliceStable(fields, func(i, j int) bool { return rank(fields[i]) < rank(fields[j]) })
 	for _, f := range fields {
