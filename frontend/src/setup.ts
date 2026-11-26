@@ -33,7 +33,7 @@ export function renderSetup(state: AppState, backend: Backend, done: (next: AppS
       h(
         'section',
         { class: 'card' },
-        h('h1', {}, 'ArgusDesk'),
+        h('h1', {}, 'Argus Desk'),
         h('h2', {}, '팀 서버로 시작'),
         h('p', { class: 'quiet' }, '팀이 서버를 쓰고 있다면 주소만 입력하면 됩니다. 설정과 Jira 연결은 서버에서 받아 옵니다.'),
         h(

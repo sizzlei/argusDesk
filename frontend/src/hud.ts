@@ -133,7 +133,7 @@ export function renderHud(state: AppState, snap: Snapshot | null, space: number,
     h(
       'div',
       { class: 'title' },
-      h('strong', {}, snap?.name ?? state.configName ?? 'ArgusDesk'),
+      h('strong', { title: snap?.name ?? state.configName ?? '' }, 'Argus Desk'),
       h('span', { class: 'quiet', title: state.configPath }, `설정 ${state.configVersion || '?'}`),
       backend.mock ? h('span', { class: 'chip' }, '가짜 데이터') : null,
       state.usingLastGood ? h('span', { class: 'chip warn', title: state.configError }, '이전 설정으로 실행 중') : null,
