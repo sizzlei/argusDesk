@@ -54,6 +54,9 @@ func Install(zipPath string) (func() error, error) {
 	if st, err := os.Stat(filepath.Join(newApp, "Contents", "MacOS")); err != nil || !st.IsDir() {
 		return fail(errors.New("압축 파일에 ArgusDesk.app이 없습니다"))
 	}
+	if err := sameSigner(app, newApp); err != nil {
+		return fail(err)
+	}
 	_ = exec.Command("/usr/bin/xattr", "-dr", "com.apple.quarantine", newApp).Run()
 
 	old := filepath.Join(work, "previous.app")
@@ -70,6 +73,24 @@ func Install(zipPath string) (func() error, error) {
 		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 		return cmd.Start()
 	}, nil
+}
+
+// sameSigner refuses a new app that is damaged or that was not signed by
+// whoever signed the running one. When the running app is signed ad hoc
+// there is no signer to compare with, and only the damage check is made.
+func sameSigner(app, newApp string) error {
+	if out, err := exec.Command("/usr/bin/codesign", "--verify", "--deep", "--strict", newApp).CombinedOutput(); err != nil {
+		return fmt.Errorf("새 앱의 서명이 올바르지 않아 설치하지 않습니다: %s", strings.TrimSpace(string(out)))
+	}
+	out, _ := exec.Command("/usr/bin/codesign", "-d", "-r-", app).CombinedOutput()
+	req, adhoc := requirement(string(out))
+	if adhoc {
+		return nil
+	}
+	if out, err := exec.Command("/usr/bin/codesign", "--verify", "--deep", "--strict", "-R", "="+req, newApp).CombinedOutput(); err != nil {
+		return fmt.Errorf("새 앱이 지금 앱과 같은 서명자의 것이 아니어서 설치하지 않습니다: %s", strings.TrimSpace(string(out)))
+	}
+	return nil
 }
 
 // Cleanup removes what an interrupted update left next to the app.

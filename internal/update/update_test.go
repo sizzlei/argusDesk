@@ -177,3 +177,16 @@ func TestExtractFile(t *testing.T) {
 		t.Fatal("missing member accepted")
 	}
 }
+
+func TestRequirement(t *testing.T) {
+	signed := "Executable=/Applications/ArgusDesk.app/Contents/MacOS/ArgusDesk\ndesignated => identifier \"com.example.app\" and certificate leaf = H\"0123abcd\"\n"
+	if req, adhoc := requirement(signed); adhoc || req != `identifier "com.example.app" and certificate leaf = H"0123abcd"` {
+		t.Errorf("signed: %q %v", req, adhoc)
+	}
+	if _, adhoc := requirement("Executable=/x\n# designated => cdhash H\"aa\"\n"); !adhoc {
+		t.Error("an ad-hoc signature passed as a signer")
+	}
+	if _, adhoc := requirement("code object is not signed at all\n"); !adhoc {
+		t.Error("an unsigned app passed as a signer")
+	}
+}
