@@ -217,19 +217,42 @@ const (
 	CommentPlain    = "plain"    // an ordinary project: a normal comment
 )
 
-// AddComment writes a comment in one of the three ways above.
-func (c *Client) AddComment(ctx context.Context, key, text, mode string) error {
+// AddComment writes a comment in one of the three ways above. Where the text
+// holds "@" and the name of one of the people mentioned, Jira is told who is
+// meant, so that person is notified as with a mention written in Jira.
+func (c *Client) AddComment(ctx context.Context, key, text, mode string, mentioned []Person) error {
+	lines := strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n")
 	switch mode {
 	case CommentInternal, CommentPublic:
-		body := map[string]any{"body": text, "public": mode == CommentPublic}
+		// The service desk API takes wiki text, where a mention is [~accountid:…].
+		for i, line := range lines {
+			var b strings.Builder
+			for _, part := range splitMentions(line, mentioned) {
+				if part.who != nil {
+					b.WriteString("[~accountid:" + part.who.ID + "]")
+				} else {
+					b.WriteString(part.text)
+				}
+			}
+			lines[i] = b.String()
+		}
+		body := map[string]any{"body": strings.Join(lines, "\n"), "public": mode == CommentPublic}
 		return c.do(ctx, http.MethodPost, "/rest/servicedeskapi/request/"+url.PathEscape(key)+"/comment", body, nil)
 	case CommentPlain:
 		// The platform API takes a document: one paragraph per line of text.
 		paragraphs := []any{}
-		for _, line := range strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n") {
+		for _, line := range lines {
 			p := map[string]any{"type": "paragraph"}
-			if line != "" {
-				p["content"] = []any{map[string]any{"type": "text", "text": line}}
+			var content []any
+			for _, part := range splitMentions(line, mentioned) {
+				if part.who != nil {
+					content = append(content, map[string]any{"type": "mention", "attrs": map[string]any{"id": part.who.ID, "text": "@" + part.who.Name}})
+				} else {
+					content = append(content, map[string]any{"type": "text", "text": part.text})
+				}
+			}
+			if len(content) > 0 {
+				p["content"] = content
 			}
 			paragraphs = append(paragraphs, p)
 		}
@@ -237,4 +260,42 @@ func (c *Client) AddComment(ctx context.Context, key, text, mode string) error {
 		return c.do(ctx, http.MethodPost, "/rest/api/3/issue/"+url.PathEscape(key)+"/comment", body, nil)
 	}
 	return errors.New("알 수 없는 댓글 종류: " + mode)
+}
+
+// mentionPart is a piece of a line: plain text, or one person mentioned.
+type mentionPart struct {
+	text string
+	who  *Person
+}
+
+// splitMentions cuts a line where it says "@" and the name of someone in
+// people. The longest name wins, so "@김하늘" is not taken for "@김하".
+func splitMentions(line string, people []Person) []mentionPart {
+	var parts []mentionPart
+	start := 0
+	for i := 0; i < len(line); {
+		var hit *Person
+		if line[i] == '@' {
+			for k := range people {
+				p := &people[k]
+				if p.ID != "" && p.Name != "" && strings.HasPrefix(line[i+1:], p.Name) && (hit == nil || len(p.Name) > len(hit.Name)) {
+					hit = p
+				}
+			}
+		}
+		if hit == nil {
+			i++
+			continue
+		}
+		if i > start {
+			parts = append(parts, mentionPart{text: line[start:i]})
+		}
+		parts = append(parts, mentionPart{who: hit})
+		i += 1 + len(hit.Name)
+		start = i
+	}
+	if start < len(line) {
+		parts = append(parts, mentionPart{text: line[start:]})
+	}
+	return parts
 }

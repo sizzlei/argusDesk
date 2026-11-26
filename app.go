@@ -397,13 +397,15 @@ func (a *App) AnswerApproval(key, approvalID string, approve bool) error {
 
 // AddComment writes a comment. mode is "internal" or "public" for a service
 // desk request (public ones are shown to the requester) and "plain" elsewhere.
-func (a *App) AddComment(key, text, mode string) error {
+// mentioned are the people picked with "@" while writing: where the text says
+// "@" and one of their names, Jira notifies that person.
+func (a *App) AddComment(key, text, mode string, mentioned []jira.Person) error {
 	text = strings.TrimSpace(text)
 	if text == "" {
 		return errors.New("댓글 내용을 입력해 주세요")
 	}
 	return a.write(key, func(ctx context.Context, c *jira.Client, _ *jira.User) error {
-		return c.AddComment(ctx, key, text, mode)
+		return c.AddComment(ctx, key, text, mode, mentioned)
 	})
 }
 

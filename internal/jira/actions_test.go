@@ -84,8 +84,8 @@ func TestWritesSendWhatJiraExpects(t *testing.T) {
 		c.Assign(ctx, "A-1", ""),
 		c.AnswerApproval(ctx, "A-1", "2", true),
 		c.AnswerApproval(ctx, "A-1", "2", false),
-		c.AddComment(ctx, "A-1", "확인했습니다", CommentInternal),
-		c.AddComment(ctx, "A-1", "첫 줄\n둘째 줄", CommentPlain),
+		c.AddComment(ctx, "A-1", "확인했습니다", CommentInternal, nil),
+		c.AddComment(ctx, "A-1", "첫 줄\n둘째 줄", CommentPlain, nil),
 	} {
 		if err != nil {
 			t.Fatal(err)
@@ -131,7 +131,18 @@ func TestWritesSendWhatJiraExpects(t *testing.T) {
 
 func TestAddCommentRefusesUnknownMode(t *testing.T) {
 	c := server(t, func(http.ResponseWriter, *http.Request) { t.Error("nothing should be sent") })
-	if err := c.AddComment(context.Background(), "A-1", "x", "everyone"); err == nil {
+	if err := c.AddComment(context.Background(), "A-1", "x", "everyone", nil); err == nil {
 		t.Fatal("want an error")
+	}
+}
+
+func TestSplitMentions(t *testing.T) {
+	people := []Person{{ID: "a1", Name: "김하"}, {ID: "a2", Name: "김하늘 DBA"}}
+	got := splitMentions("확인 부탁드립니다 @김하늘 DBA, 그리고 @모르는분 a@b.c", people)
+	if len(got) != 3 || got[0].text != "확인 부탁드립니다 " || got[1].who == nil || got[1].who.ID != "a2" || got[2].text != ", 그리고 @모르는분 a@b.c" {
+		t.Fatalf("got %+v", got)
+	}
+	if got := splitMentions("@김하", people); len(got) != 1 || got[0].who.ID != "a1" {
+		t.Fatalf("got %+v", got)
 	}
 }

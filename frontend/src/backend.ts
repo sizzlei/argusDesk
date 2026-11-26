@@ -31,7 +31,7 @@ export interface Backend {
   /** mode: internal / public for a service desk request, plain elsewhere */
   createForm(space: string, type: string): Promise<CreateForm>;
   createTicket(space: string, type: string, values: Record<string, string | string[]>, assignee: string): Promise<string>;
-  addComment(key: string, text: string, mode: 'internal' | 'public' | 'plain'): Promise<void>;
+  addComment(key: string, text: string, mode: 'internal' | 'public' | 'plain', mentioned: { id: string; name: string }[]): Promise<void>;
   /** People in Jira whose name holds the text, for the person fields of a waybill. */
   findPeople(query: string): Promise<{ id: string; name: string }[]>;
   /** Where the app stands and what it did lately, as text. */
@@ -86,7 +86,7 @@ async function real(): Promise<Backend> {
     answerApproval: (key, id, approve) => call('AnswerApproval', key, id, approve),
     createForm: (space, type) => call('CreateForm', space, type),
     createTicket: (space, type, values, assignee) => call('CreateTicket', space, type, values, assignee),
-    addComment: (key, text, mode) => call('AddComment', key, text, mode),
+    addComment: (key, text, mode, mentioned) => call('AddComment', key, text, mode, mentioned),
     findPeople: (query) => call('FindPeople', query),
     diagnostics: () => call('Diagnostics'),
     attachFile: (key, name, base64) => call('AttachFile', key, name, base64),

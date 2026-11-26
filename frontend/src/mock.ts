@@ -582,11 +582,13 @@ export function mockBackend(): Backend {
       setTimeout(tick, 400);
       return b.key;
     },
-    addComment: async (key, text, mode) => {
+    addComment: async (key, text, mode, mentioned) => {
+      await pause();
       await pause();
       const b = find(key);
       const body = document.createElement('p');
       body.textContent = text;
+      for (const p of mentioned) body.innerHTML = body.innerHTML.split(`@${p.name}`).join(`<a class="user-hover" href="#">@${p.name}</a>`);
       written.set(key, [...(written.get(key) ?? []), { author: '김하늘', created: new Date(now).toISOString(), bodyHtml: body.outerHTML, internal: mode === 'internal' }]);
       b.updated = new Date(now + ++stamp).toISOString();
       publish([{ kind: 'updated', key }]);

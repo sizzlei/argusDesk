@@ -4,6 +4,7 @@ import type { Backend } from './backend';
 import { sanitize } from './sanitize';
 import type { Box, Snapshot, TicketActions, TicketDetail } from './types';
 import { filesOf, sendFiles, sizeText } from './attach';
+import { mentions, type Who } from './mention';
 import { codeBlock, confirmAction, copyButton, dateTime, errText, fill, h, limitText, span, toast } from './ui';
 
 // Details are read from Jira when a ticket is opened and kept only in memory,
@@ -11,7 +12,8 @@ import { codeBlock, confirmAction, copyButton, dateTime, errText, fill, h, limit
 const details = new Map<string, { updated: string; detail?: TicketDetail; error?: string }>();
 const actions = new Map<string, { updated: string; actions?: TicketActions; error?: string }>();
 // A comment being written survives a window's redraws, and its closing.
-const drafts = new Map<string, { text: string; isPublic: boolean }>();
+// With it, the people picked with "@" while writing.
+const drafts = new Map<string, { text: string; isPublic: boolean; who: Who[] }>();
 
 /** One open ticket window. Several can be open at once. */
 interface Win {
@@ -28,6 +30,7 @@ interface Win {
   text: HTMLTextAreaElement | null; // the comment box's text area
   commentBox: HTMLElement | null; // built with the actions, shown with the comments
   busy: boolean; // a change is on its way to Jira
+  commenting: boolean; // that change is a comment
   attach: boolean; // files can be added to this ticket
   sending: number; // files on their way to Jira
   // Redrawing replaces the comment box, which would break typing (Korean input
@@ -343,10 +346,10 @@ function renderActions(w: Win, snap: Snapshot, backend: Backend) {
   // a ticket of an ordinary project takes plain comments
   const desk = a?.serviceDesk ?? true;
   // A comment goes to the requester unless it is switched to an internal note.
-  const draft = drafts.get(b.key) ?? { text: '', isPublic: true };
+  const draft = drafts.get(b.key) ?? { text: '', isPublic: true, who: [] };
   const old = w.text;
   const focused = old && document.activeElement === old ? [old.selectionStart, old.selectionEnd] : null;
-  const text = h('textarea', { class: 'comment-text', rows: '3', placeholder: '댓글 쓰기', 'aria-label': `${b.key} 댓글`, disabled: off });
+  const text = h('textarea', { class: 'comment-text', rows: '3', placeholder: '댓글 쓰기 · @으로 멘션', 'aria-label': `${b.key} 댓글`, disabled: off });
   w.text = text;
   text.value = draft.text;
   const send = h('button', { class: 'primary' });
@@ -357,9 +360,11 @@ function renderActions(w: Win, snap: Snapshot, backend: Backend) {
   audience.value = draft.isPublic ? 'public' : 'internal';
   const mode = () => (!desk ? 'plain' : audience.value === 'public' ? 'public' : 'internal');
   const keep = () => {
-    drafts.set(b.key, { text: text.value, isPublic: audience.value === 'public' });
+    drafts.set(b.key, { text: text.value, isPublic: audience.value === 'public', who: draft.who });
     send.disabled = w.busy || !a || !text.value.trim(); // not before Jira said what kind of ticket this is
-    send.textContent = { plain: '댓글 등록', public: '요청자에게 답변', internal: '내부 메모 남기기' }[mode()];
+    // While it is on its way the button says so: nothing else is shown for a comment that went well.
+    if (w.commenting) send.replaceChildren(h('i', { class: 'spin', 'aria-hidden': 'true' }), '등록하는 중');
+    else send.textContent = { plain: '댓글 등록', public: '요청자에게 답변', internal: '내부 메모 남기기' }[mode()];
   };
   keep();
   text.addEventListener('input', keep);
@@ -368,18 +373,22 @@ function renderActions(w: Win, snap: Snapshot, backend: Backend) {
   send.addEventListener('click', async () => {
     const body = text.value.trim();
     const how = mode();
-    if (!body) return;
-    // A public comment reaches the requester, so it is confirmed first.
-    if (how === 'public' && !(await confirmAction('요청자에게 답변', `${b.reporter} 님에게 보이는 공개 댓글로 등록합니다.`, '등록'))) return;
-    void act(
-      w,
-      { plain: '댓글을 등록했습니다.', public: '답변을 등록했습니다.', internal: '내부 메모를 남겼습니다.' }[how],
-      async () => {
-        await backend.addComment(b.key, body, how);
-        drafts.delete(b.key);
-      },
-      redraw,
-    );
+    if (!body || w.busy) return;
+    // No question before and no notice after: the button says where it goes,
+    // and the comment shows in the list once Jira has it.
+    w.busy = w.commenting = true;
+    redraw();
+    try {
+      await backend.addComment(b.key, body, how, draft.who.filter((p) => body.includes(`@${p.name}`)));
+      drafts.delete(b.key);
+      actions.delete(b.key);
+      details.delete(b.key);
+    } catch (e) {
+      toast(errText(e), 'error');
+    } finally {
+      w.busy = w.commenting = false;
+      redraw();
+    }
   });
 
   fill(
@@ -398,6 +407,7 @@ function renderActions(w: Win, snap: Snapshot, backend: Backend) {
   );
   // Writing a comment happens where the comments are read: at the top of that list.
   w.commentBox = h('div', { class: 'comment-box' }, text, h('div', { class: 'act-row' }, desk ? audience : null, send));
+  mentions(text, w.commentBox, draft.who, (q) => backend.findPeople(q), keep);
   w.detailEl?.querySelector('.comment-slot')?.replaceChildren(w.commentBox);
   if (focused) {
     text.focus();
@@ -707,7 +717,7 @@ export function openTicket(b: Box, snap: Snapshot, backend: Backend, hooks: Tick
   const head = h('header', { class: 'tw-head' }, title, h('span', { class: 'tw-buttons' }, fold, shut));
   const body = h('div', { class: 'tw-body' });
   const el = h('section', { class: 'tw', role: 'dialog', 'aria-label': `${b.key} ${b.summary}` }, head, body);
-  const win: Win = { key: b.key, box: b, el, body, actionsEl: null, detailEl: null, cancelEl: null, claimEl: null, min: false, size: { w: '', h: '' }, text: null, commentBox: null, busy: false, attach: false, sending: 0, pending: null };
+  const win: Win = { key: b.key, box: b, el, body, actionsEl: null, detailEl: null, cancelEl: null, claimEl: null, min: false, size: { w: '', h: '' }, text: null, commentBox: null, busy: false, commenting: false, attach: false, sending: 0, pending: null };
   w = win;
   wins.set(b.key, win);
 
