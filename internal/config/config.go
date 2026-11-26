@@ -65,8 +65,8 @@ type Game struct {
 	SeasonStart string `yaml:"season_start"` // "2026-01-01"; default: January 1st of this year
 	XP          int    `yaml:"xp"`           // experience for a finished ticket; default 10
 	// Fatigue: every finished ticket adds 1 and fades by half every two days.
-	Tired     float64 `yaml:"tired"`     // tickets finished in a week from which the avatar looks tired; default 8
-	Exhausted float64 `yaml:"exhausted"` // tickets finished in a week at which the strength is used up: the avatar rests and no more can be taken; default 14
+	Tired     float64 `yaml:"tired"`     // tickets finished in a week from which the avatar looks tired; default 25
+	Exhausted float64 `yaml:"exhausted"` // tickets finished in a week at which the strength is used up: the avatar rests and no more can be taken; default 35
 
 	start time.Time
 }
@@ -260,10 +260,10 @@ func (c *Config) check() error {
 		c.Game.XP = 10
 	}
 	if c.Game.Tired == 0 {
-		c.Game.Tired = 8
+		c.Game.Tired = 25
 	}
 	if c.Game.Exhausted == 0 {
-		c.Game.Exhausted = 14
+		c.Game.Exhausted = 35
 	}
 	if c.Game.Tired < 0 || c.Game.Exhausted < c.Game.Tired {
 		bad("game: tired는 0보다 크고 exhausted는 tired 이상이어야 합니다")
