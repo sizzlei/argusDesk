@@ -384,7 +384,7 @@ func (a *App) jiraRejected() {
 // there is no server, so the caller uses what this computer knows.
 func (a *App) serverTeam(ctx context.Context, me *jira.User) (away []game.Away, avatars map[string]int, ok bool) {
 	a.mu.Lock()
-	c, tag, team := a.srv.client, a.srv.teamTag, a.srv.team
+	c, tag, team, cfg := a.srv.client, a.srv.teamTag, a.srv.team, a.cfg
 	names := map[string]string{me.AccountID: me.DisplayName}
 	if a.engine != nil {
 		if snap := a.engine.Last(); snap != nil {
@@ -413,7 +413,13 @@ func (a *App) serverTeam(ctx context.Context, me *jira.User) (away []game.Away, 
 		}
 	}
 	for _, v := range team.Vacations {
-		away = append(away, game.Away{ID: v.JiraAccountID, Name: names[v.JiraAccountID], From: v.From, To: v.To})
+		half := false
+		if cfg != nil {
+			if k, ok := cfg.VacationKind(v.Kind); ok {
+				half = k.Half
+			}
+		}
+		away = append(away, game.Away{ID: v.JiraAccountID, Name: names[v.JiraAccountID], From: v.From, To: v.To, Kind: v.Kind, Half: half, CoverID: v.Cover, Cover: shortName(names[v.Cover])})
 	}
 	return away, avatars, true
 }

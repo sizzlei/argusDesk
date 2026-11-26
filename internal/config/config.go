@@ -40,14 +40,15 @@ const (
 
 // Config is the whole settings file.
 type Config struct {
-	Version     string  `yaml:"version"`
-	Name        string  `yaml:"name"`
-	Site        string  `yaml:"site"`
-	Timezone    string  `yaml:"timezone"`
-	PollSeconds int     `yaml:"poll_seconds"`
-	Spaces      []Space `yaml:"spaces"`
-	Game        Game    `yaml:"game"`
-	Team        Team    `yaml:"team"`
+	Version     string   `yaml:"version"`
+	Name        string   `yaml:"name"`
+	Site        string   `yaml:"site"`
+	Timezone    string   `yaml:"timezone"`
+	PollSeconds int      `yaml:"poll_seconds"`
+	Spaces      []Space  `yaml:"spaces"`
+	Game        Game     `yaml:"game"`
+	Team        Team     `yaml:"team"`
+	Vacation    Vacation `yaml:"vacation"`
 
 	loc *time.Location
 }
@@ -58,6 +59,52 @@ type Team struct {
 	// as issue properties so that everyone sees them. Without it, a holiday is
 	// only known to the app it was entered in.
 	StateIssue string `yaml:"state_issue"`
+}
+
+// Vacation sets the kinds of holiday a teammate can register beyond the
+// three every team has.
+type Vacation struct {
+	Kinds []VacationKind `yaml:"kinds"`
+}
+
+// VacationKind is one kind of holiday.
+type VacationKind struct {
+	Name string `yaml:"name" json:"name"`
+	// Half marks leave for part of a day: it is for a single day, and the
+	// teammate stays in the centre instead of resting in the lodge.
+	Half bool `yaml:"half" json:"half"`
+}
+
+// builtinKinds are the kinds of holiday every team has.
+var builtinKinds = []VacationKind{{Name: "연차"}, {Name: "오전반차", Half: true}, {Name: "오후반차", Half: true}}
+
+// VacationKinds lists the kinds a holiday can be: the built-in ones, then
+// the team's own from the settings. A kind in the settings with a built-in
+// name replaces that one.
+func (c *Config) VacationKinds() []VacationKind {
+	out := append([]VacationKind{}, builtinKinds...)
+	for _, k := range c.Vacation.Kinds {
+		found := false
+		for i := range out {
+			if out[i].Name == k.Name {
+				out[i], found = k, true
+			}
+		}
+		if !found {
+			out = append(out, k)
+		}
+	}
+	return out
+}
+
+// VacationKind finds a kind by name.
+func (c *Config) VacationKind(name string) (VacationKind, bool) {
+	for _, k := range c.VacationKinds() {
+		if k.Name == name {
+			return k, true
+		}
+	}
+	return VacationKind{}, false
 }
 
 // Game sets how finished tickets turn into experience. All of it is optional.
@@ -258,6 +305,13 @@ func (c *Config) check() error {
 	c.loc = loc
 	if c.Game.XP == 0 {
 		c.Game.XP = 10
+	}
+	for i := range c.Vacation.Kinds {
+		k := &c.Vacation.Kinds[i]
+		k.Name = strings.TrimSpace(k.Name)
+		if k.Name == "" || strings.ContainsAny(k.Name, "/\n") {
+			bad("vacation.kinds[%d]: 이름이 비었거나 쓸 수 없는 글자(/)가 있습니다", i)
+		}
 	}
 	if c.Game.Tired == 0 {
 		c.Game.Tired = 25

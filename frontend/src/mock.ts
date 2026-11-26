@@ -297,10 +297,26 @@ export function mockBackend(): Backend {
     return { done, today, week: today + 9, xp, level, levelXp: from, nextXp: from + 100 * level * scale };
   };
   const day = (offset: number) => new Date(Date.now() + offset * 86400_000).toISOString().slice(0, 10);
-  const vacation: Vacation = { from: '', to: '', shared: true };
+  const vacation: Vacation = {
+    from: '',
+    to: '',
+    kind: '',
+    coverId: '',
+    cover: '',
+    kinds: [
+      { name: '연차', half: false },
+      { name: '오전반차', half: true },
+      { name: '오후반차', half: true },
+      { name: '리프레시', half: false },
+    ],
+    shared: true,
+  };
   const away = (): Away[] => {
-    const list: Away[] = [{ id: 'u4', name: '최지우', from: day(-1), to: day(2), active: true, me: false }];
-    if (vacation.from) list.push({ id: 'u1', name: '김하늘', from: vacation.from, to: vacation.to, active: vacation.from <= day(0) && vacation.to >= day(0), me: true });
+    const list: Away[] = [{ id: 'u4', name: '최지우', from: day(-1), to: day(2), kind: '연차', half: false, coverId: 'u2', cover: '이도윤', active: true, me: false }];
+    if (vacation.from) {
+      const half = vacation.kinds.find((k) => k.name === vacation.kind)?.half ?? false;
+      list.push({ id: 'u1', name: '김하늘', from: vacation.from, to: vacation.to, kind: vacation.kind, half, coverId: vacation.coverId, cover: vacation.cover, active: !half && vacation.from <= day(0) && vacation.to >= day(0), me: true });
+    }
     return list;
   };
   const chosen: Record<string, number> = { u2: 1, u3: 4 };
@@ -508,10 +524,9 @@ export function mockBackend(): Backend {
       gameListeners.forEach((cb) => cb(s));
     },
     myVacation: async () => ({ ...vacation }),
-    setVacation: async (from, to) => {
+    setVacation: async (from, to, kind, coverId) => {
       await pause();
-      vacation.from = from;
-      vacation.to = to;
+      Object.assign(vacation, { from, to, kind: from ? kind : '', coverId: from ? coverId : '', cover: from ? (people.find(([id]) => id === coverId)?.[1] ?? '') : '' });
       const s = game();
       gameListeners.forEach((cb) => cb(s));
       return { ...vacation };

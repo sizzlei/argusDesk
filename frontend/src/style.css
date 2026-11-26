@@ -1264,6 +1264,7 @@ dialog.vacation .dates {
   margin: 0 0 12px;
 }
 
+dialog.vacation select,
 dialog.vacation input[type='date'] {
   padding: 6px 8px;
   border: 1px solid var(--line);

@@ -240,7 +240,11 @@ export interface Away {
   name: string;
   from: string; // "2026-12-01"
   to: string;
-  active: boolean;
+  kind: string; // "연차", "오전반차", ... ("" = not given)
+  half: boolean; // part of a day: the teammate stays in the centre
+  coverId: string; // who covers meanwhile
+  cover: string;
+  active: boolean; // away right now: resting in the lodge
   me: boolean;
 }
 
@@ -248,6 +252,10 @@ export interface Away {
 export interface Vacation {
   from: string;
   to: string;
+  kind: string;
+  coverId: string;
+  cover: string;
+  kinds: { name: string; half: boolean }[]; // the kinds a holiday can be
   shared: boolean; // teammates see it
   calendar?: string; // how putting it on the team calendar went: '' none, 'ok', or why it failed
 }

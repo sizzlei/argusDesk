@@ -111,7 +111,14 @@ async function boot() {
           openAvatarPicker(backend, me ? game?.avatars[me.id] : undefined);
         },
       },
-      { label: '휴가 등록', run: () => void openVacation(backend).catch(fail) },
+      {
+        label: '휴가 등록',
+        run: () => {
+          const seen = new Set<string>();
+          const people = (snap?.members ?? []).filter((m) => !m.me && !seen.has(m.id) && seen.add(m.id)).map((m) => ({ id: m.id, name: m.name.trim().split(/\s+/)[0] }));
+          void openVacation(backend, state.me.trim().split(/\s+/)[0] ?? '', people).catch(fail);
+        },
+      },
       { label: state.notify ? '알림 끄기' : '알림 켜기', run: () => setNotify(!state.notify), note: state.notify && state.notifyProblem ? `알림을 보낼 수 없습니다: ${state.notifyProblem}` : undefined },
       openTickets() > 1 && { label: `티켓 창 모두 닫기 (${openTickets()})`, run: () => closeTickets(tickets) },
       { label: state.server ? '서버에서 설정 다시 받기' : '설정 다시 읽기', run: () => void backend.reloadConfig().then(apply, fail) },

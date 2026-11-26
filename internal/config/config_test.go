@@ -69,3 +69,26 @@ func TestParseDuration(t *testing.T) {
 		t.Error("want an error")
 	}
 }
+
+func TestVacationKinds(t *testing.T) {
+	c, err := Load("../../config/example.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	kinds := c.VacationKinds()
+	if len(kinds) != 3 || kinds[0].Name != "연차" || kinds[0].Half || !kinds[1].Half || kinds[2].Name != "오후반차" {
+		t.Fatalf("built-in kinds: %+v", kinds)
+	}
+	// the team's own come after; one with a built-in name replaces it
+	c.Vacation.Kinds = []VacationKind{{Name: "리프레시"}, {Name: "오전반반차", Half: true}, {Name: "연차", Half: true}}
+	kinds = c.VacationKinds()
+	if len(kinds) != 5 || kinds[3].Name != "리프레시" || !kinds[4].Half || !kinds[0].Half {
+		t.Fatalf("with the team's kinds: %+v", kinds)
+	}
+	if k, ok := c.VacationKind("오전반반차"); !ok || !k.Half {
+		t.Errorf("lookup: %+v %v", k, ok)
+	}
+	if _, ok := c.VacationKind("없는구분"); ok {
+		t.Error("an unknown kind was found")
+	}
+}

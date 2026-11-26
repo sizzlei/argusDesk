@@ -611,9 +611,14 @@ const vacationPrefix = "argusdesk.vacation."
 
 // Vacation is the signed-in user's own holiday ("" = none).
 type Vacation struct {
-	From   string `json:"from"`
-	To     string `json:"to"`
-	Shared bool   `json:"shared"` // teammates see it (the settings name a shared ticket)
+	From    string `json:"from"`
+	To      string `json:"to"`
+	Kind    string `json:"kind"`    // "연차", "오전반차", ...
+	CoverID string `json:"coverId"` // who covers meanwhile (Jira account id)
+	Cover   string `json:"cover"`   // that person's name
+	// Kinds are the kinds a holiday can be: the built-in ones and the team's own.
+	Kinds  []config.VacationKind `json:"kinds"`
+	Shared bool                  `json:"shared"` // teammates see it (a team server, or a shared ticket in the settings)
 	// Calendar says how putting it on the team's calendar went: "" = there is
 	// no calendar to put it on, "ok", or why it failed (the holiday itself is saved).
 	Calendar string `json:"calendar"`
@@ -630,7 +635,10 @@ func (a *App) teamState(ctx context.Context, cfg *config.Config, client *jira.Cl
 		return away, avatars
 	}
 	a.mu.Lock()
-	mine := game.Away{ID: me.AccountID, Name: me.DisplayName, From: a.prefs.VacationFrom, To: a.prefs.VacationTo}
+	mine := game.Away{ID: me.AccountID, Name: me.DisplayName, From: a.prefs.VacationFrom, To: a.prefs.VacationTo, Kind: a.prefs.VacationKind, CoverID: a.prefs.VacationCoverID, Cover: a.prefs.VacationCover}
+	if k, ok := cfg.VacationKind(mine.Kind); ok {
+		mine.Half = k.Half
+	}
 	avatars := map[string]int{}
 	if a.prefs.Avatar > 0 {
 		avatars[me.AccountID] = a.prefs.Avatar - 1
@@ -650,6 +658,10 @@ func (a *App) teamState(ctx context.Context, cfg *config.Config, client *jira.Cl
 			var v game.Away
 			if json.Unmarshal(raw, &v) == nil {
 				v.ID = strings.TrimPrefix(key, vacationPrefix)
+				v.Half = false
+				if k, ok := cfg.VacationKind(v.Kind); ok {
+					v.Half = k.Half
+				}
 				away = append(away, v)
 			}
 		case strings.HasPrefix(key, avatarPrefix):
@@ -701,22 +713,51 @@ func (a *App) SetAvatar(n int) error {
 	return nil
 }
 
-// MyVacation returns the user's own holiday.
+// shortName keeps the name before a department ("홍길동 인프라" → "홍길동").
+func shortName(display string) string {
+	name, _, _ := strings.Cut(strings.TrimSpace(display), " ")
+	return name
+}
+
+// MyVacation returns the user's own holiday and the kinds one can be.
 func (a *App) MyVacation() *Vacation {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	return &Vacation{From: a.prefs.VacationFrom, To: a.prefs.VacationTo, Shared: a.srv.client != nil || (a.cfg != nil && a.cfg.Team.StateIssue != "")}
+	v := &Vacation{
+		From: a.prefs.VacationFrom, To: a.prefs.VacationTo, Kind: a.prefs.VacationKind, CoverID: a.prefs.VacationCoverID, Cover: a.prefs.VacationCover,
+		Shared: a.srv.client != nil || (a.cfg != nil && a.cfg.Team.StateIssue != ""),
+		Kinds:  []config.VacationKind{},
+	}
+	if a.cfg != nil {
+		v.Kinds = a.cfg.VacationKinds()
+	}
+	return v
 }
 
-// SetVacation records a holiday from one day to another, both included. Empty
-// days cancel it. With a shared ticket in the settings it is written there,
-// so the whole team sees it.
-func (a *App) SetVacation(from, to string) (*Vacation, error) {
-	from, to = strings.TrimSpace(from), strings.TrimSpace(to)
+// SetVacation records a holiday: its days (both included), what kind it is
+// and who covers meanwhile (a Jira account id, "" = nobody named). Empty days
+// cancel it. With a team server or a shared ticket the whole team sees it,
+// and with a calendar on the server it goes there too.
+func (a *App) SetVacation(from, to, kind, coverID string) (*Vacation, error) {
+	from, to, kind = strings.TrimSpace(from), strings.TrimSpace(to), strings.TrimSpace(kind)
 	if (from == "") != (to == "") {
 		return nil, errors.New("시작일과 종료일을 모두 입력해 주세요")
 	}
-	if from != "" {
+	a.mu.Lock()
+	cfg, client, me, server := a.cfg, a.client, a.me, a.srv.client
+	names := map[string]string{}
+	if a.engine != nil {
+		if snap := a.engine.Last(); snap != nil {
+			for _, m := range snap.Members {
+				names[m.ID] = shortName(m.Name)
+			}
+		}
+	}
+	a.mu.Unlock()
+	cover := ""
+	if from == "" {
+		kind, coverID = "", ""
+	} else {
 		f, err1 := time.Parse("2006-01-02", from)
 		t, err2 := time.Parse("2006-01-02", to)
 		if err1 != nil || err2 != nil {
@@ -725,10 +766,25 @@ func (a *App) SetVacation(from, to string) (*Vacation, error) {
 		if t.Before(f) {
 			return nil, errors.New("종료일이 시작일보다 빠릅니다")
 		}
+		if cfg == nil {
+			return nil, errors.New("설정을 먼저 불러와 주세요")
+		}
+		k, ok := cfg.VacationKind(kind)
+		if !ok {
+			return nil, errors.New("휴가 구분을 골라 주세요")
+		}
+		if k.Half && from != to {
+			return nil, fmt.Errorf("%s는 하루만 등록할 수 있습니다", k.Name)
+		}
+		if coverID != "" {
+			if me != nil && coverID == me.AccountID {
+				return nil, errors.New("대무자는 본인이 될 수 없습니다")
+			}
+			if cover = names[coverID]; cover == "" {
+				return nil, errors.New("대무자를 팀원 중에서 골라 주세요")
+			}
+		}
 	}
-	a.mu.Lock()
-	cfg, client, me, server := a.cfg, a.client, a.me, a.srv.client
-	a.mu.Unlock()
 	calendar := ""
 	if server != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 40*time.Second)
@@ -737,7 +793,7 @@ func (a *App) SetVacation(from, to string) (*Vacation, error) {
 		if from == "" {
 			err = server.ClearVacation(ctx)
 		} else {
-			err = server.SetVacation(ctx, argus.Span{From: from, To: to})
+			err = server.SetVacation(ctx, argus.Span{From: from, To: to, Kind: kind, Cover: coverID})
 		}
 		if err != nil {
 			return nil, fmt.Errorf("서버에 휴가를 저장하지 못했습니다: %w", err)
@@ -745,7 +801,7 @@ func (a *App) SetVacation(from, to string) (*Vacation, error) {
 		a.mu.Lock()
 		a.srv.teamTag = ""
 		a.mu.Unlock()
-		calendar = a.holidayOnCalendar(ctx, server, me, from, to)
+		calendar = a.holidayOnCalendar(ctx, server, me, from, to, kind, cover)
 	} else if cfg != nil && cfg.Team.StateIssue != "" {
 		if client == nil || me == nil {
 			return nil, errors.New("먼저 로그인해 주세요")
@@ -757,7 +813,7 @@ func (a *App) SetVacation(from, to string) (*Vacation, error) {
 		if from == "" {
 			err = client.DeleteIssueProperty(ctx, cfg.Team.StateIssue, prop)
 		} else {
-			err = client.SetIssueProperty(ctx, cfg.Team.StateIssue, prop, map[string]string{"name": me.DisplayName, "from": from, "to": to})
+			err = client.SetIssueProperty(ctx, cfg.Team.StateIssue, prop, map[string]string{"name": me.DisplayName, "from": from, "to": to, "kind": kind, "coverId": coverID, "cover": cover})
 		}
 		if err != nil {
 			return nil, fmt.Errorf("팀 공유 티켓(%s)에 휴가를 적지 못했습니다: %w", cfg.Team.StateIssue, err)
@@ -765,6 +821,7 @@ func (a *App) SetVacation(from, to string) (*Vacation, error) {
 	}
 	a.mu.Lock()
 	a.prefs.VacationFrom, a.prefs.VacationTo = from, to
+	a.prefs.VacationKind, a.prefs.VacationCoverID, a.prefs.VacationCover = kind, coverID, cover
 	_ = secret.SavePrefs(a.prefs)
 	a.mu.Unlock()
 	a.gameForce.Store(true)
@@ -777,7 +834,7 @@ func (a *App) SetVacation(from, to string) (*Vacation, error) {
 // holidayOnCalendar puts the holiday on the team's shared calendar with the
 // key the server hands out. The key is used for this one call and not kept.
 // It returns "" when the server has no calendar, "ok", or why it failed.
-func (a *App) holidayOnCalendar(ctx context.Context, server *argus.Client, me *jira.User, from, to string) string {
+func (a *App) holidayOnCalendar(ctx context.Context, server *argus.Client, me *jira.User, from, to, kind, cover string) string {
 	if me == nil {
 		return ""
 	}
@@ -788,9 +845,8 @@ func (a *App) holidayOnCalendar(ctx context.Context, server *argus.Client, me *j
 	if err != nil {
 		return err.Error()
 	}
-	name, _, _ := strings.Cut(strings.TrimSpace(me.DisplayName), " ") // the name before a department
 	k := gcal.Key{ClientID: key.ClientID, ClientSecret: key.ClientSecret, RefreshToken: key.RefreshToken, CalendarID: key.CalendarID}
-	if err := gcal.SetHoliday(ctx, &k, me.AccountID, name, from, to); err != nil {
+	if err := gcal.SetHoliday(ctx, &k, me.AccountID, game.HolidayTitle(shortName(me.DisplayName), kind, cover), from, to); err != nil {
 		return err.Error()
 	}
 	return "ok"

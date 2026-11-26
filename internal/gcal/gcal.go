@@ -131,11 +131,11 @@ func call(ctx context.Context, tok, method, target string, in, out any) error {
 	return nil
 }
 
-// SetHoliday makes the calendar show one person's holiday from one day to
-// another, both included ("2026-12-01"). With empty days the holiday is taken
+// SetHoliday makes the calendar show one person's holiday, under the given
+// title, from one day to another, both included ("2026-12-01"). With empty days the holiday is taken
 // off the calendar. Calling it again with the same days changes nothing, so a
 // failed attempt can simply be repeated.
-func SetHoliday(ctx context.Context, k *Key, accountID, name, from, to string) error {
+func SetHoliday(ctx context.Context, k *Key, accountID, title, from, to string) error {
 	if !k.Complete() {
 		return errors.New("캘린더 연결 정보가 완전하지 않습니다")
 	}
@@ -176,7 +176,7 @@ func SetHoliday(ctx context.Context, k *Key, accountID, name, from, to string) e
 	if from == "" {
 		return nil
 	}
-	want := event{Summary: strings.TrimSpace(name + " 휴가"), Start: date{from}, End: date{end}, Transparency: "transparent"} // all day, shown as free
+	want := event{Summary: strings.TrimSpace(title), Start: date{from}, End: date{end}, Transparency: "transparent"} // all day, shown as free
 	if keep == 1 {
 		have := found.Items[0]
 		if have.Summary == want.Summary && have.Start.Date == from && have.End.Date == end {

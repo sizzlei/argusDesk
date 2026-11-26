@@ -151,8 +151,10 @@ type Me struct {
 
 // Span is a holiday: both days included, "2026-12-01".
 type Span struct {
-	From string `json:"from"`
-	To   string `json:"to"`
+	From  string `json:"from"`
+	To    string `json:"to"`
+	Kind  string `json:"kind,omitempty"`  // "연차", "오전반차", ...
+	Cover string `json:"cover,omitempty"` // Jira account id of whoever covers
 }
 
 // JiraKey is what the app signs in to Jira with. It is held in memory and
@@ -175,6 +177,8 @@ type Away struct {
 	JiraAccountID string `json:"jiraAccountId"`
 	From          string `json:"from"`
 	To            string `json:"to"`
+	Kind          string `json:"kind"`
+	Cover         string `json:"cover"` // Jira account id of whoever covers
 }
 
 // Team is the shared state of the team.

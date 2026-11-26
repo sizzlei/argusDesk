@@ -64,12 +64,29 @@ type Stats struct {
 
 // Away is one teammate's holiday.
 type Away struct {
-	ID     string `json:"id"`
-	Name   string `json:"name"`
-	From   string `json:"from"` // "2026-12-01"
-	To     string `json:"to"`   // last day away
-	Active bool   `json:"active"`
-	Me     bool   `json:"me"`
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	From    string `json:"from"`    // "2026-12-01"
+	To      string `json:"to"`      // last day away
+	Kind    string `json:"kind"`    // "연차", "오전반차", ... ("" = an entry from before kinds existed: a full day)
+	Half    bool   `json:"half"`    // part of a day: the teammate stays in the centre
+	CoverID string `json:"coverId"` // who covers meanwhile ("" = nobody named)
+	Cover   string `json:"cover"`   // that person's name
+	Active  bool   `json:"active"`  // away right now: resting in the lodge
+	Me      bool   `json:"me"`
+}
+
+// HolidayTitle is the title a holiday carries on the team's calendar:
+// "name / kind / 대무자 : cover", without the last part when nobody covers.
+func HolidayTitle(name, kind, cover string) string {
+	if kind == "" {
+		kind = "연차"
+	}
+	t := name + " / " + kind
+	if cover != "" {
+		t += " / 대무자 : " + cover
+	}
+	return t
 }
 
 // WeekStart is the Monday the week of now began on, at midnight, in now's
@@ -271,7 +288,7 @@ func Holidays(all []Away, me string, now time.Time) []Away {
 		if a.From == "" || a.To == "" || a.To < today {
 			continue
 		}
-		a.Active = a.From <= today
+		a.Active = a.From <= today && !a.Half // part of a day off is spent in the centre
 		a.Me = a.ID == me
 		out = append(out, a)
 	}

@@ -111,23 +111,23 @@ func TestSetHoliday(t *testing.T) {
 	// someone's own entry on the calendar: never touched
 	g.events["hand"] = map[string]any{"id": "hand", "summary": "손으로 올린 휴가"}
 
-	if err := SetHoliday(ctx, k, "u1", "김하늘", "2026-12-01", "2026-12-03"); err != nil {
+	if err := SetHoliday(ctx, k, "u1", "김하늘 / 연차", "2026-12-01", "2026-12-03"); err != nil {
 		t.Fatal(err)
 	}
 	delete(g.events, "hand")
 	ev := g.only(t)
 	g.events["hand"] = map[string]any{"id": "hand"}
-	if ev["summary"] != "김하늘 휴가" || ev["start"].(map[string]any)["date"] != "2026-12-01" || ev["end"].(map[string]any)["date"] != "2026-12-04" || ev["transparency"] != "transparent" {
+	if ev["summary"] != "김하늘 / 연차" || ev["start"].(map[string]any)["date"] != "2026-12-01" || ev["end"].(map[string]any)["date"] != "2026-12-04" || ev["transparency"] != "transparent" {
 		t.Fatalf("event: %v", ev)
 	}
 
 	// the same again: nothing is written
 	n := len(g.log)
-	if err := SetHoliday(ctx, k, "u1", "김하늘", "2026-12-01", "2026-12-03"); err != nil || len(g.log) != n {
+	if err := SetHoliday(ctx, k, "u1", "김하늘 / 연차", "2026-12-01", "2026-12-03"); err != nil || len(g.log) != n {
 		t.Fatalf("repeat wrote something: %v %v", err, g.log)
 	}
 	// other days: the same event is changed, not a second one made
-	if err := SetHoliday(ctx, k, "u1", "김하늘", "2026-12-08", "2026-12-08"); err != nil {
+	if err := SetHoliday(ctx, k, "u1", "김하늘 / 연차", "2026-12-08", "2026-12-08"); err != nil {
 		t.Fatal(err)
 	}
 	if got := g.log[len(g.log)-1]; got != "patch" || len(g.events) != 2 || ev["end"].(map[string]any)["date"] != "2026-12-09" {

@@ -106,3 +106,20 @@ func TestHolidays(t *testing.T) {
 		t.Fatalf("holidays = %+v", got)
 	}
 }
+
+func TestHolidayTitleAndHalfDays(t *testing.T) {
+	if got := HolidayTitle("김하늘", "오전반차", "이도윤"); got != "김하늘 / 오전반차 / 대무자 : 이도윤" {
+		t.Errorf("title = %q", got)
+	}
+	if got := HolidayTitle("김하늘", "연차", ""); got != "김하늘 / 연차" {
+		t.Errorf("title without cover = %q", got)
+	}
+	now := at(25, 9)
+	got := Holidays([]Away{
+		{ID: "full", From: "2026-11-25", To: "2026-11-25", Kind: "연차"},
+		{ID: "half", From: "2026-11-25", To: "2026-11-25", Kind: "오전반차", Half: true},
+	}, "", now)
+	if len(got) != 2 || !got[0].Active || got[1].Active {
+		t.Fatalf("a half day sends nobody to the lodge: %+v", got)
+	}
+}

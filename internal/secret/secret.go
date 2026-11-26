@@ -81,6 +81,9 @@ type Prefs struct {
 	NotifyOff       bool   `json:"notifyOff"`       // the user turned notifications off
 	VacationFrom    string `json:"vacationFrom"`    // own holiday, "2026-12-01"; used when the team has no shared ticket
 	VacationTo      string `json:"vacationTo"`
+	VacationKind    string `json:"vacationKind"`
+	VacationCoverID string `json:"vacationCoverId"`
+	VacationCover   string `json:"vacationCover"`
 	Avatar          int    `json:"avatar"` // chosen look + 1; 0 = not chosen
 	Server          string `json:"server"` // team server address ("" = none: settings file and Jira token)
 }
