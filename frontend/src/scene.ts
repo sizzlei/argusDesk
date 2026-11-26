@@ -212,6 +212,14 @@ export class Scene {
     this.held = true;
   }
 
+  /** Lights out: the lodge is where people sleep. Signs and name tags stay readable. */
+  night(on: boolean) {
+    const dim = on ? 0x4f5d8f : 0xffffff;
+    this.ground.tint = dim;
+    this.things.tint = dim;
+    this.app.renderer.background.color = on ? 0x131929 : 0xedf0f4;
+  }
+
   /** Marks a box as the chosen one without telling anyone (its window did). */
   mark(key: string) {
     if (key === this.selected) return;
@@ -224,9 +232,11 @@ export class Scene {
     this.snap = snap;
     this.hidden = hidden;
     if (this.space < 0) {
+      this.night(true);
       drawLodge(this);
       return;
     }
+    this.night(false);
     const space: SpaceView | undefined = snap.spaces[this.space] ?? snap.spaces[0];
     if (!space) return;
     // Returned boxes leave the building: their zones are not rooms.

@@ -58,6 +58,18 @@ export function drawLodge(s: Scene) {
   prop(width - 0.5, depth - 0.5, (g) => purifier(g, width - 0.75, depth - 0.75));
   prop(width / 2, depth - 0.3, (g) => hedge(g, width / 2 - 1.4, depth - 0.5, 'x', 2.8));
   prop(1.6, depth - 0.75, (g) => bench(g, 0.8, depth - 1.0, 'x', 1.6));
+  // The lights are out. One floor lamp is left on, and the moon comes in through the windows.
+  const glow = new Graphics();
+  const at = iso(width - 0.6, 2.9);
+  // many faint rings, so the light fades out instead of ending in an edge
+  for (let i = 0; i < 28; i++) {
+    const r = 170 * (1 - i / 28) ** 1.4;
+    glow.ellipse(at.x, at.y - 16, r, r * 0.6).fill({ color: 0xffd98a, alpha: 0.016 });
+  }
+  glow.ellipse(at.x, at.y - 30, 9, 6).fill({ color: 0xfff3c4, alpha: 0.9 });
+  for (let x = 1; x + 1.6 < width + PAD; x += 2.7) glow.poly(floorPoly(x + 0.5, 0.25, 1.6, 2.2)).fill({ color: 0xa9c4ff, alpha: 0.09 });
+  glow.blendMode = 'add';
+  s.signs.addChild(glow);
   const coming = s.away.filter((a) => !a.active);
   s.plate(here.length ? `숙소 · 쉬는 중 ${here.length}명` : '숙소 · 비어 있음', width / 2, 0.15);
   coming.slice(0, 3).forEach((a, i) => {
