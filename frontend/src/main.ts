@@ -97,6 +97,11 @@ async function boot() {
       chooseConfig: () => void backend.chooseConfig().then(apply, fail),
       checkUpdate: () => void checkForUpdates(true),
       logout: () => void backend.logout().then(apply, fail),
+      serverLogin: () => {
+        toast('브라우저에서 팀 서버에 로그인해 주세요.');
+        void backend.connectServer(state.server).then(apply, fail);
+      },
+      forgetServer: () => void backend.forgetServer().then(apply, fail),
       windows: openTickets(),
       filter,
       setFilter,
@@ -229,6 +234,7 @@ async function boot() {
     legend();
   });
   backend.onGame(score);
+  backend.onServer(apply);
   backend.onError((err) => {
     lastError = err.message;
     if (err.auth) void backend.state().then(apply);

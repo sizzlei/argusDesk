@@ -13,6 +13,11 @@ export interface Backend {
   reloadConfig(): Promise<AppState>;
   login(site: string, email: string, token: string): Promise<AppState>;
   logout(): Promise<AppState>;
+  connectServer(address: string): Promise<AppState>; // resolves when the browser sign-in is over
+  cancelServerLogin(): Promise<void>;
+  syncServer(): Promise<AppState>;
+  forgetServer(): Promise<AppState>;
+  onServer(cb: (state: AppState) => void): void;
   setNotify(on: boolean): Promise<AppState>;
   snapshot(): Promise<Snapshot | null>;
   refresh(): Promise<void>;
@@ -56,6 +61,11 @@ async function real(): Promise<Backend> {
     reloadConfig: () => call('ReloadConfig'),
     login: (site, email, token) => call('Login', site, email, token),
     logout: () => call('Logout'),
+    connectServer: (address) => call('ConnectServer', address),
+    cancelServerLogin: () => call('CancelServerLogin'),
+    syncServer: () => call('SyncServer'),
+    forgetServer: () => call('ForgetServer'),
+    onServer: (cb) => void Events.On('server:state', (ev: { data: AppState }) => cb(ev.data)),
     setNotify: (on) => call('SetNotify', on),
     snapshot: () => call('Snapshot'),
     refresh: () => call('Refresh'),

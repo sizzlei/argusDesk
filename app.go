@@ -12,6 +12,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/sizzlei/argusDesk/internal/argus"
 	"github.com/sizzlei/argusDesk/internal/board"
 	"github.com/sizzlei/argusDesk/internal/config"
 	"github.com/sizzlei/argusDesk/internal/game"
@@ -27,7 +28,8 @@ const (
 	evSnapshot = "board:snapshot" // BoardEvent
 	evError    = "board:error"    // BoardError
 	evProgress = "update:progress"
-	evGame     = "game:stats" // *game.Stats
+	evGame     = "game:stats"   // *game.Stats
+	evServer   = "server:state" // *AppState, when the team server changed something on its own
 )
 
 // App is the service bound to the screen: every exported method can be
@@ -46,6 +48,8 @@ type App struct {
 	engine      *board.Engine
 	stopPolling context.CancelFunc
 	kick        chan struct{}
+
+	srv serverState // the optional team server
 
 	notify notifier
 
@@ -75,6 +79,11 @@ type AppState struct {
 	PollSeconds   int    `json:"pollSeconds"`
 	Notify        bool   `json:"notify"`        // the user wants notifications
 	NotifyProblem string `json:"notifyProblem"` // why the system will not show them ("" = fine)
+
+	Server        string `json:"server"`        // team server address ("" = none)
+	ServerBusy    bool   `json:"serverBusy"`    // waiting for the browser sign-in
+	ServerNeeds   string `json:"serverNeeds"`   // "" | login | jira | config | forbidden | disabled
+	ServerProblem string `json:"serverProblem"` // the last thing that went wrong with the server
 }
 
 // BoardEvent carries a fresh snapshot and what changed since the last one.
@@ -97,7 +106,9 @@ func (a *App) ServiceStartup(ctx context.Context, options application.ServiceOpt
 	a.notify.start(ctx, options)
 	a.kick = make(chan struct{}, 1)
 	a.prefs, _ = secret.LoadPrefs()
-	if a.prefs.ConfigPath != "" {
+	if a.prefs.Server != "" {
+		a.restoreServer() // the settings come from the team server
+	} else if a.prefs.ConfigPath != "" {
 		a.loadConfig(a.prefs.ConfigPath)
 	}
 	if a.prefs.Site != "" && a.prefs.Email != "" {
@@ -141,6 +152,10 @@ func (a *App) stateLocked() *AppState {
 		AuthError:     a.authError,
 		Notify:        !a.prefs.NotifyOff,
 		NotifyProblem: a.notify.problem(),
+		Server:        a.prefs.Server,
+		ServerBusy:    a.srv.busy,
+		ServerNeeds:   a.srv.needs,
+		ServerProblem: a.srv.problem,
 	}
 	if a.cfg != nil {
 		s.ConfigLoaded, s.ConfigName, s.ConfigVersion, s.PollSeconds = true, a.cfg.Name, a.cfg.Version, a.cfg.PollSeconds
@@ -205,8 +220,14 @@ func (a *App) ChooseConfig() (*AppState, error) {
 // ReloadConfig reads the settings file again and restarts the refresh loop.
 func (a *App) ReloadConfig() (*AppState, error) {
 	a.mu.Lock()
-	path := a.prefs.ConfigPath
+	path, server := a.prefs.ConfigPath, a.prefs.Server
 	a.mu.Unlock()
+	if server != "" {
+		a.mu.Lock()
+		a.srv.cfgTag = "" // read it even if the server says it has not changed
+		a.mu.Unlock()
+		return a.SyncServer(), nil
+	}
 	if path == "" {
 		return nil, errors.New("설정 파일을 먼저 선택해 주세요")
 	}
@@ -260,6 +281,11 @@ func (a *App) signIn(site, email, token string) error {
 // Logout forgets the token.
 func (a *App) Logout() (*AppState, error) {
 	a.mu.Lock()
+	if a.prefs.Server != "" { // signed in through the team server: sign out there
+		a.mu.Unlock()
+		a.dropServer(false)
+		return a.State(), nil
+	}
 	if a.stopPolling != nil {
 		a.stopPolling()
 		a.stopPolling = nil
@@ -474,6 +500,7 @@ func (a *App) startPolling() {
 				a.authError, a.me = err.Error(), nil
 				a.mu.Unlock()
 				a.emitError(err)
+				a.jiraRejected()
 				return // wait for a new token
 			case errors.As(err, &limited):
 				a.emitError(err)
@@ -575,6 +602,9 @@ const avatarPrefix = "argusdesk.avatar."
 // holidays and chosen avatars. Without such a ticket in the settings, or when
 // it cannot be read, only this user's own (kept on this computer) are known.
 func (a *App) teamState(ctx context.Context, cfg *config.Config, client *jira.Client, me *jira.User) ([]game.Away, map[string]int) {
+	if away, avatars, ok := a.serverTeam(ctx, me); ok {
+		return away, avatars
+	}
 	a.mu.Lock()
 	mine := game.Away{ID: me.AccountID, Name: me.DisplayName, From: a.prefs.VacationFrom, To: a.prefs.VacationTo}
 	avatars := map[string]int{}
@@ -617,9 +647,18 @@ func (a *App) SetAvatar(n int) error {
 		return errors.New("알 수 없는 아바타입니다")
 	}
 	a.mu.Lock()
-	cfg, client, me := a.cfg, a.client, a.me
+	cfg, client, me, server := a.cfg, a.client, a.me, a.srv.client
 	a.mu.Unlock()
-	if cfg != nil && cfg.Team.StateIssue != "" {
+	if server != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+		defer cancel()
+		if err := server.SetMe(ctx, "", &n); err != nil {
+			return fmt.Errorf("서버에 아바타를 저장하지 못했습니다: %w", err)
+		}
+		a.mu.Lock()
+		a.srv.teamTag = ""
+		a.mu.Unlock()
+	} else if cfg != nil && cfg.Team.StateIssue != "" {
 		if client == nil || me == nil {
 			return errors.New("먼저 로그인해 주세요")
 		}
@@ -642,7 +681,7 @@ func (a *App) SetAvatar(n int) error {
 func (a *App) MyVacation() *Vacation {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	return &Vacation{From: a.prefs.VacationFrom, To: a.prefs.VacationTo, Shared: a.cfg != nil && a.cfg.Team.StateIssue != ""}
+	return &Vacation{From: a.prefs.VacationFrom, To: a.prefs.VacationTo, Shared: a.srv.client != nil || (a.cfg != nil && a.cfg.Team.StateIssue != "")}
 }
 
 // SetVacation records a holiday from one day to another, both included. Empty
@@ -664,9 +703,24 @@ func (a *App) SetVacation(from, to string) (*Vacation, error) {
 		}
 	}
 	a.mu.Lock()
-	cfg, client, me := a.cfg, a.client, a.me
+	cfg, client, me, server := a.cfg, a.client, a.me, a.srv.client
 	a.mu.Unlock()
-	if cfg != nil && cfg.Team.StateIssue != "" {
+	if server != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+		defer cancel()
+		var err error
+		if from == "" {
+			err = server.ClearVacation(ctx)
+		} else {
+			err = server.SetVacation(ctx, argus.Span{From: from, To: to})
+		}
+		if err != nil {
+			return nil, fmt.Errorf("서버에 휴가를 저장하지 못했습니다: %w", err)
+		}
+		a.mu.Lock()
+		a.srv.teamTag = ""
+		a.mu.Unlock()
+	} else if cfg != nil && cfg.Team.StateIssue != "" {
 		if client == nil || me == nil {
 			return nil, errors.New("먼저 로그인해 주세요")
 		}

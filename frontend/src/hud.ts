@@ -14,6 +14,8 @@ export interface HudHooks {
   chooseConfig(): void;
   checkUpdate(): void;
   logout(): void;
+  serverLogin(): void;
+  forgetServer(): void;
   setNotify(on: boolean): void;
   vacation(): void;
   avatar(): void;
@@ -39,6 +41,15 @@ const SCOPES: [Scope, string, string][] = [
   ['mine', '내 작업', '내가 담당하거나 내가 승인할 상자만 봅니다'],
   ['unassigned', '미배정', '담당자가 없는 상자만 봅니다'],
 ];
+
+/** Why the team server is not in step, in words. */
+export const SERVER_NEEDS: Record<string, string> = {
+  login: '팀 서버 로그인이 끝났습니다. 메뉴에서 다시 로그인해 주세요. 그동안은 마지막으로 받은 설정으로 동작합니다.',
+  jira: '팀 서버에 Jira 토큰이 등록되어 있지 않습니다. 서버의 내 설정에서 등록해 주세요.',
+  config: '팀 서버에 아직 설정이 올라와 있지 않습니다.',
+  forbidden: '이 계정에는 ArgusDesk를 쓸 권한이 없습니다. 서버 관리자에게 요청해 주세요.',
+  disabled: '팀 서버에서 ArgusDesk 연동이 꺼져 있습니다.',
+};
 
 const TIRED = ['여유', '피곤', '지침'];
 
@@ -169,6 +180,13 @@ export function renderHud(state: AppState, snap: Snapshot | null, space: number,
         : null,
       strip,
       lastError ? h('span', { class: 'chip warn', title: lastError }, '갱신 실패') : null,
+      state.server && (state.serverNeeds || state.serverProblem)
+        ? h(
+            'button',
+            { class: 'chip warn', title: '팀 서버와 맞추지 못했습니다. 눌러서 내용을 봅니다.', onclick: () => toast(SERVER_NEEDS[state.serverNeeds] ?? state.serverProblem, 'error') },
+            '팀 서버 확인',
+          )
+        : null,
       snap?.warnings.length
         ? h(
             'button',
@@ -199,8 +217,11 @@ export function renderHud(state: AppState, snap: Snapshot | null, space: number,
           ? h(
               'div',
               { class: 'menu-list', role: 'menu' },
-              item('설정 다시 읽기', hooks.reloadConfig),
-              item('설정 파일 바꾸기', hooks.chooseConfig),
+              state.server ? h('p', { class: 'quiet' }, `팀 서버 ${state.server.replace(/^https?:\/\//, '')}`) : null,
+              item(state.server ? '서버에서 설정 다시 받기' : '설정 다시 읽기', hooks.reloadConfig),
+              state.server ? null : item('설정 파일 바꾸기', hooks.chooseConfig),
+              state.server && state.serverNeeds === 'login' ? item('팀 서버에 다시 로그인', hooks.serverLogin) : null,
+              state.server ? item('팀 서버 연결 끊기', hooks.forgetServer) : null,
               hooks.windows > 1 ? item(`티켓 창 모두 닫기 (${hooks.windows})`, hooks.closeWindows) : null,
               item('아바타 선택', hooks.avatar),
               item('휴가 등록', hooks.vacation),

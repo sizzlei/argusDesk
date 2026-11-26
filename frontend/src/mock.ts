@@ -260,6 +260,10 @@ export function mockBackend(): Backend {
     pollSeconds: 60,
     notify: true,
     notifyProblem: '프로토타입에서는 알림을 보내지 않습니다',
+    server: '',
+    serverBusy: false,
+    serverNeeds: '',
+    serverProblem: '',
   };
 
   let stamp = 0; // makes every change from the panel a new "updated" time
@@ -376,6 +380,8 @@ export function mockBackend(): Backend {
   }
   setInterval(tick, 3500);
 
+  const first = new URLSearchParams(location.search).has('first');
+  if (first) Object.assign(state, { configLoaded: false, signedIn: false });
   const nothing = async () => state;
   return {
     mock: true,
@@ -384,6 +390,20 @@ export function mockBackend(): Backend {
     reloadConfig: nothing,
     login: nothing,
     logout: nothing,
+    // With "?first" in the address the prototype starts at the first-run pages.
+    connectServer: async (address) => {
+      state.server = address;
+      await new Promise((r) => setTimeout(r, 1800)); // the browser sign-in
+      Object.assign(state, { configLoaded: true, signedIn: true, serverNeeds: '' });
+      return state;
+    },
+    cancelServerLogin: async () => {},
+    syncServer: nothing,
+    forgetServer: async () => {
+      Object.assign(state, { server: '', serverNeeds: '', configLoaded: !first, signedIn: !first });
+      return state;
+    },
+    onServer: () => {},
     setNotify: async (on) => {
       state.notify = on;
       return state;

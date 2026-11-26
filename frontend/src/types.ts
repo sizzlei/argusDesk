@@ -113,6 +113,10 @@ export interface AppState {
   pollSeconds: number;
   notify: boolean; // the user wants notifications
   notifyProblem: string; // why the system will not show them ("" = fine)
+  server: string; // team server address ("" = none: settings file and Jira token)
+  serverBusy: boolean; // waiting for the browser sign-in
+  serverNeeds: '' | 'login' | 'jira' | 'config' | 'forbidden' | 'disabled';
+  serverProblem: string; // the last thing that went wrong with the server
 }
 
 export interface Release {
