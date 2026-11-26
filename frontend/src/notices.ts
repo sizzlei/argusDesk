@@ -87,7 +87,7 @@ export function renderNotices(snap: Snapshot | null, go: (box: Box) => void, red
       ? h(
           'h3',
           {},
-          `팀 서버 ${feed0.total}`,
+          `Argus ${feed0.total}`,
           feed0.system ? h('button', { class: `copy sys-${feed0.system}`, title: '서버의 시스템 상태 화면을 엽니다', disabled: !feed0.systemUrl, onclick: () => open2(feed0!.systemUrl) }, `시스템 ${SYSTEM[feed0.system] ?? feed0.system}`) : null,
         )
       : null,
@@ -111,7 +111,7 @@ export function renderNotices(snap: Snapshot | null, go: (box: Box) => void, red
           feed0.total > feed0.notices.length ? h('li', {}, h('button', { class: 'copy', onclick: () => open2(feed0!.allUrl) }, `서버에서 모두 보기 (${feed0.total})`)) : null,
         )
       : feed0
-        ? h('p', { class: 'quiet' }, '팀 서버에 진행 중인 알림이 없습니다.')
+        ? h('p', { class: 'quiet' }, 'Argus에 진행 중인 알림이 없습니다.')
         : null,
     h(
       'h3',

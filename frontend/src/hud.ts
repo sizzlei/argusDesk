@@ -37,11 +37,11 @@ const SCOPES: [Scope, string, string][] = [
 
 /** Why the team server is not in step, in words. */
 export const SERVER_NEEDS: Record<string, string> = {
-  login: '팀 서버 로그인이 끝났습니다. 메뉴에서 다시 로그인해 주세요. 그동안은 마지막으로 받은 설정으로 동작합니다.',
-  jira: '팀 서버에 Jira 토큰이 등록되어 있지 않습니다. 서버의 내 설정에서 등록해 주세요.',
-  config: '팀 서버에 아직 설정이 올라와 있지 않습니다.',
+  login: 'Argus 로그인이 끝났습니다. 메뉴에서 다시 로그인해 주세요. 그동안은 마지막으로 받은 설정으로 동작합니다.',
+  jira: 'Argus에 Jira 토큰이 등록되어 있지 않습니다. Argus 상단 아바타 메뉴 › 나의 ArgusDesk에서 등록해 주세요.',
+  config: 'Argus에 아직 설정이 올라와 있지 않습니다.',
   forbidden: 'ArgusDesk는 서버 관리자만 쓸 수 있습니다. 이 계정에는 권한이 없습니다.',
-  disabled: '팀 서버에서 ArgusDesk 연동이 꺼져 있습니다.',
+  disabled: 'Argus에서 ArgusDesk 연동이 꺼져 있습니다.',
   locked: '서버 계정이 잠겨 있습니다. 서버에 로그인해 잠금을 풀어 주세요.',
   site: '서버에 Jira 사이트 주소가 정해져 있지 않습니다. 서버 관리자에게 알려 주세요.',
 };
@@ -132,7 +132,7 @@ export function renderHud(state: AppState, snap: Snapshot | null, space: number,
       'div',
       { class: 'title' },
       h('strong', { title: snap?.name ?? state.configName ?? '' }, 'Argus Desk'),
-      h('span', { class: 'quiet', title: state.configFileVersion ? `팀 서버가 배포한 설정 ${state.configVersion} (파일 안의 버전 ${state.configFileVersion})` : state.configPath }, `설정 ${state.configVersion || '?'}`),
+      h('span', { class: 'quiet', title: state.configFileVersion ? `Argus가 배포한 설정 ${state.configVersion} (파일 안의 버전 ${state.configFileVersion})` : state.configPath }, `설정 ${state.configVersion || '?'}`),
       backend.mock ? h('span', { class: 'chip' }, '가짜 데이터') : null,
       state.usingLastGood ? h('span', { class: 'chip warn', title: state.configError }, '이전 설정으로 실행 중') : null,
       gameChip(hooks.game, hooks.gameOpen, hooks.toggleGame),
@@ -181,8 +181,8 @@ export function renderHud(state: AppState, snap: Snapshot | null, space: number,
       state.server && (state.serverNeeds || state.serverProblem)
         ? h(
             'button',
-            { class: 'chip warn', title: '팀 서버와 맞추지 못했습니다. 눌러서 내용을 봅니다.', onclick: () => toast(SERVER_NEEDS[state.serverNeeds] ?? state.serverProblem, 'error') },
-            '팀 서버 확인',
+            { class: 'chip warn', title: 'Argus와 맞추지 못했습니다. 눌러서 내용을 봅니다.', onclick: () => toast(SERVER_NEEDS[state.serverNeeds] ?? state.serverProblem, 'error') },
+            'Argus 확인',
           )
         : null,
       snap?.warnings.length
@@ -198,7 +198,7 @@ export function renderHud(state: AppState, snap: Snapshot | null, space: number,
           class: `bell${hooks.notices.approvals || hooks.notices.urgent ? ' urgent' : ''}`,
           'aria-expanded': String(hooks.notices.open),
           'aria-controls': 'notices',
-          'aria-label': `알림: 내 승인 대기 ${hooks.notices.approvals}건, 새 알림 ${hooks.notices.unread}건, 팀 서버 긴급 ${hooks.notices.urgent}건`,
+          'aria-label': `알림: 내 승인 대기 ${hooks.notices.approvals}건, 새 알림 ${hooks.notices.unread}건, Argus 긴급 ${hooks.notices.urgent}건`,
           title: hooks.notices.approvals ? `내 승인 대기 ${hooks.notices.approvals}건` : '알림',
           onclick: hooks.notices.toggle,
         },

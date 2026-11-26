@@ -142,13 +142,13 @@ async function boot() {
       !state.server && { label: '설정 파일 바꾸기', run: () => void backend.chooseConfig().then(apply, fail) },
       !!state.server &&
         state.serverNeeds === 'login' && {
-          label: '팀 서버에 다시 로그인',
+          label: 'Argus에 다시 로그인',
           run: () => {
-            toast('브라우저에서 팀 서버에 로그인해 주세요.');
+            toast('브라우저에서 Argus에 로그인해 주세요.');
             void backend.connectServer(state.server).then(apply, fail);
           },
         },
-      !!state.server && { label: '팀 서버 연결 끊기', run: () => void backend.forgetServer().then(apply, fail) },
+      !!state.server && { label: 'Argus 연결 끊기', run: () => void backend.forgetServer().then(apply, fail) },
       { label: '단축키 설정', run: () => openKeySettings(), note: `송장 쓰기 ${keyLabel('write') || '없음'} · 상자 찾기 ${keyLabel('search') || '없음'} · Esc 창 닫기` },
       { label: '업데이트 확인', run: () => void checkForUpdates(true) },
       { label: '로그아웃', run: () => void backend.logout().then(apply, fail), danger: true },

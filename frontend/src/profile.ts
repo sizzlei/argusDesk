@@ -126,6 +126,6 @@ export function renderProfile(state: AppState, snap: Snapshot | null, game: Game
         h('li', {}, h('button', { class: a.danger ? 'danger' : '', onclick: () => (toggleProfile(false), redraw(), a.run()) }, a.label), a.note ? h('span', { class: 'quiet' }, a.note) : null),
       ),
     ),
-    h('p', { class: 'quiet' }, `ArgusDesk v${state.version}${state.server ? ` · 팀 서버 ${state.server.replace(/^https?:\/\//, '')}` : ''}`),
+    h('p', { class: 'quiet' }, `ArgusDesk v${state.version}${state.server ? ` · Argus ${state.server.replace(/^https?:\/\//, '')}` : ''}`),
   );
 }
