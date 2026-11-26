@@ -19,12 +19,12 @@ func TestActionsListsMovesAndPendingApprovals(t *testing.T) {
 			   "resolution":{"required":true,"name":"해결책","hasDefaultValue":false},
 			   "comment":{"required":false,"name":"댓글"}}}]}`)
 		case r.URL.Path == "/rest/api/3/field":
-			io.WriteString(w, `[{"id":"summary","name":"요약"},{"id":"customfield_10102","name":"Approvals","schema":{"custom":"com.atlassian.servicedesk.approvals-plugin:sd-approvals"}}]`)
+			io.WriteString(w, `[{"id":"summary","name":"요약"},{"id":"customfield_20001","name":"Approvals","schema":{"custom":"com.atlassian.servicedesk.approvals-plugin:sd-approvals"}}]`)
 		case r.URL.Path == "/rest/api/3/issue/A-1":
-			if got := r.URL.Query().Get("fields"); got != "project,customfield_10102" {
+			if got := r.URL.Query().Get("fields"); got != "project,customfield_20001" {
 				t.Errorf("fields = %q", got)
 			}
-			io.WriteString(w, `{"fields":{"project":{"projectTypeKey":"software"},"customfield_10102":[
+			io.WriteString(w, `{"fields":{"project":{"projectTypeKey":"software"},"customfield_20001":[
 			 {"id":"1","name":"부서 승인","finalDecision":"approved","canAnswerApproval":false,"approvers":[]},
 			 {"id":"2","name":"DBA 승인","finalDecision":"pending","canAnswerApproval":true,"approvers":[
 			   {"approver":{"accountId":"u1","displayName":"김하늘"},"approverDecision":"pending"}]}]}}`)

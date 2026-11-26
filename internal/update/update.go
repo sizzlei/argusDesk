@@ -237,11 +237,16 @@ func Download(ctx context.Context, r *Release, dir string, progress func(done, t
 	if err := f.Close(); err != nil {
 		return "", err
 	}
-	if want, ok := strings.CutPrefix(r.Digest, "sha256:"); ok {
-		if got := hex.EncodeToString(h.Sum(nil)); !strings.EqualFold(got, want) {
-			os.Remove(path)
-			return "", errors.New("내려받은 파일의 체크섬이 맞지 않습니다")
-		}
+	// A download without a checksum to compare with is not installed: the
+	// app would be replaced by a file nothing vouches for.
+	want, ok := strings.CutPrefix(r.Digest, "sha256:")
+	if !ok || want == "" {
+		os.Remove(path)
+		return "", errors.New("릴리스에 체크섬이 없어 설치하지 않습니다. 내려받기 페이지에서 직접 받아 주세요")
+	}
+	if got := hex.EncodeToString(h.Sum(nil)); !strings.EqualFold(got, want) {
+		os.Remove(path)
+		return "", errors.New("내려받은 파일의 체크섬이 맞지 않습니다")
 	}
 	return path, nil
 }

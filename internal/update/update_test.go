@@ -123,6 +123,10 @@ func TestLatestAndDownload(t *testing.T) {
 	if _, err := Download(context.Background(), r, dir, nil); err == nil {
 		t.Fatal("tampered download accepted")
 	}
+	r.AssetURL, r.Digest = base+"a.zip", ""
+	if _, err := Download(context.Background(), r, dir, nil); err == nil {
+		t.Fatal("download without a checksum accepted")
+	}
 	r.AssetURL = "https://evil.example/ArgusDesk.zip"
 	if _, err := Download(context.Background(), r, dir, nil); err == nil {
 		t.Fatal("foreign URL accepted")

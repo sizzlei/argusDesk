@@ -65,7 +65,8 @@ async function real(): Promise<Backend> {
     assignTicket: (key, account) => call('AssignTicket', key, account),
     answerApproval: (key, id, approve) => call('AnswerApproval', key, id, approve),
     addComment: (key, text, mode) => call('AddComment', key, text, mode),
-    openUrl: (url) => void Browser.OpenURL(url),
+    // Only web pages are handed to the system: never a file or another app's link.
+    openUrl: (url) => void (/^https:\/\//i.test(url) && Browser.OpenURL(url)),
     onBoard: (cb) => void Events.On('board:snapshot', (ev: { data: BoardEvent }) => cb(ev.data)),
     onError: (cb) => void Events.On('board:error', (ev: { data: BoardError }) => cb(ev.data)),
     gameStats: () => call('GameStats'),
