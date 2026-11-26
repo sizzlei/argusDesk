@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -19,7 +20,9 @@ import (
 type CreateForm struct {
 	Space  string             `json:"space"`
 	Type   string             `json:"type"`
-	Fields []jira.CreateField `json:"fields"` // what is filled in here: summary, description and the required fields
+	Fields []jira.CreateField `json:"fields"` // what is filled in here: everything on Jira's own form the app can fill
+	// Auto names fields the app cannot show that Jira fills in by itself.
+	Auto []string `json:"auto"`
 	// Blocked names required fields the app cannot fill in. With any, the
 	// ticket has to be made in Jira: JiraURL is the page for it.
 	Blocked []string `json:"blocked"`
@@ -28,6 +31,7 @@ type CreateForm struct {
 
 type createMeta struct {
 	typeID string
+	assign bool // the form takes an assignee; otherwise the ticket is assigned once made
 	fields []jira.CreateField
 	form   *CreateForm
 	at     time.Time
@@ -74,20 +78,36 @@ func (a *App) createMetaFor(ctx context.Context, spaceID, typeName string) (*cre
 	if typeID == "" {
 		return nil, "", fmt.Errorf("%s 프로젝트에서 %q 유형으로 티켓을 만들 수 없습니다. 권한이나 설정의 유형 이름을 확인해 주세요", sp.Project, typeName)
 	}
-	fields, err := client.CreateFields(ctx, sp.Project, typeID)
+	fields, assign, err := client.CreateFields(ctx, sp.Project, typeID)
 	if err != nil {
 		return nil, "", err
 	}
-	m = &createMeta{typeID: typeID, at: time.Now(), form: &CreateForm{Space: spaceID, Type: typeName, Fields: []jira.CreateField{}, Blocked: []string{}}}
-	for _, f := range fields {
-		wanted := f.ID == "summary" || f.ID == "description" || (f.Required && !f.HasDefault)
+	m = &createMeta{typeID: typeID, assign: assign, at: time.Now(), form: &CreateForm{Space: spaceID, Type: typeName, Fields: []jira.CreateField{}, Blocked: []string{}, Auto: []string{}}}
+	// Jira's own form for the kind is what the waybill shows: the title, the
+	// description, what must be filled in, then what may be.
+	rank := func(f jira.CreateField) int {
 		switch {
-		case !wanted:
-		case f.Kind == jira.KindOther:
-			m.form.Blocked = append(m.form.Blocked, f.Name)
-		default:
+		case f.ID == "summary":
+			return 0
+		case f.ID == "description":
+			return 1
+		case f.Required:
+			return 2
+		}
+		return 3
+	}
+	sort.SliceStable(fields, func(i, j int) bool { return rank(fields[i]) < rank(fields[j]) })
+	for _, f := range fields {
+		// Several people can only be sent as Jira set them up.
+		fillable := f.Kind != jira.KindOther && (f.Kind != jira.KindUsers || len(f.People) > 0)
+		switch {
+		case fillable:
 			m.fields = append(m.fields, f)
 			m.form.Fields = append(m.form.Fields, f)
+		case f.Required && !f.HasDefault:
+			m.form.Blocked = append(m.form.Blocked, f.Name)
+		case f.Required:
+			m.form.Auto = append(m.form.Auto, f.Name)
 		}
 	}
 	if pid, err := client.ProjectID(ctx, sp.Project); err == nil {
@@ -136,9 +156,25 @@ func (a *App) CreateTicket(spaceID, typeName string, values map[string]any, assi
 	a.mu.Lock()
 	offset := time.Now().In(a.cfg.Location()).Format("-0700")
 	a.mu.Unlock()
-	key, err := c.CreateIssue(ctx, project, m.typeID, m.fields, values, assignee, offset)
+	for _, f := range m.fields { // "me" in a person field is me
+		if v, _ := values[f.ID].(string); f.Kind == jira.KindUser && v == "me" {
+			values[f.ID] = me.AccountID
+		}
+	}
+	with := assignee
+	if !m.assign {
+		with = "" // Jira refuses an assignee its form does not hold
+	}
+	key, err := c.CreateIssue(ctx, project, m.typeID, m.fields, values, with, offset)
 	if err != nil {
 		return "", err
+	}
+	if assignee != "" && !m.assign {
+		if err := c.Assign(ctx, key, assignee); err != nil {
+			a.notify.touched(key)
+			a.Refresh()
+			return key, fmt.Errorf("%s 티켓은 만들었지만 담당자를 정하지 못했습니다: %w", key, err)
+		}
 	}
 	a.notify.touched(key) // my own new box is not news to me
 	a.Refresh()

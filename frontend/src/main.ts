@@ -163,7 +163,8 @@ async function boot() {
         if (!sp) return;
         const seen = new Set<string>();
         const people = (snap?.members ?? []).filter((m) => !m.me && !seen.has(m.id) && seen.add(m.id)).map((m) => ({ id: m.id, name: m.name.trim().split(/\s+/)[0] }));
-        openWaybill(backend, sp, state.me.trim().split(/\s+/)[0] ?? '', people, game?.myFatigue === 0, (key) => (awaited = key));
+        const tickets = (snap?.boxes ?? []).filter((b) => b.space === sp.id).map((b) => ({ key: b.key, summary: b.summary }));
+        openWaybill(backend, sp, state.me.trim().split(/\s+/)[0] ?? '', people, tickets, game?.myFatigue === 0, (key) => (awaited = key));
       },
       profileOpen: profileOpen(),
       toggleProfile: () => {

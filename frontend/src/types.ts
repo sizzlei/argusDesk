@@ -81,8 +81,10 @@ export interface CreateField {
   name: string;
   required: boolean;
   hasDefault: boolean;
-  kind: 'text' | 'long' | 'option' | 'options' | 'date' | 'datetime' | 'number' | 'other';
+  kind: 'text' | 'long' | 'option' | 'options' | 'date' | 'datetime' | 'number' | 'user' | 'users' | 'links' | 'other';
   options?: { id: string; name: string }[];
+  default?: string; // a text, option ids apart by commas, a template, or the kind of link offered first
+  people?: { id: string; name: string }[]; // who a person field starts with
 }
 
 /** The waybill for one kind of ticket. */
@@ -90,6 +92,7 @@ export interface CreateForm {
   space: string;
   type: string;
   fields: CreateField[];
+  auto: string[]; // fields the app cannot show that Jira fills in by itself
   blocked: string[]; // required fields the app cannot fill in: the ticket has to be made in Jira
   jiraUrl: string;
 }

@@ -518,15 +518,34 @@ export function mockBackend(): Backend {
     },
     createForm: async (space, type) => {
       await pause();
-      const fields: CreateForm['fields'] = [
-        { id: 'summary', name: '요약', required: true, hasDefault: false, kind: 'text' },
-        { id: 'description', name: '설명', required: false, hasDefault: false, kind: 'long' },
-        { id: 'cf-env', name: '대상 환경', required: true, hasDefault: false, kind: 'option', options: [{ id: '1', name: '운영' }, { id: '2', name: '개발' }] },
-        { id: 'cf-when', name: '작업 예정일', required: false, hasDefault: false, kind: 'date' },
+      const lead = [{ id: 'u9', name: '한지우' }];
+      const parts = [{ id: 'c1', name: '운영' }, { id: 'c2', name: '업그레이드' }, { id: 'c3', name: '작업계획 보고서' }];
+      const head: CreateForm['fields'] = [{ id: 'summary', name: '요약', required: true, hasDefault: false, kind: 'text' }];
+      const tail: CreateForm['fields'] = [
+        { id: 'cf-lead', name: '업무 승인자', required: true, hasDefault: true, kind: 'user', people: lead },
+        { id: 'components', name: '컴포넌트', required: false, hasDefault: false, kind: 'options', options: parts },
       ];
-      // one kind shows what a ticket that has to be written in Jira looks like
+      // the three kinds show three forms: a plain one, a report with a template and a link, and one that has to be written in Jira
+      const own: CreateForm['fields'] =
+        type === types2[1][0]
+          ? [
+              { id: 'cf-kind', name: '작업 구분', required: true, hasDefault: false, kind: 'option', options: [{ id: '1', name: '정기 점검' }, { id: '2', name: '복구 훈련' }] },
+              { id: 'cf-from', name: '작업 예상 시작 일시', required: true, hasDefault: false, kind: 'datetime' },
+              { id: 'cf-target', name: '작업 대상', required: true, hasDefault: false, kind: 'text' },
+              { id: 'cf-body', name: '작업 내용', required: true, hasDefault: true, kind: 'long', default: '- **계획에는 아래 항목을 적습니다.**\n  - 목표 데이터 : 대상 {COUNT}건\n  - 목표 시간 : {hh}시부터 {hh}시 사이\n---' },
+              { id: 'cf-watch', name: '내부통제 참조자', required: true, hasDefault: true, kind: 'users', people: [{ id: 'u8', name: '오세린' }] },
+              { id: 'issuelinks', name: '연결된 이슈', required: true, hasDefault: false, kind: 'links', default: 'l1', options: [{ id: 'l1', name: 'relates to' }, { id: 'l2', name: 'blocks' }] },
+            ]
+          : [
+              { id: 'cf-kind', name: '내부 작업 구분', required: true, hasDefault: false, kind: 'option', options: [{ id: '1', name: '운영' }, { id: '2', name: '개선' }] },
+              { id: 'duedate', name: '기한', required: true, hasDefault: false, kind: 'date' },
+              { id: 'cf-body', name: '내부 작업 내용', required: true, hasDefault: false, kind: 'long' },
+              { id: 'priority', name: '우선 순위', required: false, hasDefault: true, kind: 'option', default: '3', options: [{ id: '2', name: 'High' }, { id: '3', name: 'Medium' }, { id: '4', name: 'Low' }] },
+              { id: 'cf-start', name: '시작 날짜', required: false, hasDefault: false, kind: 'date' },
+            ];
+      const fields = [...head, ...own.filter((f) => f.required), ...tail.filter((f) => f.required), ...own.filter((f) => !f.required), ...tail.filter((f) => !f.required)];
       const blocked = type === types2[2][0] ? ['연관 자산'] : [];
-      return { space, type, fields: blocked.length ? [] : fields.filter((f) => f.id !== 'cf-when' || type === types2[0][0]), blocked, jiraUrl: 'https://example.atlassian.net/secure/CreateIssue.jspa' };
+      return { space, type, fields: blocked.length ? [] : fields, auto: [], blocked, jiraUrl: 'https://example.atlassian.net/secure/CreateIssue.jspa' };
     },
     createTicket: async (_space, type, values, assignee) => {
       await pause();

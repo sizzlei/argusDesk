@@ -2489,6 +2489,33 @@ dialog.waybill::backdrop {
   font-weight: 400;
 }
 
+.wb-links {
+  display: grid;
+  grid-template-columns: minmax(90px, 30%) minmax(0, 1fr);
+  gap: 6px;
+}
+
+.wb-fixed {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 12px;
+}
+
+.wb-fixed .chip {
+  padding: 2px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #fff;
+}
+
+.wb-auto {
+  margin: 8px 0 0;
+  font-size: 12px;
+}
+
 .wb-paper .error:empty {
   display: none;
 }

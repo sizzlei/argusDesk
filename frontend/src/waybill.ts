@@ -10,28 +10,75 @@ import { errText, h, toast } from './ui';
 const css = (c: number) => `#${c.toString(16).padStart(6, '0')}`;
 const plain = (type: string) => type.replace(/^\[[^\]]+\]\s*/, '');
 
-/** The control for one field, and how to read its value back. */
-function control(f: CreateField): { el: HTMLElement; value: () => string | string[] } {
+interface Who {
+  id: string;
+  name: string;
+}
+
+interface Ctx {
+  me: string;
+  people: Who[];
+  tickets: { key: string; summary: string }[];
+}
+
+type Value = string | string[];
+
+/** The control for one field, and how to read its value back. `extra` holds what travels beside it. */
+function control(f: CreateField, ctx: Ctx): { el: HTMLElement; value: () => Value; extra?: () => Record<string, Value> } {
   const id = `wb-${f.id}`;
+  const preset = (f.default ?? '').split(',');
   switch (f.kind) {
     case 'long': {
-      const el = h('textarea', { id, rows: f.id === 'description' ? '5' : '3' });
+      const el = h('textarea', { id, rows: String(Math.min(12, Math.max(f.id === 'description' ? 5 : 3, (f.default ?? '').split('\n').length + 1))) });
+      el.value = f.default ?? '';
+      if (f.hasDefault && !f.default) el.placeholder = '비워 두면 Jira에 정해 둔 기본 양식이 들어갑니다.';
       return { el, value: () => el.value };
     }
     case 'option': {
       const el = h('select', { id }, h('option', { value: '' }, f.required ? '선택하세요' : '없음'), ...(f.options ?? []).map((o) => h('option', { value: o.id }, o.name)));
+      el.value = f.default ?? '';
       return { el, value: () => el.value };
     }
     case 'options': {
       const boxes = (f.options ?? []).map((o) => {
         const box = h('input', { type: 'checkbox', value: o.id });
+        box.checked = preset.includes(o.id);
         return { box, label: h('label', { class: 'check' }, box, o.name) };
       });
       return { el: h('div', { id, class: 'checks', role: 'group', 'aria-label': f.name }, ...boxes.map((b) => b.label)), value: () => boxes.filter((b) => b.box.checked).map((b) => b.box.value) };
     }
+    case 'user': {
+      // Whoever Jira starts the field with, then me and the team.
+      const first = f.people ?? [];
+      const seen = new Set(first.map((p) => p.id));
+      const el = h(
+        'select',
+        { id },
+        f.required && first.length ? null : h('option', { value: '' }, f.required ? '선택하세요' : '없음'),
+        ...first.map((p) => h('option', { value: p.id }, `${p.name} (기본)`)),
+        h('option', { value: 'me' }, `${ctx.me} (나)`),
+        ...ctx.people.filter((p) => !seen.has(p.id)).map((p) => h('option', { value: p.id }, p.name)),
+      );
+      el.value = first[0]?.id ?? '';
+      return { el, value: () => el.value };
+    }
+    case 'users': {
+      // Several people cannot be picked here: they go as Jira set them up.
+      const who = f.people ?? [];
+      return { el: h('p', { id, class: 'wb-fixed' }, ...who.map((p) => h('span', { class: 'chip' }, p.name)), h('span', { class: 'quiet' }, 'Jira에 정해 둔 대로 들어갑니다')), value: () => who.map((p) => p.id) };
+    }
+    case 'links': {
+      const kind = h('select', { 'aria-label': '연결 종류' }, ...(f.options ?? []).map((o) => h('option', { value: o.id }, o.name)));
+      kind.value = f.default ?? '';
+      const listId = `${id}-list`;
+      const keys = h('input', { id, type: 'text', autocomplete: 'off', list: listId, placeholder: '티켓 번호 (예: ABC-123). 여러 개는 쉼표로' });
+      const list = h('datalist', { id: listId }, ...ctx.tickets.map((t) => h('option', { value: t.key }, t.summary)));
+      return { el: h('div', { class: 'wb-links' }, kind, keys, list), value: () => keys.value, extra: () => ({ 'issuelinks.type': kind.value }) };
+    }
     default: {
       const type = f.kind === 'date' ? 'date' : f.kind === 'datetime' ? 'datetime-local' : f.kind === 'number' ? 'number' : 'text';
       const el = h('input', { id, type, autocomplete: 'off', step: f.kind === 'number' ? 'any' : undefined });
+      el.value = f.default ?? '';
       return { el, value: () => el.value };
     }
   }
@@ -39,9 +86,11 @@ function control(f: CreateField): { el: HTMLElement; value: () => string | strin
 
 /**
  * Opens the waybill for a floor. `me` is my name; `people` are the teammates a
- * box can be addressed to. `made` is told the key of the new ticket.
+ * box can be addressed to; `tickets` are the ones on the floor, offered where
+ * another ticket is linked. `made` is told the key of the new ticket.
  */
-export function openWaybill(backend: Backend, space: SpaceView, me: string, people: { id: string; name: string }[], spent: boolean, made: (key: string) => void) {
+export function openWaybill(backend: Backend, space: SpaceView, me: string, people: Who[], tickets: Ctx['tickets'], spent: boolean, made: (key: string) => void) {
+  const ctx: Ctx = { me, people, tickets };
   const types = space.types ?? [];
   if (!types.length) return void toast('이 층의 설정에 만들 수 있는 유형이 없습니다.', 'error');
   const dlg = h('dialog', { class: 'waybill' });
@@ -58,7 +107,7 @@ export function openWaybill(backend: Backend, space: SpaceView, me: string, peop
   const error = h('p', { class: 'error', role: 'alert' });
   const send = h('button', { class: 'primary', type: 'submit' }, '송장 붙여 보내기');
   let form: CreateForm | null = null;
-  let read: { field: CreateField; value: () => string | string[] }[] = [];
+  let read: { field: CreateField; value: () => Value; extra?: () => Record<string, Value> }[] = [];
 
   const load = async () => {
     const t = types.find((x) => x.name === type.value)!;
@@ -85,13 +134,14 @@ export function openWaybill(backend: Backend, space: SpaceView, me: string, peop
       );
       return;
     }
-    const made = form.fields.map((f) => ({ field: f, ...control(f) }));
+    const made = form.fields.map((f) => ({ field: f, ...control(f, ctx) }));
     read = made;
     body.replaceChildren(
       ...made.flatMap(({ field, el }) => [
-        h('label', { for: `wb-${field.id}` }, field.id === 'summary' ? '품목 (제목)' : field.id === 'description' ? '내용' : field.name, field.required ? h('em', { title: '필수' }, ' *') : null),
+        h('label', { for: `wb-${field.id}` }, field.id === 'summary' ? '품목 (제목)' : field.id === 'description' ? '내용' : field.kind === 'links' ? '연결할 티켓' : field.name, field.required ? h('em', { title: '필수' }, ' *') : null),
         el,
       ]),
+      form.auto.length ? h('p', { class: 'quiet wb-auto' }, `Jira가 알아서 채우는 항목: ${form.auto.join(', ')}`) : '',
     );
     send.disabled = false;
     (body.querySelector('input, textarea, select') as HTMLElement | null)?.focus();
@@ -105,14 +155,15 @@ export function openWaybill(backend: Backend, space: SpaceView, me: string, peop
       onsubmit: async (e: Event) => {
         e.preventDefault();
         if (!form || form.blocked.length) return;
-        const values: Record<string, string | string[]> = {};
+        const values: Record<string, Value> = {};
         for (const r of read) {
           const v = r.value();
           if (r.field.required && !r.field.hasDefault && (Array.isArray(v) ? v.length === 0 : !v.trim())) {
-            error.textContent = `${r.field.id === 'summary' ? '품목(제목)' : r.field.name} 항목을 입력해 주세요.`;
+            error.textContent = `${r.field.id === 'summary' ? '품목(제목)' : r.field.kind === 'links' ? '연결할 티켓' : r.field.name} 항목을 입력해 주세요.`;
             return;
           }
           values[r.field.id] = v;
+          Object.assign(values, r.extra?.());
         }
         error.textContent = '';
         send.disabled = true;
