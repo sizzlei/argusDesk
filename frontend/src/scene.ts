@@ -300,6 +300,25 @@ export class Scene {
     }
   }
 
+  /**
+   * Where something of the room is in the window, for the tour to point at:
+   * a box (one of mine when I hold any) or the packing bench.
+   */
+  rectOf(what: 'box' | 'bench') {
+    let thing: Container | null = null;
+    if (what === 'bench') thing = this.bench?.sign ?? null;
+    else {
+      const all = [...this.sprites.values()].filter((s) => !s.leaving && !this.hidden.has(s.box.key));
+      thing = (all.find((s) => s.box.mine) ?? all[0])?.root ?? null;
+    }
+    if (!thing || thing.destroyed) return null;
+    const b = thing.getBounds();
+    const c = this.app.canvas.getBoundingClientRect();
+    const r = { x: c.left + b.minX, y: c.top + b.minY, w: b.maxX - b.minX, h: b.maxY - b.minY };
+    // off the window: nothing to point at
+    return r.w > 0 && r.x + r.w > 0 && r.y + r.h > 0 && r.x < window.innerWidth && r.y < window.innerHeight ? r : null;
+  }
+
   /** My answer to an approval lands on the box as a stamp, and travels with it. */
   stamp(key: string, approve: boolean) {
     const sp = this.sprites.get(key);

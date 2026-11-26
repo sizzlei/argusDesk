@@ -13,6 +13,7 @@ import { renderSetup } from './setup';
 import type { AppState, Box, Change, GameStats, Snapshot } from './types';
 import { checkForUpdates, initUpdates } from './update';
 import { openAvatarPicker, openVacation, cancelVacation } from './vacation';
+import { startTour, tourRunning, tourSeen } from './tour';
 import { errText, toast } from './ui';
 import { openWaybill } from './waybill';
 import { type Filter, applyFilter, loadFilter, saveFilter, unassigned } from './view';
@@ -187,6 +188,7 @@ async function boot() {
         },
       !!state.server && { label: 'Argus 연결 끊기', run: () => void backend.forgetServer().then(apply, fail) },
       { label: scene.hours ? '시간대 조명 끄기' : '시간대 조명 켜기', run: () => setHours(!scene.hours), note: '저녁과 밤에 센터 조명이 어두워집니다' },
+      { label: '둘러보기 다시 보기', run: () => tour() },
       { label: '단축키 설정', run: () => openKeySettings(), note: `송장 쓰기 ${keyLabel('write') || '없음'} · 상자 찾기 ${keyLabel('search') || '없음'} · Esc 창 닫기` },
       { label: '업데이트 확인', run: () => void checkForUpdates(true) },
       { label: '로그아웃', run: () => void backend.logout().then(apply, fail), danger: true },
@@ -261,6 +263,34 @@ async function boot() {
     });
   };
   let legendOpen = false;
+  /** Plays the tour of the centre. */
+  const tour = () => {
+    if (!snap || tourRunning()) return;
+    only('');
+    gameOpen = false;
+    closeTickets(tickets);
+    hud();
+    const home = Math.max(0, space);
+    const to = (i: number) => {
+      if (i === space) return;
+      space = i;
+      scene.setSpace(i);
+      hud();
+      legend();
+    };
+    to(home);
+    startTour({
+      rect: (what) => scene.rectOf(what),
+      toWritingFloor: () => {
+        const i = snap?.spaces.findIndex((sp) => sp.create) ?? -1;
+        if (i >= 0) to(i);
+        return i >= 0;
+      },
+      toFirstFloor: () => to(home),
+      closeWindows: () => closeTickets(tickets),
+      celebrate: () => scene.celebrate(),
+    });
+  };
   const floor = (step: number) => {
     if (!snap) return;
     const next = Math.max(0, Math.min(snap.spaces.length - 1, (space < 0 ? -1 : space) + step));
@@ -436,6 +466,12 @@ async function boot() {
     draw([]);
     hud();
     legend();
+  }
+  // The first time the centre opens on this computer, a guide shows the way round.
+  const greet = () => !tourSeen() && !tourRunning() && snap && !document.querySelector('#setup:not([hidden])') && window.setTimeout(tour, 900);
+  if (first) greet();
+  else {
+    const wait = window.setInterval(() => snap && (window.clearInterval(wait), greet()), 1000);
   }
   score(await backend.gameStats().catch(() => null));
   initUpdates(backend);
