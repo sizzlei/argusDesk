@@ -8,7 +8,7 @@
         AllowPromptForPassword="false">
     </Settings>
     <Installer
-        Path="argusdesk"
+        Path="ArgusDesk"
         Arguments=""
         InstallLocation="C:\Program Files\sizzlei\ArgusDesk">
     </Installer>
@@ -28,7 +28,7 @@
                 Id="com.sizzlei.argusdesk"
                 Description="Jira service desk as a fulfilment centre"
                 DisplayName="ArgusDesk"
-                ExecutableName="argusdesk"
+                ExecutableName="ArgusDesk"
                 EntryPoint="Windows.FullTrustApplication">
                 
             </Application>
@@ -47,7 +47,7 @@
             <Logo>Assets\AppIcon.png</Logo>
         </Properties>
     </PackageInformation>
-    <SaveLocation PackagePath="argusdesk.msix" />
+    <SaveLocation PackagePath="ArgusDesk.msix" />
     <PackageIntegrity>
         <CertificatePath></CertificatePath>
     </PackageIntegrity>

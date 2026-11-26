@@ -9,9 +9,9 @@
 			"ProductVersion": "0.1.0",
 			"CompanyName": "sizzlei",
 			"FileDescription": "Jira service desk as a fulfilment centre",
-			"LegalCopyright": "© 2026, My Company",
+			"LegalCopyright": "© 2026 sizzlei",
 			"ProductName": "ArgusDesk",
-			"Comments": "This is a comment"
+			"Comments": "Jira tickets as boxes in a fulfilment centre"
 		}
 	}
 }
