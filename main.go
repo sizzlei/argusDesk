@@ -5,6 +5,8 @@ package main
 import (
 	"embed"
 	"log"
+	"net/http"
+	"strings"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
@@ -13,6 +15,19 @@ import (
 //
 //go:embed all:frontend/dist
 var assets embed.FS
+
+// fresh keeps the page itself out of the webview's cache. The scripts and
+// styles carry a hash of their content in their names and may be kept, but
+// the page that names them must be asked for every time: otherwise a webview
+// can show the screen of the version before an update, from its cache.
+func fresh(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if p := r.URL.Path; p == "" || p == "/" || strings.HasSuffix(p, ".html") {
+			w.Header().Set("Cache-Control", "no-store")
+		}
+		next.ServeHTTP(w, r)
+	})
+}
 
 func main() {
 	svc := &App{}
@@ -23,7 +38,7 @@ func main() {
 			application.NewService(svc),
 		},
 		Assets: application.AssetOptions{
-			Handler: application.AssetFileServerFS(assets),
+			Handler: fresh(application.AssetFileServerFS(assets)),
 		},
 		Mac: application.MacOptions{
 			ApplicationShouldTerminateAfterLastWindowClosed: true,
