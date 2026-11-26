@@ -43,6 +43,33 @@ func DeleteToken(site, email string) error {
 	return err
 }
 
+// The team server's sign-in (a JSON blob: access and refresh tokens) is kept
+// the same way, under the server's address.
+func serverAccount(base string) string { return "argus:" + base }
+
+// SaveServerToken stores the sign-in for the team server at base.
+func SaveServerToken(base, blob string) error {
+	return keyring.Set(service, serverAccount(base), blob)
+}
+
+// LoadServerToken returns the stored sign-in, or ErrNoToken.
+func LoadServerToken(base string) (string, error) {
+	t, err := keyring.Get(service, serverAccount(base))
+	if errors.Is(err, keyring.ErrNotFound) {
+		return "", ErrNoToken
+	}
+	return t, err
+}
+
+// DeleteServerToken removes the stored sign-in (no error if there is none).
+func DeleteServerToken(base string) error {
+	err := keyring.Delete(service, serverAccount(base))
+	if errors.Is(err, keyring.ErrNotFound) {
+		return nil
+	}
+	return err
+}
+
 // Prefs are this person's settings on this computer. Nothing here is secret
 // and no ticket data is ever written.
 type Prefs struct {
@@ -55,6 +82,7 @@ type Prefs struct {
 	VacationFrom    string `json:"vacationFrom"`    // own holiday, "2026-12-01"; used when the team has no shared ticket
 	VacationTo      string `json:"vacationTo"`
 	Avatar          int    `json:"avatar"` // chosen look + 1; 0 = not chosen
+	Server          string `json:"server"` // team server address ("" = none: settings file and Jira token)
 }
 
 // Dir is the folder argusDesk keeps its own files in.
