@@ -23,9 +23,11 @@ export async function openVacation(backend: Backend) {
   const save = async (a: string, b: string, done: string) => {
     error.textContent = '';
     try {
-      await backend.setVacation(a, b);
+      const saved = await backend.setVacation(a, b);
       close();
-      toast(done);
+      // The holiday is saved either way; the team calendar is a second step that can fail on its own.
+      if (saved?.calendar && saved.calendar !== 'ok') toast(`${done} 다만 팀 캘린더에는 반영하지 못했습니다: ${saved.calendar}`, 'error');
+      else toast(saved?.calendar === 'ok' ? `${done} 팀 캘린더에도 반영했습니다.` : done);
     } catch (e) {
       error.textContent = errText(e);
     }
@@ -44,7 +46,7 @@ export async function openVacation(backend: Backend) {
       h('label', { for: 'vac-to' }, '종료일'),
       to,
     ),
-    h('p', { class: 'quiet' }, mine.shared ? '팀 공유 티켓에 기록되어 팀원에게도 보입니다.' : '설정에 팀 공유 티켓이 없어 이 컴퓨터에서만 보입니다.'),
+    h('p', { class: 'quiet' }, mine.shared ? '팀원에게도 보입니다. 팀 서버에 캘린더가 연결되어 있으면 팀 캘린더에도 올라갑니다.' : '팀 서버나 팀 공유 티켓이 없어 이 컴퓨터에서만 보입니다.'),
     error,
     h(
       'div',

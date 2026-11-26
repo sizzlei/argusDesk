@@ -15,6 +15,7 @@ import (
 	"github.com/sizzlei/argusDesk/internal/board"
 	"github.com/sizzlei/argusDesk/internal/config"
 	"github.com/sizzlei/argusDesk/internal/game"
+	"github.com/sizzlei/argusDesk/internal/gcal"
 	"github.com/sizzlei/argusDesk/internal/jira"
 	"github.com/sizzlei/argusDesk/internal/model"
 	"github.com/sizzlei/argusDesk/internal/secret"
@@ -613,6 +614,9 @@ type Vacation struct {
 	From   string `json:"from"`
 	To     string `json:"to"`
 	Shared bool   `json:"shared"` // teammates see it (the settings name a shared ticket)
+	// Calendar says how putting it on the team's calendar went: "" = there is
+	// no calendar to put it on, "ok", or why it failed (the holiday itself is saved).
+	Calendar string `json:"calendar"`
 }
 
 // avatarPrefix starts the issue property that holds one person's chosen look.
@@ -725,8 +729,9 @@ func (a *App) SetVacation(from, to string) (*Vacation, error) {
 	a.mu.Lock()
 	cfg, client, me, server := a.cfg, a.client, a.me, a.srv.client
 	a.mu.Unlock()
+	calendar := ""
 	if server != nil {
-		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 40*time.Second)
 		defer cancel()
 		var err error
 		if from == "" {
@@ -740,6 +745,7 @@ func (a *App) SetVacation(from, to string) (*Vacation, error) {
 		a.mu.Lock()
 		a.srv.teamTag = ""
 		a.mu.Unlock()
+		calendar = a.holidayOnCalendar(ctx, server, me, from, to)
 	} else if cfg != nil && cfg.Team.StateIssue != "" {
 		if client == nil || me == nil {
 			return nil, errors.New("먼저 로그인해 주세요")
@@ -763,7 +769,31 @@ func (a *App) SetVacation(from, to string) (*Vacation, error) {
 	a.mu.Unlock()
 	a.gameForce.Store(true)
 	a.Refresh()
-	return a.MyVacation(), nil
+	v := a.MyVacation()
+	v.Calendar = calendar
+	return v, nil
+}
+
+// holidayOnCalendar puts the holiday on the team's shared calendar with the
+// key the server hands out. The key is used for this one call and not kept.
+// It returns "" when the server has no calendar, "ok", or why it failed.
+func (a *App) holidayOnCalendar(ctx context.Context, server *argus.Client, me *jira.User, from, to string) string {
+	if me == nil {
+		return ""
+	}
+	key, err := server.Calendar(ctx)
+	if errors.Is(err, argus.ErrNotFound) {
+		return ""
+	}
+	if err != nil {
+		return err.Error()
+	}
+	name, _, _ := strings.Cut(strings.TrimSpace(me.DisplayName), " ") // the name before a department
+	k := gcal.Key{ClientID: key.ClientID, ClientSecret: key.ClientSecret, RefreshToken: key.RefreshToken, CalendarID: key.CalendarID}
+	if err := gcal.SetHoliday(ctx, &k, me.AccountID, name, from, to); err != nil {
+		return err.Error()
+	}
+	return "ok"
 }
 
 func (a *App) emitError(err error) {

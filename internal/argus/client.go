@@ -238,6 +238,27 @@ func (c *Client) JiraKey(ctx context.Context) (*JiraKey, error) {
 	return &out, nil
 }
 
+// CalendarKey is what the server hands out for the team's shared calendar.
+type CalendarKey struct {
+	ClientID     string `json:"clientId"`
+	ClientSecret string `json:"clientSecret"`
+	RefreshToken string `json:"refreshToken"`
+	CalendarID   string `json:"calendarId"`
+}
+
+// Calendar fetches the key of the team's shared calendar. ErrNotFound: the
+// server has none, and holidays are not put on a calendar.
+func (c *Client) Calendar(ctx context.Context) (*CalendarKey, error) {
+	var out CalendarKey
+	if _, err := c.do(ctx, http.MethodGet, "/calendar", nil, &out, nil); err != nil {
+		return nil, err
+	}
+	if out.ClientID == "" || out.RefreshToken == "" || out.CalendarID == "" {
+		return nil, ErrNotFound
+	}
+	return &out, nil
+}
+
 func (c *Client) SetVacation(ctx context.Context, s Span) error {
 	_, err := c.do(ctx, http.MethodPut, "/me/vacation", s, nil, nil)
 	return err

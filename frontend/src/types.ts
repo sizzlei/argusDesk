@@ -249,4 +249,5 @@ export interface Vacation {
   from: string;
   to: string;
   shared: boolean; // teammates see it
+  calendar?: string; // how putting it on the team calendar went: '' none, 'ok', or why it failed
 }
