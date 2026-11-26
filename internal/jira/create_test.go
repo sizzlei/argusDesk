@@ -181,3 +181,19 @@ func TestCreateWithPeopleTemplateAndLinks(t *testing.T) {
 		t.Errorf("blocks: %v", blocks)
 	}
 }
+
+func TestFindPeopleKeepsPeopleInUse(t *testing.T) {
+	c := server(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/rest/api/3/user/search" || r.URL.Query().Get("query") != "한" {
+			t.Errorf("unexpected %s", r.URL)
+		}
+		io.WriteString(w, `[{"accountId":"a","accountType":"atlassian","displayName":"한지우","active":true,"emailAddress":"x@example.com"},
+		 {"accountId":"b","accountType":"app","displayName":"한글 봇","active":true},
+		 {"accountId":"c","accountType":"atlassian","displayName":"한서연","active":false},
+		 {"accountId":"d","accountType":"customer","displayName":"한고객","active":true}]`)
+	})
+	got, err := c.FindPeople(context.Background(), "한")
+	if err != nil || len(got) != 1 || got[0] != (Person{ID: "a", Name: "한지우"}) {
+		t.Fatalf("got %+v, %v", got, err)
+	}
+}

@@ -183,3 +183,19 @@ func (a *App) CreateTicket(spaceID, typeName string, values map[string]any, assi
 	a.Refresh()
 	return key, nil
 }
+
+// FindPeople looks people up in Jira by a part of their name, for the person
+// fields of a waybill.
+func (a *App) FindPeople(query string) ([]jira.Person, error) {
+	query = strings.TrimSpace(query)
+	if query == "" {
+		return []jira.Person{}, nil
+	}
+	c, _, err := a.jira()
+	if err != nil {
+		return nil, err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	return c.FindPeople(ctx, query)
+}

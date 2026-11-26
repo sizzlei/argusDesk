@@ -102,7 +102,7 @@ export function renderGame(stats: GameStats | null, open: boolean, close: () => 
       h('button', { class: 'close', 'aria-label': '기록 닫기', onclick: close }, '×'),
     ),
     h('p', { class: 'quiet' }, `${since.getFullYear()}년 ${since.getMonth() + 1}월 ${since.getDate()}일부터의 시즌 · 출고한 상자로 계산합니다`),
-    h('div', { class: 'tallies' }, card('센터 (팀 합계)', stats.team, 'team'), card('나', stats.me, 'me')),
+    h('div', { class: 'tallies' }, card('센터 (팀 합계)', stats.team, 'of-team'), card('나', stats.me, 'of-me')),
     h('h3', {}, `내 배지 ${mine.filter((b) => b.earned).length}/${mine.length}`),
     h('ul', { class: 'badges' }, ...mine.map(badge)),
     h('h3', {}, `팀 배지 ${team.filter((b) => b.earned).length}/${team.length}`),

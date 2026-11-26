@@ -19,10 +19,104 @@ interface Who {
 interface Ctx {
   me: string;
   people: Who[];
+  find(query: string): Promise<Who[]>;
   tickets: { key: string; summary: string }[];
 }
 
 type Value = string | string[];
+
+/**
+ * A person field: type a part of a name and Jira is searched, as in Jira's
+ * own form. Before anything is typed it offers whoever Jira starts the field
+ * with, me and the team.
+ */
+function personPicker(f: CreateField, ctx: Ctx, id: string): { el: HTMLElement; value: () => Value } {
+  const first = (f.people ?? []).map((p) => ({ ...p, note: '기본' }));
+  const near: (Who & { note?: string })[] = [...first, { id: 'me', name: ctx.me, note: '나' }, ...ctx.people.filter((p) => !first.some((d) => d.id === p.id))];
+  let chosen: Who | null = first[0] ?? null;
+  let shown: (Who & { note?: string })[] = [];
+  let at = 0;
+  let asked = 0; // the newest search: an older answer arriving late is dropped
+  let timer = 0;
+  const listId = `${id}-list`;
+  const input = h('input', { id, type: 'text', role: 'combobox', autocomplete: 'off', spellcheck: 'false', 'aria-autocomplete': 'list', 'aria-controls': listId, 'aria-expanded': 'false', placeholder: '이름으로 찾기' });
+  const list = h('ul', { id: listId, class: 'wb-people', role: 'listbox', hidden: true });
+  const el = h('div', { class: 'wb-person' }, input, list);
+  input.value = chosen?.name ?? '';
+  const shut = () => {
+    list.hidden = true;
+    input.setAttribute('aria-expanded', 'false');
+  };
+  const pick = (p: Who) => {
+    chosen = p;
+    input.value = p.name;
+    shut();
+  };
+  const draw = (note = '') => {
+    at = Math.max(0, Math.min(at, shown.length - 1));
+    list.replaceChildren(
+      ...shown.map((p, i) => {
+        const li = h('li', { role: 'option', id: `${listId}-${i}`, 'aria-selected': String(i === at), class: i === at ? 'on' : '' }, h('span', {}, p.name), p.note ? h('span', { class: 'quiet' }, p.note) : null);
+        // mousedown, not click: the text box must not lose the cursor first
+        li.addEventListener('mousedown', (e) => (e.preventDefault(), pick(p)));
+        return li;
+      }),
+      note ? h('li', { class: 'none quiet' }, note) : '',
+    );
+    list.hidden = false;
+    input.setAttribute('aria-expanded', 'true');
+    input.setAttribute('aria-activedescendant', shown.length ? `${listId}-${at}` : '');
+  };
+  const search = () => {
+    const q = input.value.trim();
+    window.clearTimeout(timer);
+    if (!q || q === chosen?.name) {
+      shown = near;
+      return draw();
+    }
+    const local = near.filter((p) => p.name.toLowerCase().includes(q.toLowerCase()));
+    shown = local;
+    draw('Jira에서 찾는 중…');
+    const mine = ++asked;
+    timer = window.setTimeout(() => {
+      ctx.find(q).then(
+        (found) => {
+          if (mine !== asked) return;
+          shown = [...local, ...found.filter((p) => !local.some((l) => l.id === p.id))];
+          draw(shown.length ? '' : '찾는 사람이 없습니다.');
+        },
+        () => mine === asked && draw('Jira에서 찾지 못했습니다. 다시 입력해 보세요.'),
+      );
+    }, 250);
+  };
+  input.addEventListener('focus', () => (input.select(), search()));
+  input.addEventListener('input', () => ((at = 0), search()));
+  input.addEventListener('blur', () => {
+    // What was typed without picking anyone is not a person: the box goes back to who is chosen.
+    if (!input.value.trim() && !f.required) chosen = null;
+    input.value = chosen?.name ?? '';
+    asked++;
+    shut();
+  });
+  input.addEventListener('keydown', (e) => {
+    if (e.isComposing) return; // Korean input in progress: the keys belong to it
+    if (list.hidden) return;
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (shown.length) at = (at + (e.key === 'ArrowDown' ? 1 : shown.length - 1)) % shown.length;
+      draw();
+    } else if (e.key === 'Enter') {
+      e.preventDefault(); // not the form's send
+      if (shown[at]) pick(shown[at]);
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      e.stopPropagation();
+      input.value = chosen?.name ?? '';
+      shut();
+    }
+  });
+  return { el, value: () => chosen?.id ?? '' };
+}
 
 /** The control for one field, and how to read its value back. `extra` holds what travels beside it. */
 function control(f: CreateField, ctx: Ctx): { el: HTMLElement; value: () => Value; extra?: () => Record<string, Value> } {
@@ -73,21 +167,8 @@ function control(f: CreateField, ctx: Ctx): { el: HTMLElement; value: () => Valu
       show();
       return { el, value: () => boxes.filter((b) => b.box.checked).map((b) => b.box.value) };
     }
-    case 'user': {
-      // Whoever Jira starts the field with, then me and the team.
-      const first = f.people ?? [];
-      const seen = new Set(first.map((p) => p.id));
-      const el = h(
-        'select',
-        { id },
-        f.required && first.length ? null : h('option', { value: '' }, f.required ? '선택하세요' : '없음'),
-        ...first.map((p) => h('option', { value: p.id }, `${p.name} (기본)`)),
-        h('option', { value: 'me' }, `${ctx.me} (나)`),
-        ...ctx.people.filter((p) => !seen.has(p.id)).map((p) => h('option', { value: p.id }, p.name)),
-      );
-      el.value = first[0]?.id ?? '';
-      return { el, value: () => el.value };
-    }
+    case 'user':
+      return personPicker(f, ctx, id);
     case 'users': {
       // Several people cannot be picked here: they go as Jira set them up.
       const who = f.people ?? [];
@@ -116,7 +197,7 @@ function control(f: CreateField, ctx: Ctx): { el: HTMLElement; value: () => Valu
  * another ticket is linked. `made` is told the key of the new ticket.
  */
 export function openWaybill(backend: Backend, space: SpaceView, me: string, people: Who[], tickets: Ctx['tickets'], spent: boolean, made: (key: string, tag: number) => void) {
-  const ctx: Ctx = { me, people, tickets };
+  const ctx: Ctx = { me, people, tickets, find: (q) => backend.findPeople(q) };
   const types = space.types ?? [];
   if (!types.length) return void toast('이 층의 설정에 만들 수 있는 유형이 없습니다.', 'error');
   const dlg = h('dialog', { class: 'waybill' });

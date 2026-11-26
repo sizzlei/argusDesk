@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
@@ -50,6 +51,17 @@ type serverState struct {
 	feedTag  string
 	feed     *ServerFeed
 	rejected time.Time // when Jira last refused the key from the server
+}
+
+// reveal shows a file in the file manager, selected.
+func reveal(path string) error {
+	switch runtime.GOOS {
+	case "darwin":
+		return exec.Command("open", "-R", path).Start()
+	case "windows":
+		return exec.Command("explorer", "/select,"+path).Start()
+	}
+	return exec.Command("xdg-open", filepath.Dir(path)).Start()
 }
 
 // openBrowser shows a page in the user's browser.

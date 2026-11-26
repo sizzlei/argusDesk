@@ -1161,7 +1161,7 @@ dialog.confirm .buttons {
   font-weight: 600;
 }
 
-.tally.team .who b {
+.tally.of-team .who b {
   color: var(--accent);
 }
 
@@ -2771,4 +2771,59 @@ dialog.keys footer {
   display: flex;
   justify-content: space-between;
   gap: 8px;
+}
+
+ul.files button.file .get {
+  color: var(--quiet);
+  font-weight: 700;
+}
+
+ul.files button.file:disabled {
+  opacity: 0.55;
+  cursor: progress;
+}
+
+/* a person field of the waybill: a text box that searches Jira */
+.wb-person {
+  position: relative;
+}
+
+.wb-people {
+  position: absolute;
+  z-index: 3;
+  top: calc(100% + 4px);
+  right: 0;
+  left: 0;
+  max-height: 220px;
+  margin: 0;
+  padding: 6px;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 10px 28px rgb(31 42 68 / 18%);
+  list-style: none;
+}
+
+.wb-people li {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 8px;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.wb-people li.on {
+  background: #eef2fd;
+}
+
+.wb-people li.none {
+  cursor: default;
+  font-size: 12px;
+}
+
+.wb-people .quiet {
+  flex: none;
+  font-size: 12px;
 }

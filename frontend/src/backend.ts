@@ -32,7 +32,12 @@ export interface Backend {
   createForm(space: string, type: string): Promise<CreateForm>;
   createTicket(space: string, type: string, values: Record<string, string | string[]>, assignee: string): Promise<string>;
   addComment(key: string, text: string, mode: 'internal' | 'public' | 'plain'): Promise<void>;
+  /** People in Jira whose name holds the text, for the person fields of a waybill. */
+  findPeople(query: string): Promise<{ id: string; name: string }[]>;
   attachFile(key: string, name: string, base64: string): Promise<void>;
+  /** Saves an attached file in the Downloads folder; resolves to where it is. */
+  saveAttachment(id: string): Promise<string>;
+  revealFile(path: string): Promise<void>;
   openUrl(url: string): void;
   onBoard(cb: (ev: BoardEvent) => void): void;
   onError(cb: (err: BoardError) => void): void;
@@ -80,7 +85,10 @@ async function real(): Promise<Backend> {
     createForm: (space, type) => call('CreateForm', space, type),
     createTicket: (space, type, values, assignee) => call('CreateTicket', space, type, values, assignee),
     addComment: (key, text, mode) => call('AddComment', key, text, mode),
+    findPeople: (query) => call('FindPeople', query),
     attachFile: (key, name, base64) => call('AttachFile', key, name, base64),
+    saveAttachment: (id) => call('SaveAttachment', id),
+    revealFile: (path) => call('RevealFile', path),
     // Only web pages are handed to the system: never a file or another app's link.
     // https only, except a server on this computer (development)
     openUrl: (url) => void (/^https:\/\/|^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/|$)/i.test(url) && Browser.OpenURL(url)),

@@ -1,9 +1,11 @@
 package jira
 
 import (
+	"bytes"
 	"context"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 )
 
@@ -43,5 +45,43 @@ func TestAttachAndListFiles(t *testing.T) {
 	f := d.Files[0]
 	if f.Name != "계획.png" || f.Size != 2048 || f.Author != "김하늘" || f.Created.IsZero() || f.URL == "" || f.URL[len(f.URL)-len("/rest/api/3/attachment/content/900"):] != "/rest/api/3/attachment/content/900" {
 		t.Errorf("file: %+v", f)
+	}
+}
+
+func TestDownloadFollowsToTheStoreWithoutTheSignIn(t *testing.T) {
+	var leaked string
+	store := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		leaked = r.Header.Get("Authorization")
+		io.WriteString(w, "file-bytes")
+	}))
+	defer store.Close()
+	c := server(t, func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/rest/api/3/attachment/900":
+			io.WriteString(w, `{"filename":"plan.sql","size":10}`)
+		case "/rest/api/3/attachment/content/900":
+			if r.Header.Get("Authorization") == "" {
+				t.Error("Jira was asked without the sign-in")
+			}
+			http.Redirect(w, r, store.URL+"/blob", http.StatusSeeOther)
+		default:
+			t.Errorf("unexpected %s", r.URL.Path)
+		}
+	})
+	ctx := context.Background()
+	info, err := c.FileInfo(ctx, "900")
+	if err != nil || info.Name != "plan.sql" {
+		t.Fatalf("info: %+v %v", info, err)
+	}
+	var buf bytes.Buffer
+	if err := c.Download(ctx, "900", &buf, 1<<20); err != nil || buf.String() != "file-bytes" {
+		t.Fatalf("download: %q %v", buf.String(), err)
+	}
+	if leaked != "" {
+		t.Error("the Jira sign-in was sent on to the file store")
+	}
+	buf.Reset()
+	if err := c.Download(ctx, "900", &buf, 4); err == nil {
+		t.Error("a file over the limit was accepted")
 	}
 }

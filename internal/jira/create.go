@@ -637,3 +637,25 @@ func linkKeys(v any) ([]string, error) {
 	}
 	return keys, nil
 }
+
+// FindPeople looks people up by a part of their name, as Jira's own person
+// fields do. Only people's accounts that are in use are returned (no apps,
+// no customers of a service desk).
+func (c *Client) FindPeople(ctx context.Context, query string) ([]Person, error) {
+	var found []struct {
+		AccountID   string `json:"accountId"`
+		AccountType string `json:"accountType"`
+		DisplayName string `json:"displayName"`
+		Active      bool   `json:"active"`
+	}
+	if err := c.do(ctx, http.MethodGet, "/rest/api/3/user/search?maxResults=20&query="+url.QueryEscape(query), nil, &found); err != nil {
+		return nil, err
+	}
+	out := []Person{}
+	for _, u := range found {
+		if u.Active && u.AccountType == "atlassian" && u.AccountID != "" {
+			out = append(out, Person{ID: u.AccountID, Name: u.DisplayName})
+		}
+	}
+	return out, nil
+}

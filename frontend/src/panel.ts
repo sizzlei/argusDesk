@@ -440,9 +440,27 @@ async function upload(w: Win, list: File[], backend: Backend) {
   else renderDetail(w, backend);
 }
 
-/** The files of a ticket and the way to add more. */
+/** Saves an attached file in the Downloads folder and offers to show it there. */
+async function download(f: { id: string; name: string }, backend: Backend, button: HTMLButtonElement) {
+  button.disabled = true;
+  try {
+    const path = await backend.saveAttachment(f.id);
+    const name = path.split(/[\\/]/).pop() ?? f.name;
+    toast(`다운로드 폴더에 저장했습니다: ${name}`, 'info', [{ label: '폴더에서 보기', run: () => void backend.revealFile(path).catch((e) => toast(errText(e), 'error')) }]);
+  } catch (e) {
+    toast(errText(e), 'error');
+  } finally {
+    button.disabled = false;
+  }
+}
+
+/**
+ * The files of a ticket: every ticket lists them and lets them be saved; on a
+ * floor that takes files, more can be added.
+ */
 function files(w: Win, d: TicketDetail, backend: Backend) {
   const list = d.files ?? [];
+  if (!w.attach && !list.length) return [];
   const pick = h('input', { type: 'file', multiple: true, hidden: true });
   pick.addEventListener('change', () => void upload(w, [...(pick.files ?? [])], backend));
   return [
@@ -451,23 +469,22 @@ function files(w: Win, d: TicketDetail, backend: Backend) {
       ? h(
           'ul',
           { class: 'files' },
-          ...list.map((f) =>
-            h(
-              'li',
-              {},
-              h('button', { type: 'button', class: 'file', title: 'Jira에서 열기', onclick: () => backend.openUrl(f.url) }, h('i', { class: /^image\//.test(f.mime) ? 'ico img' : 'ico', 'aria-hidden': 'true' }), h('span', { class: 'name' }, f.name)),
-              h('span', { class: 'quiet' }, `${sizeText(f.size)} · ${f.author} · ${dateTime(f.created)}`),
-            ),
-          ),
+          ...list.map((f) => {
+            const save = h('button', { type: 'button', class: 'file', title: '다운로드 폴더에 저장' }, h('i', { class: /^image\//.test(f.mime) ? 'ico img' : 'ico', 'aria-hidden': 'true' }), h('span', { class: 'name' }, f.name), h('span', { class: 'get', 'aria-hidden': 'true' }, '↓'));
+            save.addEventListener('click', () => void download(f, backend, save));
+            return h('li', {}, save, h('span', { class: 'quiet' }, `${sizeText(f.size)} · ${f.author} · ${dateTime(f.created)}`));
+          }),
         )
       : null,
-    h(
-      'p',
-      { class: 'attach-bar' },
-      pick,
-      h('button', { type: 'button', disabled: w.sending > 0, onclick: () => pick.click() }, w.sending > 0 ? `${w.sending}개 올리는 중…` : '파일 추가'),
-      h('span', { class: 'quiet' }, '이 창에 끌어다 놓거나 붙여넣어도 됩니다.'),
-    ),
+    w.attach
+      ? h(
+          'p',
+          { class: 'attach-bar' },
+          pick,
+          h('button', { type: 'button', disabled: w.sending > 0, onclick: () => pick.click() }, w.sending > 0 ? `${w.sending}개 올리는 중…` : '파일 추가'),
+          h('span', { class: 'quiet' }, '이 창에 끌어다 놓거나 붙여넣어도 됩니다.'),
+        )
+      : null,
   ];
 }
 
@@ -525,7 +542,7 @@ function renderDetail(w: Win, backend: Backend) {
     // A ticket with forms and no description does not need an empty heading.
     hasDescription || forms.length === 0 ? h('h3', {}, '설명') : null,
     hasDescription ? rich(d.descriptionHtml, backend) : forms.length === 0 ? h('p', { class: 'quiet' }, '설명이 없습니다.') : null,
-    ...(w.attach ? files(w, d, backend) : [d.attachments ? h('p', { class: 'quiet' }, `첨부파일 ${d.attachments}개는 Jira에서 볼 수 있습니다.`) : null]),
+    ...files(w, d, backend),
     h('h3', {}, d.comments.length ? `댓글 ${d.comments.length}개` : '댓글'),
     commentSlot(w),
     d.comments.length

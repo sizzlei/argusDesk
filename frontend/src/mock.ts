@@ -452,7 +452,7 @@ export function mockBackend(): Backend {
           ...(written.get(key) ?? []),
         ],
         attachments: b?.space === 'internal' ? (attached.get(key)?.length ?? 0) : 1,
-        files: attached.get(key) ?? [],
+        files: b?.space === 'internal' ? (attached.get(key) ?? []) : [{ id: 'f0', name: '요청서.pdf', size: 184320, mime: 'application/pdf', author: b?.reporter ?? '', created: new Date(now - 3 * HOUR).toISOString(), url: '' }],
         forms: [
           {
             name: '스키마 변경 요청서',
@@ -514,6 +514,16 @@ export function mockBackend(): Backend {
       await pause();
       move(find(key), approve ? 'work' : 'returns');
     },
+    findPeople: async (query) => {
+      await pause();
+      const all = [...people.map(([id, name]) => ({ id, name })), { id: 'u8', name: '오세린 내부통제' }, { id: 'u9', name: '한지우 인프라' }, { id: 'u10', name: '한서연 플랫폼' }, { id: 'u11', name: '정민서 커머스' }, { id: 'u12', name: '문가은 데이터' }];
+      return all.filter((p) => p.name.toLowerCase().includes(query.toLowerCase()));
+    },
+    saveAttachment: async (id) => {
+      await pause();
+      return `~/Downloads/${[...attached.values()].flat().find((f) => f.id === id)?.name ?? '요청서.pdf'}`;
+    },
+    revealFile: async () => {},
     attachFile: async (key, name, base64) => {
       await pause();
       const size = Math.floor((base64.length * 3) / 4);

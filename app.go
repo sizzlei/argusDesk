@@ -49,6 +49,7 @@ type App struct {
 	authError   string
 	engine      *board.Engine
 	stopPolling context.CancelFunc
+	saved       map[string]bool // attached files saved to the Downloads folder in this run
 	kick        chan struct{}
 
 	srv serverState // the optional team server
@@ -430,6 +431,88 @@ func (a *App) AttachFile(key, name, data string) error {
 	a.notify.touched(key)
 	a.Refresh()
 	return nil
+}
+
+// maxDownload is the largest attached file the app saves.
+const maxDownload = 500 << 20
+
+// SaveAttachment saves a file attached to a ticket in the user's Downloads
+// folder and returns where it is. A file of that name already there is kept:
+// the new one gets a number.
+func (a *App) SaveAttachment(id string) (string, error) {
+	c, _, err := a.jira()
+	if err != nil {
+		return "", err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancel()
+	info, err := c.FileInfo(ctx, id)
+	if err != nil {
+		return "", err
+	}
+	// The name comes from whoever attached the file: only its last part is used.
+	name := strings.TrimSpace(filepath.Base(strings.ReplaceAll(info.Name, "\\", "/")))
+	name = strings.Map(func(r rune) rune {
+		if r < 32 || strings.ContainsRune(`<>:"/\|?*`, r) {
+			return '_'
+		}
+		return r
+	}, name)
+	if name == "" || name == "." || name == ".." {
+		name = "attachment-" + id
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("다운로드 폴더를 찾을 수 없습니다: %w", err)
+	}
+	dir := filepath.Join(home, "Downloads")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", fmt.Errorf("다운로드 폴더를 쓸 수 없습니다: %w", err)
+	}
+	ext := filepath.Ext(name)
+	stem := strings.TrimSuffix(name, ext)
+	var f *os.File
+	for n := 0; n < 1000; n++ {
+		try := name
+		if n > 0 {
+			try = fmt.Sprintf("%s (%d)%s", stem, n, ext)
+		}
+		f, err = os.OpenFile(filepath.Join(dir, try), os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+		if err == nil || !errors.Is(err, os.ErrExist) {
+			break
+		}
+	}
+	if err != nil {
+		return "", fmt.Errorf("파일을 만들 수 없습니다: %w", err)
+	}
+	path := f.Name()
+	err = c.Download(ctx, id, f, maxDownload)
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	if err != nil {
+		_ = os.Remove(path)
+		return "", err
+	}
+	a.mu.Lock()
+	if a.saved == nil {
+		a.saved = map[string]bool{}
+	}
+	a.saved[path] = true
+	a.mu.Unlock()
+	return path, nil
+}
+
+// RevealFile shows a file this app saved in the file manager. Other paths
+// are refused.
+func (a *App) RevealFile(path string) error {
+	a.mu.Lock()
+	ok := a.saved[path]
+	a.mu.Unlock()
+	if !ok {
+		return errors.New("이 앱이 저장한 파일이 아닙니다")
+	}
+	return reveal(path)
 }
 
 // Refresh asks for a refresh now instead of waiting for the next tick.
