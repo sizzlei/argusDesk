@@ -49,3 +49,6 @@ config/*.yaml
 !config/example.yaml
 dba-center*.yaml
 *.local.yaml
+
+# 저장소에 올리지 않는 문서
+docs/
