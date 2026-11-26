@@ -9,7 +9,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"html"
 	"io"
 	"net"
 	"net/http"
@@ -72,19 +71,17 @@ func Login(ctx context.Context, base string, ep Endpoints, open func(url string)
 		case subtle.ConstantTimeCompare([]byte(q.Get("state")), []byte(state)) != 1:
 			res.err = errors.New("로그인 응답이 이 요청의 것이 아닙니다")
 		case q.Get("error") != "":
-			res.err = fmt.Errorf("로그인이 거부되었습니다: %s", q.Get("error"))
+			res.err = errors.New(refusal(q.Get("error")))
 		case q.Get("code") == "":
 			res.err = errors.New("로그인 응답에 코드가 없습니다")
 		default:
 			res.code = q.Get("code")
 		}
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.Header().Set("Cache-Control", "no-store")
-		msg := "로그인했습니다. 이 창을 닫고 ArgusDesk로 돌아가세요."
+		why := ""
 		if res.err != nil {
-			msg = res.err.Error()
+			why = res.err.Error()
 		}
-		fmt.Fprintf(w, "<!doctype html><meta charset=utf-8><title>ArgusDesk</title><p style=\"font:16px sans-serif;margin:3em\">%s</p>", html.EscapeString(msg))
+		callbackPage(w, why)
 		select {
 		case got <- res: // only the first answer counts
 		default:
