@@ -2184,3 +2184,171 @@ body.wrap-code .code pre {
   text-decoration: underline;
   box-shadow: none;
 }
+
+/* my state, behind my avatar */
+#profile {
+  position: absolute;
+  top: 66px;
+  right: 12px;
+  z-index: 12;
+  width: min(400px, calc(100% - 24px));
+  max-height: calc(100% - 90px);
+  padding: 14px 16px 16px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: 0 12px 32px rgb(31 42 68 / 16%);
+}
+
+#profile .who {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+#profile .who > span:last-child {
+  display: grid;
+  line-height: 1.3;
+}
+
+#profile h3 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 16px 0 6px;
+  font-size: 13px;
+}
+
+#profile p {
+  margin: 4px 0 0;
+  font-size: 12px;
+}
+
+#profile .fatigue {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+#profile .fatigue .bar {
+  flex: 1;
+  height: 10px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--paper);
+}
+
+#profile .fatigue .bar i {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: #3fb37f;
+}
+
+#profile .fatigue.lv1 .bar i {
+  background: #e9a23b;
+}
+
+#profile .fatigue.lv2 .bar i {
+  background: var(--old);
+}
+
+#profile .stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+
+#profile .stat {
+  display: grid;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--paper);
+}
+
+#profile .stat dt {
+  color: var(--quiet);
+  font-size: 12px;
+}
+
+#profile .stat dd {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+#profile .stat .quiet {
+  font-size: 11px;
+}
+
+#profile .rooms {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 8px 0;
+}
+
+#profile .rooms em {
+  margin-left: 5px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--old);
+  color: #fff;
+  font-size: 11px;
+  font-style: normal;
+}
+
+#profile .notice .tag {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+}
+
+#profile .actions {
+  display: grid;
+  gap: 4px;
+  margin: 0 0 8px;
+  padding: 0;
+  list-style: none;
+}
+
+#profile .actions button {
+  width: 100%;
+  text-align: left;
+}
+
+#profile .actions button.danger {
+  color: var(--old);
+}
+
+#profile .actions .quiet {
+  display: block;
+  padding: 2px 4px 4px;
+  font-size: 12px;
+}
+
+/* a teammate in the spotlight: their boxes stay bright */
+.team button.member.spot {
+  box-shadow: 0 0 0 3px rgb(59 91 219 / 35%);
+  background: var(--paper);
+}
+
+/* legend: the tape that says who holds a box */
+#legend i.tape {
+  width: 16px;
+  height: 5px;
+  border-radius: 2px;
+}
+
+#legend i.tape.none {
+  opacity: 0.6;
+}
+
+#profile .notice .tag {
+  grid-row: span 2;
+  align-self: center;
+  justify-self: center;
+}

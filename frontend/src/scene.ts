@@ -35,6 +35,7 @@ export class Scene {
   private sprites = new Map<string, Sprite>();
   private space = 0;
   private snap: Snapshot | null = null;
+  private spot = ''; // the teammate whose boxes are lit
   private hidden: ReadonlySet<string> = new Set(); // boxes the view filter hides
   bounds = { x: 0, y: 0, w: 1, h: 1 };
   private selected = '';
@@ -135,6 +136,12 @@ export class Scene {
     this.away = away;
     this.looks = looks;
     if (!same && this.snap) this.update(this.snap, []);
+  }
+
+  /** Lights up one teammate's boxes and fades the rest ("" = everyone's). */
+  setSpot(id: string) {
+    this.spot = id;
+    this.sprites.forEach((sp) => this.paint(sp));
   }
 
   /** Sets the zoom, keeping the point (cx, cy) of the window where it is. */
@@ -615,7 +622,9 @@ export class Scene {
   private paint(sp: Sprite, now = this.snap ? Date.parse(this.snap.fetchedAt) : Date.now()) {
     const b = sp.box;
     const chosen = b.key === this.selected;
-    drawBox(sp.g, b, sp.hover || chosen);
+    drawBox(sp.g, b, sp.hover || chosen, b.assigneeId ? lookOf(b.assigneeId, this.looks).body : null);
+    // With a teammate in the spotlight, everyone else's boxes fade back.
+    sp.body.alpha = this.spot && b.assigneeId !== this.spot && !chosen ? 0.22 : 1;
     if (chosen) sp.g.ellipse(0, 2, 36, 18).stroke({ width: 2.5, color: ACCENT });
     sp.body.y = chosen ? -8 : sp.hover ? -4 : 0;
     sp.num.text = b.key.split('-').pop() ?? b.key;

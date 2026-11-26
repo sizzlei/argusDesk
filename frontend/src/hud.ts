@@ -10,16 +10,10 @@ import { type Filter, type Scope, extraCount } from './view';
 
 export interface HudHooks {
   refresh(): void;
-  reloadConfig(): void;
-  chooseConfig(): void;
-  checkUpdate(): void;
-  logout(): void;
-  serverLogin(): void;
-  forgetServer(): void;
-  setNotify(on: boolean): void;
-  vacation(): void;
-  avatar(): void;
-  windows: number; // open ticket windows
+  profileOpen: boolean;
+  toggleProfile(): void;
+  spot: string; // the teammate whose boxes are lit ("" = everyone's)
+  setSpot(id: string): void;
   filter: Filter; // which boxes the room shows
   setFilter(next: Filter): void;
   filtersOpen: boolean;
@@ -27,14 +21,12 @@ export interface HudHooks {
   search(): void;
   unassigned: { count: number; stale: number }; // open boxes nobody holds
   notices: { approvals: number; unread: number; open: boolean; toggle(): void };
-  closeWindows(): void;
   setSpace(index: number): void;
   game: GameStats | null;
   gameOpen: boolean;
   toggleGame(): void;
 }
 
-let menuOpen = false;
 
 const SCOPES: [Scope, string, string][] = [
   ['all', '전체', '팀 전체의 상자를 봅니다'],
@@ -57,7 +49,7 @@ const TIRED = ['여유', '피곤', '지침'];
  * The team at a glance: one avatar each, ringed by how worn they are. No
  * names: the picture is enough among four people. Mine comes first, with a bar.
  */
-function team(snap: Snapshot | null, game: GameStats | null, menuOpen: boolean, toggleMenu: () => void) {
+function team(snap: Snapshot | null, game: GameStats | null, hooks: HudHooks) {
   if (!snap || !game) return null;
   const seen = new Set<string>();
   const people = snap.members.filter((m) => !seen.has(m.id) && seen.add(m.id)).sort((a, b) => Number(b.me) - Number(a.me));
@@ -65,23 +57,29 @@ function team(snap: Snapshot | null, game: GameStats | null, menuOpen: boolean, 
   const away = new Set(game.away.filter((a) => a.active).map((a) => a.id));
   return h(
     'div',
-    { class: 'team', role: 'list', 'aria-label': '팀 피로도' },
+    { class: 'team', role: 'list', 'aria-label': '팀' },
     ...people.map((m) => {
       const lv = game.fatigue[m.id] ?? 0;
       const state = away.has(m.id) ? '휴가 중' : TIRED[lv];
       const cls = `member lv${lv}${m.me ? ' me' : ''}${away.has(m.id) ? ' away' : ''}`;
       const icon = avatarIcon(lookOf(m.id, game.avatars), 26);
-      // My own avatar is also the way into the menu, and shows my fatigue as a number.
+      // My own avatar opens my state, and shows my fatigue as a number.
       if (m.me) {
         return h(
           'button',
-          { class: cls, role: 'listitem', 'aria-haspopup': 'menu', 'aria-expanded': String(menuOpen), 'aria-label': `내 메뉴 · 피로도 ${game.myFatigue}% (${state})`, title: `피로도 ${game.myFatigue}% · ${state} · 눌러서 메뉴 열기`, onclick: toggleMenu },
+          { class: cls, role: 'listitem', 'aria-expanded': String(hooks.profileOpen), 'aria-controls': 'profile', 'aria-label': `내 상태 · 피로도 ${game.myFatigue}% (${state})`, title: `피로도 ${game.myFatigue}% · ${state} · 눌러서 내 상태 보기`, onclick: hooks.toggleProfile },
           icon,
           h('span', { class: 'meter' }, h('i', { style: `width:${Math.min(100, game.myFatigue)}%` })),
           h('span', { class: 'pct' }, `${game.myFatigue}%`),
         );
       }
-      return h('span', { class: cls, role: 'listitem', title: state, 'aria-label': state }, icon);
+      // A teammate's avatar lights up their boxes: the tape on a box has the colour of its holder's clothes.
+      const on = hooks.spot === m.id;
+      return h(
+        'button',
+        { class: `${cls}${on ? ' spot' : ''}`, role: 'listitem', 'aria-pressed': String(on), 'aria-label': `${m.name} (${state}) 상자만 밝게 보기`, title: `${m.name} · ${state} · 눌러서 이 사람의 상자만 밝게 보기`, onclick: () => hooks.setSpot(on ? '' : m.id) },
+        icon,
+      );
     }),
   );
 }
@@ -90,8 +88,6 @@ export function renderHud(state: AppState, snap: Snapshot | null, space: number,
   const hud = document.getElementById('hud')!;
   // Returned boxes leave the building, so they have no room and no counter.
   const zones = (space < 0 ? [] : (snap?.spaces[space]?.zones ?? [])).filter((z) => z.kind !== 'returned');
-  const item = (label: string, run: () => void) =>
-    h('button', { role: 'menuitem', onclick: () => ((menuOpen = false), run()) }, label);
 
   // Spaces are floors of one building: the floor buttons stand beside it,
   // highest floor on top, each with its open boxes.
@@ -124,9 +120,8 @@ export function renderHud(state: AppState, snap: Snapshot | null, space: number,
   );
 
   renderGame(hooks.game, hooks.gameOpen, hooks.toggleGame);
-  const toggleMenu = () => ((menuOpen = !menuOpen), renderHud(state, snap, space, lastError, backend, hooks));
-  // With the team strip showing, my avatar opens the menu and the name is not shown.
-  const strip = team(snap, hooks.game, menuOpen, toggleMenu);
+  // With the team strip showing, my avatar opens my state and the name is not shown.
+  const strip = team(snap, hooks.game, hooks);
 
   fill(
     hud,
@@ -209,30 +204,7 @@ export function renderHud(state: AppState, snap: Snapshot | null, space: number,
       ),
       h('span', { class: 'quiet' }, snap ? `${clock(snap.fetchedAt)} 갱신` : '불러오는 중'),
       h('button', { onclick: hooks.refresh, title: '지금 Jira에서 다시 읽기' }, '새로 고침'),
-      h(
-        'div',
-        { class: strip ? 'menu bare' : 'menu' },
-        strip ? null : h('button', { 'aria-haspopup': 'menu', 'aria-expanded': String(menuOpen), onclick: toggleMenu }, state.me || '메뉴'),
-        menuOpen
-          ? h(
-              'div',
-              { class: 'menu-list', role: 'menu' },
-              state.server ? h('p', { class: 'quiet' }, `팀 서버 ${state.server.replace(/^https?:\/\//, '')}`) : null,
-              item(state.server ? '서버에서 설정 다시 받기' : '설정 다시 읽기', hooks.reloadConfig),
-              state.server ? null : item('설정 파일 바꾸기', hooks.chooseConfig),
-              state.server && state.serverNeeds === 'login' ? item('팀 서버에 다시 로그인', hooks.serverLogin) : null,
-              state.server ? item('팀 서버 연결 끊기', hooks.forgetServer) : null,
-              hooks.windows > 1 ? item(`티켓 창 모두 닫기 (${hooks.windows})`, hooks.closeWindows) : null,
-              item('아바타 선택', hooks.avatar),
-              item('휴가 등록', hooks.vacation),
-              item(state.notify ? '알림 끄기' : '알림 켜기', () => hooks.setNotify(!state.notify)),
-              state.notify && state.notifyProblem ? h('p', { class: 'quiet' }, `알림을 보낼 수 없습니다: ${state.notifyProblem}`) : null,
-              item('업데이트 확인', hooks.checkUpdate),
-              item('로그아웃', hooks.logout),
-              h('p', { class: 'quiet' }, `ArgusDesk v${state.version}`),
-            )
-          : null,
-      ),
+      strip ? null : h('button', { 'aria-expanded': String(hooks.profileOpen), 'aria-controls': 'profile', onclick: hooks.toggleProfile }, state.me || '내 상태'),
     ),
   );
 }

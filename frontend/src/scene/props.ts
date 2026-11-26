@@ -47,18 +47,24 @@ export const BOX = 0.4; // half-size of a box in tiles
 export const BOX_H = 27; // box height on screen
 
 /** A cardboard box whose base centre sits at (0, 0). */
-export function drawBox(g: Graphics, b: Box, lit: boolean) {
+/** A box. `holder` is the colour of its holder's clothes (null = nobody holds it). */
+export function drawBox(g: Graphics, b: Box, lit: boolean, holder: number | null = null) {
   const step = ageStep(b);
   const c = b.note ? UNSCHEDULED : AGE[step];
   g.clear();
   shadow(g, -BOX, -BOX, BOX * 2, BOX * 2);
   block(g, -BOX, -BOX, BOX * 2, BOX * 2, BOX_H, lit ? tint(c, 0.18) : c);
-  // tape across the top: accent colour marks my boxes
+  // tape across the top: the colour of whoever holds the box, wider on mine; plain when nobody does
   const m1 = iso(0, -BOX);
   const m2 = iso(0, BOX);
-  g.moveTo(m1.x, m1.y - BOX_H)
-    .lineTo(m2.x, m2.y - BOX_H)
-    .stroke({ width: b.mine ? 5 : 3, color: b.mine ? ACCENT : shade(c, 0.16), alpha: b.mine ? 1 : 0.6 });
+  const tape = (width: number, color: number, alpha = 1) => g.moveTo(m1.x, m1.y - BOX_H).lineTo(m2.x, m2.y - BOX_H).stroke({ width, color, alpha });
+  if (holder === null) {
+    tape(3, shade(c, 0.16), 0.6);
+  } else {
+    // a white edge keeps the colour readable on a box of any age; mine is wider
+    tape(b.mine ? 11 : 8, 0xffffff);
+    tape(b.mine ? 7 : 5, holder);
+  }
   // waybill on the left face: white label with a stripe in the request type's colour
   const l = iso(-BOX, BOX);
   const d = iso(BOX, BOX);

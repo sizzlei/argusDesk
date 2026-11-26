@@ -1,3 +1,4 @@
+import { lookOf } from './avatars';
 import { connect } from './backend';
 import { news } from './game';
 import { filtersOpen, renderFilters, toggleFilters } from './filters';
@@ -6,6 +7,7 @@ import { renderHud } from './hud';
 import { addNotes, noticeCount, noticesOpen, renderNotices, toggleNotices } from './notices';
 import { closeTickets, openTicket, openTickets, syncTickets } from './panel';
 import { AGE, Scene, TAGS } from './scene';
+import { type ProfileAction, profileOpen, renderProfile, toggleProfile } from './profile';
 import { renderSetup } from './setup';
 import type { AppState, Box, Change, GameStats, Snapshot } from './types';
 import { checkForUpdates, initUpdates } from './update';
@@ -22,6 +24,7 @@ async function boot() {
   let selected: Box | null = null;
   let game: GameStats | null = null;
   let gameOpen = false;
+  let spot = ''; // the teammate whose boxes are lit
   // The filter narrows what the room and the counters show.
   let filter = loadFilter();
   let hidden = new Set<string>();
@@ -64,7 +67,7 @@ async function boot() {
     onHover: (box, x, y) => {
       tooltip.hidden = !box;
       if (!box) return;
-      tooltip.textContent = `${box.key} · ${box.summary}`;
+      tooltip.textContent = `${box.key} · ${box.summary} · ${box.assignee || '미배정'}`;
       tooltip.style.left = `${x + 14}px`;
       tooltip.style.top = `${y + 14}px`;
     },
@@ -87,28 +90,85 @@ async function boot() {
     scene.focus(box.key);
     hud();
   };
+  // The panels on the right (notifications, filters, my state) take the same place: one at a time.
+  const only = (which: 'notices' | 'filters' | 'profile' | '') => {
+    if (which !== 'notices') toggleNotices(false);
+    if (which !== 'filters') toggleFilters(false);
+    if (which !== 'profile') toggleProfile(false);
+  };
+  /** The settings that sit under my state. */
+  const actions = (): ProfileAction[] => {
+    const setNotify = (on: boolean) =>
+      void backend.setNotify(on).then((next) => {
+        apply(next);
+        toast(on ? (next.notifyProblem ? `알림을 켰지만 보낼 수 없습니다: ${next.notifyProblem}` : '알림을 켰습니다.') : '알림을 껐습니다.');
+      }, fail);
+    const list: (ProfileAction | false)[] = [
+      {
+        label: '아바타 선택',
+        run: () => {
+          const me = snap?.members.find((m) => m.me);
+          openAvatarPicker(backend, me ? game?.avatars[me.id] : undefined);
+        },
+      },
+      { label: '휴가 등록', run: () => void openVacation(backend).catch(fail) },
+      { label: state.notify ? '알림 끄기' : '알림 켜기', run: () => setNotify(!state.notify), note: state.notify && state.notifyProblem ? `알림을 보낼 수 없습니다: ${state.notifyProblem}` : undefined },
+      openTickets() > 1 && { label: `티켓 창 모두 닫기 (${openTickets()})`, run: () => closeTickets(tickets) },
+      { label: state.server ? '서버에서 설정 다시 받기' : '설정 다시 읽기', run: () => void backend.reloadConfig().then(apply, fail) },
+      !state.server && { label: '설정 파일 바꾸기', run: () => void backend.chooseConfig().then(apply, fail) },
+      !!state.server &&
+        state.serverNeeds === 'login' && {
+          label: '팀 서버에 다시 로그인',
+          run: () => {
+            toast('브라우저에서 팀 서버에 로그인해 주세요.');
+            void backend.connectServer(state.server).then(apply, fail);
+          },
+        },
+      !!state.server && { label: '팀 서버 연결 끊기', run: () => void backend.forgetServer().then(apply, fail) },
+      { label: '업데이트 확인', run: () => void checkForUpdates(true) },
+      { label: '로그아웃', run: () => void backend.logout().then(apply, fail), danger: true },
+    ];
+    return list.filter((a): a is ProfileAction => !!a);
+  };
   const hud = () => {
     renderNotices(snap, visit, () => hud());
     const shown = view();
     renderFilters(snap, space, filter, shown?.boxes.length ?? 0, snap?.boxes.length ?? 0, setFilter, () => hud());
+    renderProfile(
+      state,
+      snap,
+      game,
+      actions(),
+      visit,
+      () => {
+        only('');
+        gameOpen = true;
+        hud();
+      },
+      () => hud(),
+    );
     renderHud(state, shown, space, lastError, backend, {
       refresh: () => void backend.refresh(),
-      reloadConfig: () => void backend.reloadConfig().then(apply, fail),
-      chooseConfig: () => void backend.chooseConfig().then(apply, fail),
-      checkUpdate: () => void checkForUpdates(true),
-      logout: () => void backend.logout().then(apply, fail),
-      serverLogin: () => {
-        toast('브라우저에서 팀 서버에 로그인해 주세요.');
-        void backend.connectServer(state.server).then(apply, fail);
+      profileOpen: profileOpen(),
+      toggleProfile: () => {
+        const next = !profileOpen();
+        only(next ? 'profile' : '');
+        toggleProfile(next);
+        hud();
       },
-      forgetServer: () => void backend.forgetServer().then(apply, fail),
-      windows: openTickets(),
+      spot,
+      setSpot: (id) => {
+        spot = id;
+        scene.setSpot(id);
+        hud();
+      },
       filter,
       setFilter,
       filtersOpen: filtersOpen(),
       toggleFilters: () => {
-        toggleFilters();
-        if (filtersOpen()) toggleNotices(false);
+        const next = !filtersOpen();
+        only(next ? 'filters' : '');
+        toggleFilters(next);
         hud();
       },
       search: openFinder,
@@ -117,22 +177,12 @@ async function boot() {
         ...noticeCount(snap),
         open: noticesOpen(),
         toggle: () => {
-          toggleNotices();
-          if (noticesOpen()) toggleFilters(false);
+          const next = !noticesOpen();
+          only(next ? 'notices' : '');
+          toggleNotices(next);
           hud();
         },
       },
-      closeWindows: () => closeTickets(tickets),
-      vacation: () => void openVacation(backend).catch(fail),
-      avatar: () => {
-        const me = snap?.members.find((m) => m.me);
-        openAvatarPicker(backend, me ? game?.avatars[me.id] : undefined);
-      },
-      setNotify: (on) =>
-        void backend.setNotify(on).then((next) => {
-          apply(next);
-          toast(on ? (next.notifyProblem ? `알림을 켰지만 보낼 수 없습니다: ${next.notifyProblem}` : '알림을 켰습니다.') : '알림을 껐습니다.');
-        }, fail),
       game,
       gameOpen,
       toggleGame: () => {
@@ -181,10 +231,19 @@ async function boot() {
       div.append(b, ...items);
       return div;
     };
+    const people = () => {
+      const seen = new Set<string>();
+      return (snap?.members ?? []).filter((m) => !seen.has(m.id) && seen.add(m.id));
+    };
     const ages = ['여유', '기준 절반', '기준 초과', '3배 초과', '10배 초과'];
     el.replaceChildren(
       row('유형', [...types].sort().map(([name, tag]) => item('tag', TAGS[tag] ?? TAGS.gray, name.replace(/^\[[^\]]+\]\s*/, '')))),
       row('묵음', ages.map((t, i) => item('', AGE[i], t))),
+      // the tape across a box has the colour of its holder's clothes
+      row('담당', [
+        ...people().map((m) => item('tape', lookOf(m.id, game?.avatars ?? {}).body, m.me ? `${m.name} (나)` : m.name)),
+        item('tape none', 0xb9c0cc, '미배정'),
+      ]),
     );
   };
   /** Takes new game statistics and celebrates what was just earned. */
