@@ -16,6 +16,13 @@ import (
 //go:embed all:frontend/dist
 var assets embed.FS
 
+// The icon of the app. The bundle carries it too, but the operating system
+// keeps icons it has seen: set from here, the Dock and the window show the
+// current one whatever is cached.
+//
+//go:embed build/appicon.png
+var appIcon []byte
+
 // fresh keeps the page itself out of the webview's cache. The scripts and
 // styles carry a hash of their content in their names and may be kept, but
 // the page that names them must be asked for every time: otherwise a webview
@@ -34,6 +41,7 @@ func main() {
 	app := application.New(application.Options{
 		Name:        "ArgusDesk",
 		Description: "Jira 서비스데스크를 상자와 구역으로 보여주는 데스크톱 앱",
+		Icon:        appIcon,
 		Services: []application.Service{
 			application.NewService(svc),
 		},
