@@ -620,7 +620,7 @@ pre.error {
 
 #toasts {
   position: fixed;
-  bottom: 16px;
+  top: 70px; /* under the top bar: the room counters and panels keep the corners */
   left: 50%;
   z-index: 50;
   display: grid;
@@ -3856,4 +3856,29 @@ button.deploy-btn .n {
   gap: 6px;
   padding: 4px 0;
   cursor: pointer;
+}
+
+/* a note said again: counted, not stacked */
+.toast .times {
+  padding: 0 6px;
+  border-radius: 999px;
+  background: rgb(255 255 255 / 18%);
+  font-size: 12px;
+}
+
+.toast {
+  animation: toast-in 0.18s ease-out;
+}
+
+.toast.leaving {
+  opacity: 0;
+  transform: translateY(-6px);
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
 }

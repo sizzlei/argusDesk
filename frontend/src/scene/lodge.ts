@@ -18,7 +18,7 @@ export function drawLodge(s: Scene) {
   s.belts = [];
   s.belt = null;
   s.lamps = [];
-  s.lampLayer.clear();
+  s.lampLayer.removeChildren().forEach((c) => c.destroy());
   const here = s.away.filter((a) => a.active);
   const beds = Math.max(4, here.length);
   const width = Math.max(ZW, 1.2 + beds * 1.7);

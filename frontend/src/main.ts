@@ -438,7 +438,7 @@ async function boot() {
         const order = ['all', 'mine', 'unassigned'] as const;
         const scope = order[(order.indexOf(filter.scope as (typeof order)[number]) + 1) % order.length];
         setFilter({ ...filter, scope });
-        toast({ all: '전체 보기', mine: '내 작업만 보기', unassigned: '미배정만 보기' }[scope]);
+        toast({ all: '전체 보기', mine: '내 작업만 보기', unassigned: '미배정만 보기' }[scope], 'info', [], 'scope');
       },
       notices: () => panel('notices', noticesOpen(), toggleNotices),
       profile: () => panel('profile', profileOpen(), toggleProfile),
@@ -524,18 +524,16 @@ async function boot() {
     setStrength(next.myFatigue);
     scene.setTeam(next.fatigue ?? {}, next.away ?? [], next.avatars ?? {});
     hud();
-    if (fresh.myLevel) {
-      toast(`레벨 업! 나 Lv.${fresh.myLevel}`);
+    // Everything won at once is said once, with one celebration.
+    const won = [
+      fresh.myLevel ? `레벨 업! 나 Lv.${fresh.myLevel}` : '',
+      fresh.teamLevel ? `센터 레벨 업! Lv.${fresh.teamLevel}` : '',
+      fresh.badges.length === 1 ? `배지 획득: ${fresh.badges[0].name} · ${fresh.badges[0].desc}` : fresh.badges.length ? `배지 ${fresh.badges.length}개 획득: ${fresh.badges.map((b) => b.name).join(', ')}` : '',
+    ].filter(Boolean);
+    if (won.length) {
+      toast(won.join(' · '), 'info', fresh.badges.length ? [{ label: '배지 보기', run: () => ((gameOpen = true), hud()) }] : []);
       scene.celebrate();
     }
-    if (fresh.teamLevel) {
-      toast(`센터 레벨 업! Lv.${fresh.teamLevel}`);
-      scene.celebrate();
-    }
-    fresh.badges.forEach((b) => {
-      toast(`배지 획득: ${b.name} · ${b.desc}`);
-      scene.celebrate();
-    });
   };
   const fail = (e: unknown) => void toast(errText(e), 'error');
 

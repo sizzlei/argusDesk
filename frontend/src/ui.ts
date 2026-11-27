@@ -27,18 +27,54 @@ export interface ToastAction {
 }
 
 /** Shows a message at the bottom of the window. Messages with actions stay until dismissed. */
-export function toast(message: string, kind: 'info' | 'error' = 'info', actions: ToastAction[] = []): HTMLElement {
+const MAX_TOASTS = 3; // more than this at once: the oldest plain notes make way
+
+/**
+ * Shows a short note. `key`: notes of one kind (the current view, say) replace
+ * each other instead of stacking.
+ */
+export function toast(message: string, kind: 'info' | 'error' = 'info', actions: ToastAction[] = [], key = ''): HTMLElement {
   const host = document.getElementById('toasts')!;
+  if (key) host.querySelectorAll<HTMLElement>(`.toast[data-key="${key}"]`).forEach((t) => t.remove());
+  // The same note again while it is still up: it stays, counted, and its time starts over.
+  const same = [...host.querySelectorAll<HTMLElement>('.toast')].find((t) => t.dataset.text === message && t.dataset.kind === kind);
+  if (same) {
+    const n = Number(same.dataset.n ?? '1') + 1;
+    same.dataset.n = String(n);
+    same.querySelector('.times')?.remove();
+    same.querySelector('span')!.after(h('b', { class: 'times' }, `×${n}`));
+    same.dispatchEvent(new Event('again'));
+    return same;
+  }
   const el = h('div', { class: `toast ${kind}`, role: kind === 'error' ? 'alert' : 'status' }, h('span', {}, message));
-  const close = () => el.remove();
+  el.dataset.text = message;
+  el.dataset.kind = kind;
+  if (key) el.dataset.key = key;
+  const close = () => {
+    el.classList.add('leaving');
+    setTimeout(() => el.remove(), 180);
+  };
   for (const a of actions) {
-    el.append(
-      h('button', { class: 'link', onclick: () => (close(), a.run()) }, a.label),
-    );
+    el.append(h('button', { class: 'link', onclick: () => (close(), a.run()) }, a.label));
   }
   el.append(h('button', { class: 'close', 'aria-label': '닫기', onclick: close }, '×'));
   host.append(el);
-  if (actions.length === 0) setTimeout(close, kind === 'error' ? 8000 : 4000);
+  if (actions.length === 0) {
+    let timer = setTimeout(close, kind === 'error' ? 8000 : 4000);
+    el.addEventListener('again', () => {
+      clearTimeout(timer);
+      timer = setTimeout(close, kind === 'error' ? 8000 : 4000);
+    });
+  }
+  // Too many at once: plain notes (no buttons, not errors) go first, oldest first.
+  const up = [...host.querySelectorAll<HTMLElement>('.toast:not(.leaving)')];
+  for (const t of up) {
+    if (up.filter((x) => !x.classList.contains('leaving')).length <= MAX_TOASTS) break;
+    if (t !== el && t.classList.contains('info') && !t.querySelector('.link')) {
+      t.classList.add('leaving');
+      setTimeout(() => t.remove(), 180);
+    }
+  }
   return el;
 }
 

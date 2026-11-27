@@ -226,6 +226,7 @@ export interface Lamp {
   colour: number;
   phase: number;
   rate: number;
+  g?: Graphics; // drawn once; blinking changes only its tint and alpha
 }
 
 /** A server rack. Its lamps are returned so they can blink. */

@@ -5,7 +5,7 @@
 // Lets PixiJS run where the page may not build code from strings (a strict
 // content security policy); it has no effect elsewhere.
 import 'pixi.js/unsafe-eval';
-import { Application, Container, Graphics, Polygon } from 'pixi.js';
+import { Application, Container, Graphics, Polygon, Sprite as PixiSprite, type Texture } from 'pixi.js';
 import { lookOf } from './avatars';
 import type { Away, Box, Change, Member, Snapshot, SpaceView, ZoneView } from './types';
 import type { Dust } from './dust';
@@ -59,6 +59,7 @@ interface DropRoom {
   gy: number;
   d: number;
   lanes: { id: string; gy: number; h: number }[];
+  standing: number; // people standing along the right side (not at a desk), me left out
 }
 
 export class Scene {
@@ -71,9 +72,11 @@ export class Scene {
   private sprites = new Map<string, Sprite>();
   private rooms: DropRoom[] = []; // where boxes can be dropped on this floor
   private dust = new Map<string, Dust>(); // dust monsters by "space/zone"
-  private sky = new Graphics(); // rain, snow, leaves: drawn in window space every frame
+  private sky = new Container(); // rain, snow, leaves, in window space: sprites that only move
   private weather: Weather = 'clear';
-  private flakes: { x: number; y: number; v: number; s: number; ph: number }[] = [];
+  private flakes: { x: number; y: number; v: number; s: number; ph: number; sp: PixiSprite }[] = [];
+  private veil: Graphics | null = null;
+  private skyTextures = new Map<string, Texture>();
   private dustAt = new Map<string, { x: number; y: number; g: Graphics; tag: Container }>(); // where each monster of this floor stands
   private carry: { sp: Sprite; x: number; y: number; on: boolean } | null = null; // a box being dragged
   private dropMark = new Graphics(); // the room or lane a dragged box would land in
@@ -94,8 +97,10 @@ export class Scene {
   me = { id: '', name: '' };
   private myRoom: { space: string; zone: string } | null = null;
   private myLast: { space: string; x: number; y: number } | null = null; // where my avatar stood, to walk from
+  // my avatar as drawn now: moved on its own when I pick a box in another room
+  private mine: { who: Scene['people'][number]; tag: Container; zone: string; gx: number; gy: number } | null = null;
   lamps: Lamp[] = [];
-  lampLayer = new Graphics();
+  lampLayer = new Container(); // one small shape per server lamp
   belts: BeltTile[] = [];
   belt: Belt | null = null;
   private fx = new Container(); // confetti, in window coordinates, above everything
@@ -129,6 +134,9 @@ export class Scene {
     });
     this.host.appendChild(this.app.canvas);
     this.world.addChild(this.ground, this.dropMark, this.things, this.lampLayer, this.shows, this.signs);
+    // The building is drawn as one render group: moving, panning and blinking (transforms, tint,
+    // alpha) then cost no rebuild of what is drawn; only a shape drawn anew does.
+    this.world.enableRenderGroup();
     this.things.sortableChildren = true;
     this.lift.addChild(this.world);
     this.app.stage.addChild(this.lift);
@@ -246,23 +254,71 @@ export class Scene {
   setWeather(w: Weather) {
     if (w === this.weather) return;
     this.weather = w;
-    const { width, height } = this.app.screen;
+    this.sky.removeChildren().forEach((c) => c.destroy());
+    this.flakes = [];
+    this.veil = null;
+    if (w === 'clear') return;
+    // a veil over the day: grey for rain and cloud, cool for snow
+    const veil = { cloudy: [0x56647a, 0.08], rain: [0x4a5a72, 0.11], snow: [0x8796ad, 0.1], wind: [0x8090a8, 0.04], leaves: [0xe8a04a, 0.03], blossom: [0xf7c6d6, 0.04] }[w] as [number, number];
+    this.veil = new Graphics().rect(0, 0, 1, 1).fill(veil[0]);
+    this.veil.alpha = veil[1];
+    this.sky.addChild(this.veil);
     const n = { clear: 0, cloudy: 0, snow: 230, rain: 280, wind: 80, leaves: 70, blossom: 80 }[w];
-    this.flakes = Array.from({ length: n }, () => ({ x: Math.random() * width, y: Math.random() * height, v: 0.6 + Math.random() * 0.8, s: 0.6 + Math.random() * 0.9, ph: Math.random() * 6.3 }));
+    const { width, height } = this.app.screen;
+    for (let i = 0; i < n; i++) {
+      const f = { x: Math.random() * width, y: Math.random() * height, v: 0.6 + Math.random() * 0.8, s: 0.6 + Math.random() * 0.9, ph: Math.random() * 6.3, sp: new PixiSprite(this.flakeTexture(w, i)) };
+      f.sp.anchor.set(0.5);
+      if (w === 'snow') f.sp.scale.set((1.6 + f.s * 1.8) / 3.4);
+      if (w === 'leaves' || w === 'blossom') {
+        f.sp.tint = w === 'leaves' ? [0xe07b39, 0xc9472f, 0xe8b23a][Math.floor(f.ph) % 3] : [0xf7b6c8, 0xfbd3df, 0xf29bb5][Math.floor(f.ph) % 3];
+        f.sp.scale.set(f.s);
+      }
+      if (w === 'rain') f.sp.scale.set(1, (16 + f.s * 8) / 22);
+      this.sky.addChild(f.sp);
+      this.flakes.push(f);
+    }
     this.drawSky(0);
   }
 
-  /** Draws the weather for this frame. */
+  /** The shape of one drop, flake or leaf: drawn once per kind, then reused by every sprite. */
+  private flakeTexture(w: Weather, i: number): Texture {
+    const key = w === 'wind' ? (i % 6 === 0 ? 'bit' : 'gust') : w === 'blossom' ? 'leaves' : w;
+    let t = this.skyTextures.get(key);
+    if (t) return t;
+    const g = new Graphics();
+    switch (key) {
+      case 'snow':
+        g.circle(0.6, 0.8, 3.4).fill({ color: 0x5a6a85, alpha: 0.18 }).circle(0, 0, 3.4).fill(0xffffff);
+        break;
+      case 'rain':
+        g.moveTo(0, 0).lineTo(5, -22).stroke({ width: 1.5, color: 0x6f8fbf, alpha: 0.7 });
+        break;
+      case 'gust':
+        g.moveTo(0, 0).quadraticCurveTo(-30, -4, -60, 2).stroke({ width: 1.8, color: 0x9fb0c8, alpha: 0.6 });
+        break;
+      case 'bit':
+        g.rect(0, 0, 4, 3).fill({ color: 0x8a7f70, alpha: 0.85 });
+        break;
+      default: // a leaf or a petal: white, coloured by tint
+        g.poly([-6, 0, 0, -2.7, 6, 0, 0, 2.7]).fill(0xffffff);
+    }
+    t = this.app.renderer.generateTexture({ target: g, resolution: 2 });
+    g.destroy();
+    this.skyTextures.set(key, t);
+    return t;
+  }
+
+  /** Moves the weather on by one frame: positions, turns and sizes only. */
   private drawSky(ms: number) {
-    const g = this.sky;
-    g.clear();
     const w = this.weather;
-    if (w === 'clear' || this.space < 0) return;
+    this.sky.visible = w !== 'clear' && this.space >= 0;
+    if (!this.sky.visible) return;
     const { width, height } = this.app.screen;
-    // a veil over the day: grey for rain and cloud, pale for snow
-    const veil = { cloudy: [0x56647a, 0.08], rain: [0x4a5a72, 0.11], snow: [0x8796ad, 0.1], wind: [0x8090a8, 0.04], leaves: [0xe8a04a, 0.03], blossom: [0xf7c6d6, 0.04] }[w] as [number, number];
-    g.rect(0, 0, width, height).fill({ color: veil[0], alpha: veil[1] });
-    if (CALM) return;
+    if (this.veil) this.veil.scale.set(width, height);
+    if (CALM) {
+      this.flakes.forEach((f) => (f.sp.visible = false));
+      return;
+    }
     const T = this.clock / 1000;
     const dt = ms / 1000;
     for (const f of this.flakes) {
@@ -270,32 +326,23 @@ export class Scene {
         case 'snow':
           f.y += (24 + f.v * 30) * dt;
           f.x += Math.sin(T * 1.2 + f.ph) * 14 * dt;
-          g.circle(f.x + 0.6, f.y + 0.8, 1.6 + f.s * 1.8).fill({ color: 0x5a6a85, alpha: 0.18 }); // a faint shadow, so it shows on a pale floor
-          g.circle(f.x, f.y, 1.6 + f.s * 1.8).fill({ color: 0xffffff, alpha: 0.95 });
           break;
         case 'rain':
           f.y += (520 + f.v * 260) * dt;
           f.x -= (90 + f.v * 40) * dt;
-          g.moveTo(f.x, f.y).lineTo(f.x + 5, f.y - 16 - f.s * 8).stroke({ width: 1.5, color: 0x6f8fbf, alpha: 0.7 });
           break;
-        case 'wind': {
+        case 'wind':
           f.x += (480 + f.v * 380) * dt;
           f.y += Math.sin(T * 2 + f.ph) * 10 * dt;
-          const len = 30 + f.s * 50;
-          if (f.s > 1.2) g.rect(f.x, f.y, 4, 3).fill({ color: 0x8a7f70, alpha: 0.85 }); // a bit of something blown along
-          else g.moveTo(f.x, f.y).quadraticCurveTo(f.x - len / 2, f.y - 4, f.x - len, f.y + 2).stroke({ width: 1.8, color: 0x9fb0c8, alpha: 0.6 });
+          f.sp.scale.x = (30 + f.s * 50) / 60;
           break;
-        }
         case 'leaves':
         case 'blossom': {
           f.y += (30 + f.v * 26) * dt;
           f.x += (Math.sin(T * 1.5 + f.ph) * 30 + 14) * dt;
-          const c = w === 'leaves' ? [0xe07b39, 0xc9472f, 0xe8b23a][Math.floor(f.ph) % 3] : [0xf7b6c8, 0xfbd3df, 0xf29bb5][Math.floor(f.ph) % 3];
-          const r = (w === 'leaves' ? 6 : 4.6) * f.s;
           const a = T * 2 * f.v + f.ph;
-          const cx = Math.cos(a) * r;
-          const sy = Math.sin(a) * r * 0.5;
-          g.poly([f.x - cx, f.y - sy, f.x + sy, f.y - r * 0.45, f.x + cx, f.y + sy, f.x - sy, f.y + r * 0.45]).fill({ color: c, alpha: 0.92 });
+          f.sp.rotation = a * 0.5;
+          f.sp.scale.y = f.s * Math.max(0.15, Math.abs(Math.sin(a))); // turning over as it falls
           break;
         }
       }
@@ -303,6 +350,7 @@ export class Scene {
       if (f.y > height + 20) [f.y, f.x] = [-20, Math.random() * width];
       if (f.x < -90) f.x = width + 20;
       if (f.x > width + 90) [f.x, f.y] = [-40, Math.random() * height];
+      f.sp.position.set(f.x, f.y);
     }
   }
 
@@ -457,8 +505,34 @@ export class Scene {
     const space = this.snap?.spaces[this.space];
     if (b && space && b.space === space.id && (this.myRoom?.zone !== b.zone || this.myRoom.space !== space.id)) {
       this.myRoom = { space: space.id, zone: b.zone };
-      if (this.snap) this.update(this.snap, []);
+      // only my avatar moves; the floor is redrawn only when that cannot be done
+      if (!this.moveMe(b.zone) && this.snap) this.update(this.snap, []);
     }
+  }
+
+  /** Walks my avatar to another room of this floor without redrawing the floor. False when it cannot. */
+  private moveMe(zone: string): boolean {
+    const me = this.mine;
+    const room = this.rooms.find((r) => r.zone === zone);
+    const space = this.snap?.spaces[this.space];
+    if (!me || !room || !space || me.zone === zone || me.who.g.destroyed) return false;
+    const myId = this.snap?.members.find((m) => m.me)?.id || this.me.id;
+    const lane = room.lanes.find((l) => l.id === myId);
+    const gx = lane ? room.gx + 0.55 : room.gx + ZW - 0.8;
+    const gy = lane ? lane.gy + 0.5 : room.gy + 2.2 + room.standing * 1.1;
+    const p = iso(gx, gy);
+    const was = iso(me.gx, me.gy);
+    const who = me.who;
+    if (!CALM) who.walk = { fx: who.g.x, fy: who.g.y, t: 0, tag: me.tag };
+    who.x = p.x;
+    who.y = p.y;
+    who.g.zIndex = (gx + gy) * 100 + 1;
+    if (CALM) who.g.position.set(p.x, p.y);
+    me.tag.position.set(me.tag.x + p.x - was.x, me.tag.y + p.y - was.y);
+    me.tag.alpha = CALM ? 1 : 0;
+    this.mine = { ...me, zone, gx, gy };
+    this.myLast = { space: space.id, x: p.x, y: p.y };
+    return true;
   }
 
   /**
@@ -630,6 +704,7 @@ export class Scene {
     this.truck = null;
     this.people = [];
     this.rooms = [];
+    this.mine = null;
     this.dustAt.clear();
     this.belts = [];
     this.belt = null;
@@ -775,7 +850,9 @@ export class Scene {
         gy: o.gy,
         d: o.d,
         lanes: zone.kind === 'desk' ? lanes.map((id, li) => ({ id, gy: o.gy + LANE_TOP + li * lanePitch(lanes.length, o.d) - 0.5, h: lanePitch(lanes.length, o.d) })) : [],
+        standing: 0,
       });
+      const dropRoom = this.rooms[this.rooms.length - 1];
 
       // A dust monster where old boxes pile up, at the front of the room.
       const dust = this.dust.get(`${space.id}/${zone.id}`);
@@ -841,7 +918,9 @@ export class Scene {
           const name = m.count ? `${shortName(m.name)} ${m.count}` : shortName(m.name);
           const tag = this.tag(name, gx, gy, (m.me ? 78 : 62) + (rest ? 4 : 0), m.me);
           const who: Scene['people'][number] = { g, x: p.x, y: py, phase: mi * 1.7 + zi, slow: tired > 0 };
+          if (!m.me && !atDesk && !rest) dropRoom.standing++;
           if (m.me) {
+            this.mine = { who, tag, zone: zone.id, gx, gy };
             // From where I stood on this floor, I walk; on arriving at a floor, I am simply there.
             const from = this.myLast?.space === space.id ? this.myLast : null;
             if (from && Math.hypot(from.x - p.x, from.y - py) > 4 && !CALM) {
@@ -897,8 +976,12 @@ export class Scene {
         this.plate('휴게실', o.gx + ZW / 2, o.gy + 0.15);
       }
     }
-    // lamps blink on their own layer, above everything in the rooms
-    this.lampLayer.clear();
+    // lamps blink on their own layer, above everything in the rooms: each drawn once, then only tinted
+    this.lampLayer.removeChildren().forEach((c) => c.destroy());
+    for (const l of this.lamps) {
+      l.g = new Graphics().rect(l.x - 1.3, l.y - 1.3, 2.6, 2.6).fill(0xffffff);
+      this.lampLayer.addChild(l.g);
+    }
 
     // Boxes that left the building: finished ones are loaded on the truck,
     // which then drives off; returned and cancelled ones fly away.
@@ -1116,28 +1199,24 @@ export class Scene {
     }
     // An urgent box carries a turning red light on its lid.
     if (b.urgent && !sp.beacon) {
-      sp.beacon = new Graphics();
+      sp.beacon = makeBeacon();
       sp.body.addChild(sp.beacon);
     } else if (!b.urgent && sp.beacon) {
-      sp.beacon.destroy();
+      sp.beacon.destroy({ children: true });
       sp.beacon = undefined;
     }
     if (sp.beacon) this.turnBeacon(sp, this.clock / 1000);
   }
 
-  /** Draws an urgent box's light at time T: a red dome with a beam going round. */
+  /** Turns an urgent box's light to time T: only the beam's scale and the lamp's glow change. */
   private turnBeacon(sp: Sprite, T: number) {
-    const g = sp.beacon!;
-    const y = -BOX_H - 12;
+    const [beam, , glow] = sp.beacon!.children;
     const a = CALM ? 0 : T * 5;
-    g.clear();
-    // the beam: a wedge of light that sweeps round, brighter towards the viewer
-    const side = Math.cos(a);
-    const front = (Math.sin(a) + 1) / 2;
-    g.poly([0, y - 4, side * 48 - 9, y - 16 + front * 12, side * 48 + 9, y + 6 + front * 12]).fill({ color: 0xff3b30, alpha: 0.16 + front * 0.26 });
-    g.ellipse(0, y + 6, 10, 4.6).fill(0x2f3038); // the base
-    g.roundRect(-7.5, y - 9, 15, 15, 7.5).fill(0xe5383b).stroke({ width: 1, color: 0x9e1f22 });
-    g.ellipse(-2.5, y - 4.5, 3, 3.8).fill({ color: 0xffffff, alpha: 0.5 + front * 0.45 }); // the lamp inside
+    const front = (Math.sin(a) + 1) / 2; // brighter towards the viewer
+    beam.scale.x = Math.cos(a) || 0.001;
+    beam.y = (front - 0.5) * 12;
+    beam.alpha = 0.16 + front * 0.26;
+    glow.alpha = 0.5 + front * 0.45;
   }
 
   /** An urgent box came in: the edges of the window flash red a few times. */
@@ -1370,15 +1449,14 @@ export class Scene {
       }
       p.g.y = p.y + Math.sin(T * (p.slow ? 1.2 : 2.4) + p.phase) * (p.slow ? 2.2 : 1.4);
     }
-    // server lamps: each blinks at its own pace
-    this.lampLayer.clear();
-    // They also say how the team server is doing: all red and in step when it
-    // is in trouble, half of them amber when something needs a look.
+    // server lamps: each blinks at its own pace. They also say how the team
+    // server is doing: all red and in step when it is in trouble, half of
+    // them amber when something needs a look.
     this.lamps.forEach((l, i) => {
+      if (!l.g) return;
       const fail = this.system === 'fail';
-      const colour = fail ? 0xff4d4d : this.system === 'warn' && i % 2 === 0 ? 0xffc145 : l.colour;
-      const on = fail ? Math.sin(T * 6) > 0 : Math.sin(T * l.rate + l.phase) > -0.3;
-      this.lampLayer.rect(l.x - 1.3, l.y - 1.3, 2.6, 2.6).fill({ color: colour, alpha: on ? 1 : 0.25 });
+      l.g.tint = fail ? 0xff4d4d : this.system === 'warn' && i % 2 === 0 ? 0xffc145 : l.colour;
+      l.g.alpha = (fail ? Math.sin(T * 6) > 0 : Math.sin(T * l.rate + l.phase) > -0.3) ? 1 : 0.25;
     });
     for (const b of this.belts) this.drawBelt(b, T * 1.6);
 
@@ -1402,17 +1480,49 @@ export class Scene {
     }
   }
 
-  /** Slats across one tile of the conveyor, shifted by how far the belt has run. */
+  /**
+   * Slats across one tile of the conveyor, shifted by how far the belt has
+   * run. A whole tile's slats are drawn once and slid along (the slide never
+   * takes them past the tile's end); a short tile at the end of a lane is
+   * drawn afresh, so no slat hangs past the end of the belt.
+   */
   private drawBelt(b: BeltTile, run: number) {
-    b.g.clear();
     const step = 0.5;
     const shift = (((run * b.dir) % step) + step) % step;
+    const whole = Math.abs(b.w / step - Math.round(b.w / step)) < 1e-6;
+    if (whole) {
+      if (!b.drawn) {
+        b.g.clear();
+        for (let d = 0; d < b.w - 1e-6; d += step) {
+          const [p, q] = b.axis === 'x' ? [iso(b.gx + d, b.gy - 0.4), iso(b.gx + d, b.gy + 0.4)] : [iso(b.gx - 0.4, b.gy + d), iso(b.gx + 0.4, b.gy + d)];
+          b.g.moveTo(p.x, p.y - BELT_UP).lineTo(q.x, q.y - BELT_UP).stroke({ width: 1.5, color: 0x9aa3b5, alpha: 0.85 });
+        }
+        b.drawn = true;
+      }
+      const o = b.axis === 'x' ? iso(shift, 0) : iso(0, shift);
+      b.g.position.set(o.x, o.y);
+      return;
+    }
+    b.g.clear();
     for (let d = shift; d < b.w; d += step) {
       const [p, q] = b.axis === 'x' ? [iso(b.gx + d, b.gy - 0.4), iso(b.gx + d, b.gy + 0.4)] : [iso(b.gx - 0.4, b.gy + d), iso(b.gx + 0.4, b.gy + d)];
       b.g.moveTo(p.x, p.y - BELT_UP).lineTo(q.x, q.y - BELT_UP).stroke({ width: 1.5, color: 0x9aa3b5, alpha: 0.85 });
     }
   }
 
+}
+
+/** An urgent box's light: a beam (turned by scale), the red dome, the glow inside. */
+function makeBeacon(): Container {
+  const y = -BOX_H - 12;
+  const beam = new Graphics().poly([0, y - 4, 39, y - 10, 57, y + 12]).fill(0xff3b30);
+  const dome = new Graphics();
+  dome.ellipse(0, y + 6, 10, 4.6).fill(0x2f3038);
+  dome.roundRect(-7.5, y - 9, 15, 15, 7.5).fill(0xe5383b).stroke({ width: 1, color: 0x9e1f22 });
+  const glow = new Graphics().ellipse(-2.5, y - 4.5, 3, 3.8).fill(0xffffff);
+  const c = new Container();
+  c.addChild(beam, dome, glow);
+  return c;
 }
 
 /** The colour of a requester's answer waiting on a box. */

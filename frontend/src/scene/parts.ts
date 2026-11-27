@@ -22,7 +22,7 @@ export interface Sprite {
   squash: number; // ms left of the landing squash
   phase: number; // offsets idle motion so boxes do not move in step
   held?: { x: number; y: number }; // being dragged: where the pointer holds it, in world space
-  beacon?: Graphics; // the light that turns on an urgent box
+  beacon?: Container; // the light that turns on an urgent box: drawn once; its beam turns by scale
 }
 
 /** One stretch of a box's way: through the air in an arc, or flat along the belt. */
@@ -41,6 +41,7 @@ export interface Leg {
 
 export interface BeltTile {
   g: Graphics;
+  drawn?: boolean; // the slats are drawn once and slid along; a short end tile is redrawn
   gx: number;
   gy: number;
   w: number; // length along its direction, in tiles
