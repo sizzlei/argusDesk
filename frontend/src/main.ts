@@ -106,6 +106,7 @@ async function boot() {
       tooltip.style.top = `${y + 14}px`;
     },
   });
+  scene.setMe(state.meId, state.me);
   await scene.init();
   onAnswered((key, approve) => scene.stamp(key, approve));
   // The room dims in the evening; whoever would rather not has it switched off, on this computer.
@@ -420,6 +421,7 @@ async function boot() {
     // A problem with the settings is told when it appears, not again with every later state.
     const problem = next.configLoaded && next.configError && next.configError !== state.configError;
     state = next;
+    scene.setMe(state.meId, state.me);
     if (lapsed) toast('Argus 로그인이 끝났습니다. 다시 로그인하면 Argus 알림과 설정을 계속 받습니다.', 'error', [{ label: '로그인', run: argusLogin }]);
     if (problem) toast(state.configError, 'error');
     else if (reloaded) toast(`설정 ${state.configVersion}을 읽었습니다.`);

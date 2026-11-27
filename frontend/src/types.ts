@@ -155,6 +155,7 @@ export interface AppState {
   email: string;
   signedIn: boolean;
   me: string;
+  meId: string; // the signed-in Jira account
   authError: string;
   pollSeconds: number;
   notify: boolean; // the user wants notifications

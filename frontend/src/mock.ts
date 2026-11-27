@@ -273,6 +273,7 @@ export function mockBackend(): Backend {
     email: 'me@example.com',
     signedIn: true,
     me: '김하늘',
+    meId: 'u1',
     authError: '',
     pollSeconds: 60,
     notify: true,

@@ -62,7 +62,12 @@ export class Scene {
   private clock = 0; // ms since the scene started, for idle motion
   truck: { g: Graphics; x: number; y: number } | null = null;
   private truckRun = -1; // ms into the truck's round trip; -1 = parked
-  people: { g: Graphics; y: number; phase: number; slow?: boolean }[] = [];
+  people: { g: Graphics; x: number; y: number; phase: number; slow?: boolean; walk?: { fx: number; fy: number; t: number; tag: Container | null } }[] = [];
+  // I go where I look: my avatar stands on the floor I open, and walks to the
+  // room of a box I pick. Only on this screen: teammates see me where my work is.
+  me = { id: '', name: '' };
+  private myRoom: { space: string; zone: string } | null = null;
+  private myLast: { space: string; x: number; y: number } | null = null; // where my avatar stood, to walk from
   lamps: Lamp[] = [];
   lampLayer = new Graphics();
   belts: BeltTile[] = [];
@@ -160,11 +165,40 @@ export class Scene {
       this.held = false; // another floor: start from the whole view
     }
     this.space = index;
+    this.myRoom = null; // a new floor: I stand where my work on it is, or at its first room
     this.sprites.forEach((s) => s.root.destroy({ children: true }));
     this.sprites.clear();
     this.acts.forEach((a) => a.g.destroy({ children: true }));
     this.acts = [];
     if (this.snap) this.update(this.snap, []);
+  }
+
+  /**
+   * The people on a floor, with me moved to where I am looking: the room of
+   * the box I picked, else where my work on this floor is, else the desk
+   * room (or the first room). On holiday I stay down in the lodge.
+   */
+  private placeMe(snap: Snapshot, space: SpaceView, rooms: ZoneView[]): Member[] {
+    const others = snap.members.filter((m) => m.space === space.id && !m.me);
+    const real = snap.members.find((m) => m.me);
+    const id = real?.id || this.me.id;
+    if (!id || this.away.some((a) => a.active && a.id === id)) return snap.members.filter((m) => m.space === space.id);
+    const isRoom = (zone: string) => rooms.some((z) => z.id === zone);
+    const zone =
+      (this.myRoom?.space === space.id && isRoom(this.myRoom.zone) && this.myRoom.zone) ||
+      (real?.space === space.id && isRoom(real.zone) && real.zone) ||
+      rooms.find((z) => z.kind === 'desk')?.id ||
+      rooms.find((z) => z.kind === 'work')?.id ||
+      rooms[0]?.id;
+    if (!zone) return others;
+    const mine = snap.boxes.filter((b) => b.space === space.id && b.assigneeId === id);
+    const open = new Set(space.zones.filter((z) => z.kind === 'work' || z.kind === 'desk').map((z) => z.id));
+    return [...others, { id, name: real?.name || this.me.name, space: space.id, zone, count: mine.filter((b) => open.has(b.zone)).length, me: true }];
+  }
+
+  /** Who I am, so my avatar can follow me. */
+  setMe(id: string, name: string) {
+    this.me = { id, name };
   }
 
   /** Takes how tired each teammate is and who is on holiday. */
@@ -228,6 +262,13 @@ export class Scene {
 
   select(key: string) {
     this.mark(key);
+    // I walk over to the room the box is in.
+    const b = this.sprites.get(key)?.box;
+    const space = this.snap?.spaces[this.space];
+    if (b && space && b.space === space.id && (this.myRoom?.zone !== b.zone || this.myRoom.space !== space.id)) {
+      this.myRoom = { space: space.id, zone: b.zone };
+      if (this.snap) this.update(this.snap, []);
+    }
     this.hooks.onSelect(this.sprites.get(key)?.box ?? null);
   }
 
@@ -378,7 +419,7 @@ export class Scene {
     const sidings = withBelt ? inside.filter((z) => z.kind === 'siding') : [];
     const resting = new Set(this.away.filter((a) => a.active).map((a) => a.id));
     const boxes = snap.boxes.filter((b) => b.space === space.id);
-    const members = snap.members.filter((m) => m.space === space.id);
+    const members = this.placeMe(snap, space, rooms);
     const added = new Set(changes.filter((c) => c.kind === 'added').map((c) => c.key));
     const now = Date.parse(snap.fetchedAt);
 
@@ -579,9 +620,20 @@ export class Scene {
           const g = prop(gx, gy, (pg) => person(pg, lookOf(m.id, this.looks), m.me, rest ? 2 : tired ? 1 : 0), rest ? 120 : 1);
           const py = rest ? p.y - 4 : p.y;
           g.position.set(p.x, py);
-          this.people.push({ g, y: py, phase: mi * 1.7 + zi, slow: tired > 0 });
           const name = m.count ? `${shortName(m.name)} ${m.count}` : shortName(m.name);
-          this.tag(name, gx, gy, (m.me ? 78 : 62) + (rest ? 4 : 0), m.me);
+          const tag = this.tag(name, gx, gy, (m.me ? 78 : 62) + (rest ? 4 : 0), m.me);
+          const who: Scene['people'][number] = { g, x: p.x, y: py, phase: mi * 1.7 + zi, slow: tired > 0 };
+          if (m.me) {
+            // From where I stood on this floor, I walk; on arriving at a floor, I am simply there.
+            const from = this.myLast?.space === space.id ? this.myLast : null;
+            if (from && Math.hypot(from.x - p.x, from.y - py) > 4 && !CALM) {
+              who.walk = { fx: from.x, fy: from.y, t: 0, tag };
+              g.position.set(from.x, from.y);
+              tag.alpha = 0;
+            }
+            this.myLast = { space: space.id, x: p.x, y: py };
+          }
+          this.people.push(who);
         });
     });
 
@@ -807,6 +859,7 @@ export class Scene {
     box.addChild(g, t);
     box.position.set(p.x - (t.width + 12) / 2, p.y - up);
     this.signs.addChild(box);
+    return box;
   }
 
   /** Redraws one box for its current state. */
@@ -1028,7 +1081,22 @@ export class Scene {
       return;
     }
     // people breathe; the belt runs
-    for (const p of this.people) p.g.y = p.y + Math.sin(T * (p.slow ? 1.2 : 2.4) + p.phase) * (p.slow ? 2.2 : 1.4);
+    for (const p of this.people) {
+      if (p.walk) {
+        // a short walk, with a step in it; the name tag comes back on arrival
+        const w = p.walk;
+        w.t = Math.min(1, w.t + ms / WALK_MS);
+        const e = w.t < 0.5 ? 2 * w.t * w.t : 1 - (-2 * w.t + 2) ** 2 / 2;
+        p.g.x = w.fx + (p.x - w.fx) * e;
+        p.g.y = w.fy + (p.y - w.fy) * e - Math.abs(Math.sin(w.t * Math.PI * 6)) * 3;
+        if (w.t >= 1) {
+          if (w.tag) w.tag.alpha = 1;
+          p.walk = undefined;
+        }
+        continue;
+      }
+      p.g.y = p.y + Math.sin(T * (p.slow ? 1.2 : 2.4) + p.phase) * (p.slow ? 2.2 : 1.4);
+    }
     // server lamps: each blinks at its own pace
     this.lampLayer.clear();
     // They also say how the team server is doing: all red and in step when it
@@ -1073,6 +1141,9 @@ export class Scene {
   }
 
 }
+
+/** How long my avatar takes to walk to another room. */
+const WALK_MS = 900;
 
 /** Members shown in a space (used by the legend). */
 export function membersOf(snap: Snapshot, space: string): Member[] {

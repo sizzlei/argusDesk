@@ -88,6 +88,7 @@ type AppState struct {
 	Email             string `json:"email"`
 	SignedIn          bool   `json:"signedIn"`
 	Me                string `json:"me"`
+	MeID              string `json:"meId"` // the signed-in Jira account
 	AuthError         string `json:"authError"`
 	PollSeconds       int    `json:"pollSeconds"`
 	Notify            bool   `json:"notify"`        // the user wants notifications
@@ -188,7 +189,7 @@ func (a *App) stateLocked() *AppState {
 		}
 	}
 	if a.me != nil {
-		s.SignedIn, s.Me = true, a.me.DisplayName
+		s.SignedIn, s.Me, s.MeID = true, a.me.DisplayName, a.me.AccountID
 	}
 	return s
 }
