@@ -13,7 +13,8 @@ import { renderSetup } from './setup';
 import type { AppState, Box, Change, GameStats, Snapshot } from './types';
 import { checkForUpdates, initUpdates } from './update';
 import { showBriefing, watchPresence } from './briefing';
-import { renderQuests, updateQuests } from './quests';
+import { questTally, questsOpen, renderQuests, toggleQuests, updateQuests } from './quests';
+import { icon, initRailTips } from './rail';
 import { readDust } from './dust';
 import { loading } from './loading';
 import { type SettingsGroup, renderSettings, settingsOpen, toggleSettings } from './settings';
@@ -138,6 +139,8 @@ async function boot() {
     draw([]);
     hud();
   };
+  initRailTips();
+  document.getElementById('legend-toggle')!.append(icon('legend'));
   document.getElementById('zoom-in')!.addEventListener('click', () => scene.zoom(1.25));
   document.getElementById('zoom-out')!.addEventListener('click', () => scene.zoom(0.8));
   document.getElementById('zoom-fit')!.addEventListener('click', () => scene.resetView());
@@ -303,12 +306,17 @@ async function boot() {
       toast(`오늘의 퀘스트를 모두 끝냈습니다! 연속 ${won.day}일`);
       scene.celebrate();
     } else if (won.quest) toast(`퀘스트 완료: ${won.quest}`);
-    renderQuests(document.getElementById('quests')!, document.getElementById('floors'));
+    hud();
   };
 
   const hud = () => {
-    // after this draw, when the floor list has its height
-    requestAnimationFrame(() => renderQuests(document.getElementById('quests')!, document.getElementById('floors')));
+    // after this draw, when the flag on the rail is where it will be
+    requestAnimationFrame(() =>
+      renderQuests(document.getElementById('quests')!, document.querySelector('#rail-right .quest-btn'), () => {
+        toggleQuests(false);
+        hud();
+      }),
+    );
     renderNotices(snap, visit, () => hud(), (url) => backend.openUrl(url));
     const shown = view();
     renderFilters(snap, space, filter, shown?.boxes.length ?? 0, snap?.boxes.length ?? 0, setFilter, () => hud());
@@ -377,6 +385,20 @@ async function boot() {
         gameOpen = !gameOpen;
         hud();
       },
+      write: snap?.spaces.some((sp) => sp.create) ? write : null,
+      quests: (() => {
+        const t = questTally();
+        return t
+          ? {
+              ...t,
+              open: questsOpen(),
+              toggle: () => {
+                toggleQuests();
+                hud();
+              },
+            }
+          : null;
+      })(),
       setSpace: (i) => {
         space = i;
         scene.setSpace(i);

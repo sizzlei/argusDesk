@@ -28,7 +28,15 @@ interface Day {
 }
 
 let today: Day | null = null;
-let open = true;
+// The card opens from the flag on the right rail; whether it is open is kept between starts.
+const OPEN_KEY = 'argusdesk.quests';
+let open = (() => {
+  try {
+    return localStorage.getItem(OPEN_KEY) === 'open';
+  } catch {
+    return false;
+  }
+})();
 
 const dayOf = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
@@ -154,39 +162,53 @@ export function updateQuests(snap: Snapshot | null, game: GameStats | null, me: 
 }
 
 /** The quest card, under the floors. */
-export function renderQuests(el: HTMLElement, below: HTMLElement | null) {
-  const d = today;
-  el.hidden = !d || !d.quests.length;
-  if (!d) return;
-  if (below && !below.hidden) {
-    el.style.top = `${below.offsetTop + below.offsetHeight + 10}px`;
-    el.style.width = `${below.offsetWidth}px`; // the same width as the floor list above it
+/** How far the day's quests are, for the flag on the right rail (null = none today). */
+export function questTally(): { done: number; total: number } | null {
+  if (!today?.quests.length) return null;
+  return { done: today.quests.filter((q) => q.done).length, total: today.quests.length };
+}
+
+/** Whether the quest card is open next to the right rail. */
+export const questsOpen = () => open;
+export function toggleQuests(next = !open) {
+  open = next;
+  try {
+    localStorage.setItem(OPEN_KEY, open ? 'open' : '');
+  } catch {
+    // it stays for this run only
   }
+}
+
+/** The quest card, beside its flag on the right rail. */
+export function renderQuests(el: HTMLElement, flag: HTMLElement | null, close: () => void) {
+  const d = today;
+  el.hidden = !open || !d || !d.quests.length;
+  if (el.hidden || !d) return;
+  if (flag) el.style.top = `${Math.max(8, flag.getBoundingClientRect().top - el.parentElement!.getBoundingClientRect().top - 6)}px`;
   const done = d.quests.filter((q) => q.done).length;
   const streak = d.streak.last && d.streak.count ? d.streak.count : 0;
   const parts: (Node | null)[] = [
     h(
-      'button',
-      { class: 'quest-head', 'aria-expanded': String(open), onclick: () => ((open = !open), renderQuests(el, below)) },
+      'div',
+      { class: 'quest-head' },
       h('span', { class: 'quest-title' }, '오늘의 퀘스트'),
       h('span', { class: `quest-count${done === d.quests.length ? ' all' : ''}` }, `${done}/${d.quests.length}`),
+      h('button', { class: 'close', 'aria-label': '오늘의 퀘스트 닫기', onclick: close }, '×'),
     ),
-    open
-      ? h(
-          'ul',
-          {},
-          ...d.quests.map((q) =>
-            h(
-              'li',
-              { class: q.done ? 'done' : '' },
-              h('span', { class: 'check', 'aria-hidden': 'true' }, q.done ? '✓' : ''),
-              h('span', { class: 'what' }, q.title),
-              q.goal > 1 && !q.done ? h('span', { class: 'n' }, `${q.progress}/${q.goal}`) : null,
-            ),
-          ),
-        )
-      : null,
-    open && streak ? h('p', { class: 'quest-streak' }, `연속 달성 ${streak}일`) : null,
+    h(
+      'ul',
+      {},
+      ...d.quests.map((q) =>
+        h(
+          'li',
+          { class: q.done ? 'done' : '' },
+          h('span', { class: 'check', 'aria-hidden': 'true' }, q.done ? '✓' : ''),
+          h('span', { class: 'what' }, q.title),
+          q.goal > 1 && !q.done ? h('span', { class: 'n' }, `${q.progress}/${q.goal}`) : null,
+        ),
+      ),
+    ),
+    streak ? h('p', { class: 'quest-streak' }, `연속 달성 ${streak}일`) : null,
   ];
   el.replaceChildren(...parts.filter((p): p is Node => !!p));
 }

@@ -20,14 +20,21 @@
       <header id="hud"></header>
       <main id="stage">
         <div id="scene"></div>
-        <nav id="floors" aria-label="층" hidden></nav>
+        <!-- the rails: what is seen on the left, what comes to me on the right -->
+        <nav id="rail-left" class="rail" aria-label="층과 보기">
+          <div id="floors" role="group" aria-label="층" hidden></div>
+          <div class="rail-tools"></div>
+          <button id="legend-toggle" class="ib" type="button" aria-expanded="false" aria-controls="legend" aria-label="범례" data-tip="범례" hidden></button>
+        </nav>
+        <nav id="rail-right" class="rail" aria-label="알림과 도구">
+          <div class="rail-tools"></div>
+          <div id="zoom" role="group" aria-label="확대와 축소">
+            <button type="button" id="zoom-in" class="ib" aria-label="확대" data-tip="확대">+</button>
+            <button type="button" id="zoom-fit" class="ib" aria-label="전체 보기" data-tip="전체 보기"><span id="zoom-pct">100%</span></button>
+            <button type="button" id="zoom-out" class="ib" aria-label="축소" data-tip="축소">−</button>
+          </div>
+        </nav>
         <section id="quests" aria-label="오늘의 퀘스트" hidden></section>
-        <div id="zoom" role="group" aria-label="확대와 축소">
-          <button type="button" id="zoom-in" aria-label="확대" title="확대">+</button>
-          <button type="button" id="zoom-fit" aria-label="전체 보기" title="전체 보기"><span id="zoom-pct">100%</span></button>
-          <button type="button" id="zoom-out" aria-label="축소" title="축소">−</button>
-        </div>
-        <button id="legend-toggle" type="button" aria-expanded="false" aria-controls="legend" hidden>범례</button>
         <div id="legend" hidden></div>
         <div id="tooltip" hidden></div>
         <div id="windows"></div>

@@ -41,7 +41,7 @@ interface Step {
 
 const STORE = 'argusdesk.tour';
 /** Raise when steps are added (and mark them with `since`), so they are shown to those who saw the tour before. */
-const VERSION = 3;
+const VERSION = 4;
 const key = (a: Parameters<typeof keyLabel>[0]) => keyLabel(a) || '단축키 없음';
 
 const steps = (): Step[] => [
@@ -81,7 +81,13 @@ const steps = (): Step[] => [
     since: 2,
   },
   // the window opened two steps ago would stand in front of what comes next
-  { title: '층', text: '층마다 Jira 프로젝트가 하나씩 있습니다. 지하 숙소에는 휴가 중인 사람이 쉬고 있어요.', at: '#floors', enter: (host) => void host.closeWindows() },
+  { title: '층', text: '층마다 Jira 프로젝트가 하나씩 있습니다. 숫자는 열린 상자 수, 빨간 점은 묵은 상자가 있다는 뜻이에요. 지하 숙소에는 휴가 중인 사람이 쉬고 있어요.', at: '#floors', enter: (host) => void host.closeWindows() },
+  {
+    title: '양쪽 레일',
+    text: '왼쪽 레일은 무엇을 볼지 고르는 곳(층, 찾기, 보기, 필터, 오늘 배포, 송장 쓰기), 오른쪽 레일은 나에게 오는 것(알림, 퀘스트, 기록, 새로 고침, 확대)입니다. 아이콘에 마우스를 올리면 이름과 단축키가 나옵니다.',
+    at: '#rail-left',
+    since: 4,
+  },
   {
     title: '송장 작성대',
     text: `팀이 직접 만드는 티켓은 여기서 송장을 써서 보냅니다. 어느 층에서든 ${key('write')} 키로도 열립니다.`,
@@ -91,15 +97,15 @@ const steps = (): Step[] => [
   {
     title: '골라 보기',
     text: `전체, 내 작업, 미배정으로 좁혀 봅니다. ${key('mine')}을 누를 때마다 차례로 바뀌고, 찾는 상자가 있으면 ${key('search')}로 바로 갑니다.`,
-    at: '#hud .scope',
+    at: '#rail-left .scope',
     enter: (host) => void host.toFirstFloor(),
     since: 2,
   },
-  { title: '알림', text: '내 승인을 기다리는 상자와 Argus가 보낸 알림이 여기에 모입니다. 읽은 Argus 알림은 접혀 들어갑니다.', at: '#hud .bell' },
+  { title: '알림', text: '내 승인을 기다리는 상자와 Argus가 보낸 알림이 여기에 모입니다. 읽은 Argus 알림은 접혀 들어갑니다.', at: '#rail-right .bell' },
   {
     title: '오늘 배포',
-    text: '운영 배포일이 오늘인 티켓이 있으면 버튼이 나타납니다. "내 배포"는 내가 맡은 것, "전체"는 팀 전체를 한 번에 엽니다. 내 배포가 있는 날은 처음 센터를 열 때 아침 카드로도 알려 드려요.',
-    at: '#hud .deploy',
+    text: '운영 배포일이 오늘인 티켓이 있으면 왼쪽 레일에 로켓이 나타납니다. 로켓은 내가 맡은 것, 그 아래 "전체"는 팀 전체를 한 번에 엽니다. 내 배포가 있는 날은 처음 센터를 열 때 아침 카드로도 알려 드려요.',
+    at: '#rail-left .deploy',
     since: 3,
   },
   {
@@ -109,8 +115,8 @@ const steps = (): Step[] => [
   },
   {
     title: '오늘의 퀘스트',
-    text: '매일 아침 그날 센터에 필요한 일로 퀘스트 세 개가 나옵니다. 상자를 처리하면 저절로 체크되고, 다 끝내면 연속 달성 일수가 쌓입니다.',
-    at: '#quests',
+    text: '매일 아침 그날 센터에 필요한 일로 퀘스트 세 개가 나옵니다. 오른쪽 레일의 깃발을 누르면 목록이 열려요. 상자를 처리하면 저절로 체크되고, 다 끝내면 연속 달성 일수가 쌓입니다.',
+    at: '#rail-right .quest-btn',
     since: 2,
   },
   { title: '내 상태', text: '내 아바타를 누르면 피로도와 가진 작업이 보입니다. 휴가 등록, 출근 브리핑, 아바타는 맨 위에 있어요. 피로도가 0이 되면 그 주에는 상자를 더 가져올 수 없습니다.', at: '#hud .team .member.me, #hud [aria-controls="profile"]' },
@@ -120,7 +126,7 @@ const steps = (): Step[] => [
     at: '#hud .gear',
     since: 3,
   },
-  { title: '기록', text: '끝낸 작업은 경험치와 배지로 쌓입니다. 센터 레벨은 팀이 함께 올립니다.', at: '#hud .game-chip' },
+  { title: '기록', text: '끝낸 작업은 경험치와 배지로 쌓입니다. 센터 레벨은 팀이 함께 올립니다. 상단 레벨이나 오른쪽 레일의 트로피로 열어요.', at: '#hud .game-chip' },
   {
     title: '창을 닫아도',
     text: '창을 닫아도 센터는 메뉴 막대(Windows는 작업 표시줄 알림 영역)의 상자 아이콘으로 계속 돌며 알림을 보냅니다. 아이콘 옆 숫자는 내 승인 대기와 요청자 답변의 수입니다. 끄려면 아이콘 메뉴의 "종료"를 고릅니다.',

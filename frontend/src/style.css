@@ -3882,3 +3882,607 @@ button.deploy-btn .n {
     transform: translateY(-6px);
   }
 }
+
+/* ---- ticket window: two columns ----
+   Wide, the window reads like a desk: what to read on the left, what to do on
+   the right, each scrolling on its own, the box to answer in at the bottom.
+   Narrow, the columns stack and the whole body scrolls. */
+
+.tw {
+  grid-template-rows: auto 1fr auto;
+  container: tw / inline-size;
+}
+
+.tw .tw-body {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 0 18px;
+}
+
+.tw-top {
+  flex: none;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--line);
+}
+
+.tw-top h2 {
+  margin-bottom: 8px;
+}
+
+.tw-pills {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+}
+
+.tw-pills .pill {
+  padding: 2px 9px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--paper);
+  color: var(--ink);
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+
+.tw-pills .pill.status {
+  border-color: #b9c6e4;
+  background: #eef2fb;
+  font-weight: 600;
+}
+
+.tw-pills .pill.stale {
+  border-color: #e7c79a;
+  background: #fff4e3;
+  color: #8a5300;
+}
+
+.tw-pills .pill.urgent {
+  border-color: #f0b2ad;
+  background: #fdecea;
+  color: #b3261e;
+}
+
+.tw-pills .pill.reply {
+  border-color: #a9d3c0;
+  background: #e8f6ef;
+  color: #1d6b48;
+}
+
+.tw-pills .pill.deploy {
+  border-color: #c7b9ea;
+  background: #f3effc;
+  color: #4b3596;
+  font-variant-numeric: tabular-nums;
+}
+
+.mini-route {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: 4px;
+}
+
+.mini-route i {
+  width: 14px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--line);
+}
+
+.mini-route i.done {
+  background: #8fb6a3;
+}
+
+.mini-route i.current {
+  width: 22px;
+  background: var(--accent, #3b5bdb);
+}
+
+.tw-cols {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+  flex: 1;
+  min-height: 0;
+}
+
+.tw-col {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 4px 0 14px;
+}
+
+.tw-read {
+  padding-right: 16px;
+}
+
+.tw-do {
+  padding-left: 16px;
+  border-left: 1px solid var(--line);
+}
+
+.tw-talk .comments {
+  margin-top: 6px;
+}
+
+.tw-foot {
+  padding: 8px 18px 12px;
+  border-top: 1px solid var(--line);
+  background: var(--paper);
+}
+
+.tw-foot .comment-slot:empty {
+  display: none;
+}
+
+.tw-foot:has(.comment-slot:empty) {
+  display: none;
+}
+
+.tw-foot .comment-box {
+  margin: 0;
+}
+
+.tw-foot .comment-box textarea {
+  min-height: 52px;
+  max-height: 30vh;
+}
+
+.tw.mini .tw-foot {
+  display: none;
+}
+
+@container tw (max-width: 720px) {
+  .tw .tw-body {
+    display: block;
+    overflow: auto;
+  }
+
+  .tw-cols {
+    display: block;
+  }
+
+  .tw-col {
+    overflow: visible;
+    padding: 4px 0 0;
+  }
+
+  .tw-read,
+  .tw-do {
+    padding-left: 0;
+    padding-right: 0;
+    border: 0;
+  }
+
+  .tw-do {
+    margin-top: 6px;
+    padding-top: 6px;
+    border-top: 1px solid var(--line);
+  }
+}
+
+/* ---- layout A: a slim top bar and an icon rail on each side ----
+   The top bar keeps only who and what: the name, the settings, the levels,
+   the team and the time. Choosing what is seen sits on the left rail, what
+   comes to me on the right one, with the zoom. Names show on pointing. */
+
+#hud {
+  align-items: center;
+  min-height: 50px;
+  padding: 5px 8px 5px 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--surface) 94%, transparent);
+  box-shadow: 0 4px 14px rgb(31 42 68 / 10%);
+  pointer-events: auto;
+}
+
+#hud > .title,
+#hud > .tools {
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+}
+
+#hud > .tools {
+  gap: 8px;
+}
+
+/* the room counters: their own card, centred at the bottom */
+#hud .zones {
+  position: fixed;
+  right: auto;
+  bottom: 12px;
+  left: 50%;
+  justify-content: center;
+  max-width: calc(100vw - 180px);
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  box-shadow: 0 4px 14px rgb(31 42 68 / 10%);
+  transform: translateX(-50%);
+}
+
+.rail {
+  position: absolute;
+  top: 74px;
+  z-index: 7;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  width: 58px;
+  max-height: calc(100% - 150px);
+  padding: 7px 6px;
+  overflow: hidden auto;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--surface) 94%, transparent);
+  box-shadow: 0 4px 14px rgb(31 42 68 / 10%);
+  scrollbar-width: none;
+}
+
+.rail::-webkit-scrollbar {
+  display: none;
+}
+
+#rail-left {
+  left: 12px;
+}
+
+#rail-right {
+  right: 12px;
+}
+
+.rail .rail-tools,
+.rail .scope,
+.rail .deploy {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.rail hr {
+  flex: none;
+  width: 28px;
+  margin: 5px 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+}
+
+.rail .ib {
+  position: relative;
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 44px;
+  height: 40px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: none;
+  color: #475069;
+}
+
+.rail .ib:hover:not(:disabled) {
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.rail .ib.on,
+.rail .ib[aria-expanded='true'] {
+  border-color: #b9c6e4;
+  background: #eef2fb;
+  color: var(--accent);
+}
+
+.rail .ib:disabled {
+  opacity: 0.38;
+  cursor: default;
+}
+
+.rail .ri {
+  display: grid;
+  place-items: center;
+}
+
+.rail .ib .n {
+  position: absolute;
+  top: 0;
+  right: 0;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 4px;
+  border: 2px solid var(--surface);
+  border-radius: 9px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 13px;
+  text-align: center;
+}
+
+.rail .ib .n.old,
+.rail .bell.urgent .n {
+  background: var(--old);
+}
+
+.rail .ib .n.tally {
+  top: -1px;
+  right: -3px;
+  background: #7048e8;
+}
+
+.rail .ib .n.tally.all {
+  background: #2f9e6a;
+}
+
+.rail .deploy-all {
+  flex: none;
+  margin: 1px 0 3px;
+  padding: 1px 7px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--paper);
+  color: var(--quiet);
+  font-size: 10.5px;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+.rail .deploy-all b {
+  color: #4b3596;
+  font-variant-numeric: tabular-nums;
+}
+
+.rail .deploy-all:hover {
+  border-color: #c7b9ea;
+  color: var(--ink);
+}
+
+/* the floors: a stack of squares, the shown one outlined */
+#rail-left #floors {
+  position: static;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 0;
+  border: 0;
+  background: none;
+}
+
+#rail-left #floors button {
+  position: relative;
+  display: grid;
+  grid-template-columns: none;
+  justify-items: center;
+  gap: 0;
+  width: 44px;
+  padding: 5px 0 4px;
+  border: 1.5px solid transparent;
+  border-radius: 10px;
+  text-align: center;
+}
+
+#rail-left #floors button.on {
+  border-color: var(--ink);
+  background: var(--surface);
+}
+
+#rail-left #floors b {
+  font-size: 14px;
+  line-height: 1.2;
+}
+
+#rail-left #floors .count {
+  padding: 0;
+  background: none;
+  color: var(--quiet);
+  font-size: 10px;
+  font-weight: 400;
+}
+
+#rail-left #floors .old-dot {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+}
+
+#legend-toggle {
+  position: static;
+  flex: none;
+  border-radius: 10px;
+  box-shadow: none;
+  font-weight: 400;
+}
+
+#legend-toggle[aria-expanded='true'] {
+  font-weight: 400;
+}
+
+#legend {
+  left: 82px;
+  bottom: 16px;
+}
+
+/* zoom: the bottom of the right rail */
+#rail-right #zoom {
+  position: static;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow: visible;
+  border: 0;
+  background: none;
+  box-shadow: none;
+}
+
+#rail-right #zoom button {
+  width: 44px;
+  height: 34px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  font-size: 19px;
+}
+
+#rail-right #zoom button + button {
+  border-top-color: transparent;
+}
+
+#rail-right #zoom-pct {
+  font-size: 10.5px;
+}
+
+/* the name of what is pointed at, beside the rail */
+#rail-tip {
+  position: absolute;
+  z-index: 30;
+  padding: 5px 9px;
+  border-radius: 7px;
+  background: #1f2a44;
+  color: #fff;
+  font-size: 12px;
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: 0 4px 12px rgb(31 42 68 / 20%);
+}
+
+#rail-tip::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: -4px;
+  width: 8px;
+  height: 8px;
+  background: inherit;
+  transform: translateY(-50%) rotate(45deg);
+}
+
+#rail-tip.from-right::before {
+  right: -4px;
+  left: auto;
+}
+
+/* the quest card, opened from its flag */
+#quests {
+  right: 82px;
+  left: auto;
+  z-index: 8;
+  width: 250px;
+  padding: 8px;
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: 0 10px 28px rgb(31 42 68 / 16%);
+}
+
+#quests .quest-head {
+  gap: 8px;
+  cursor: default;
+}
+
+#quests .quest-head:hover {
+  background: none;
+}
+
+#quests .quest-title {
+  margin-right: auto;
+}
+
+#quests .quest-head .close {
+  padding: 0 6px;
+  border: 0;
+  background: none;
+  font-size: 16px;
+  line-height: 1;
+}
+
+/* panels open beside the rail they belong to */
+#notices,
+#profile,
+#game {
+  top: 74px;
+  right: 82px;
+  left: auto;
+}
+
+#notices,
+#profile {
+  width: min(400px, calc(100% - 176px));
+}
+
+#game {
+  width: min(520px, calc(100% - 176px));
+}
+
+#filters,
+#settings {
+  top: 74px;
+  right: auto;
+  left: 82px;
+}
+
+#filters {
+  width: min(360px, calc(100% - 176px));
+}
+
+#settings {
+  width: min(360px, calc(100% - 176px));
+}
+
+/* urgent notices: the bell itself turns red, the outline is kept for "open" */
+.rail .ib.bell.urgent {
+  border-color: transparent;
+  color: var(--old);
+}
+
+.rail .ib.bell.urgent[aria-expanded='true'] {
+  border-color: #f0b2ad;
+  background: #fdecea;
+}
+
+/* The counters are centred by margins: with left: 50% they would only get half the width to wrap in. */
+#hud .zones {
+  right: 0;
+  left: 0;
+  width: fit-content;
+  margin: 0 auto;
+  transform: none;
+}
+
+/* the time of the last reading stays in the bar while there is room */
+@media (min-width: 1161px) {
+  #hud .tools .when {
+    display: inline;
+  }
+}
+
+#quests {
+  z-index: 12; /* over the ticket windows */
+}
+
+/* the top of a ticket window stays short, so the columns get the height */
+.tw {
+  height: min(calc(100vh - 170px), 800px);
+}
+
+.tw .tw-top .key {
+  margin-top: 10px;
+}
+
+.tw .tw-top h2 {
+  margin: 2px 0 7px;
+}
+
+.tw .tw-top .tw-claim {
+  margin: 8px 0 0;
+  padding: 4px 6px 4px 10px;
+}

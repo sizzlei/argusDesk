@@ -5,6 +5,7 @@ import { keyLabel } from './keys';
 import type { Backend } from './backend';
 import { avatarIcon, lookOf } from './avatars';
 import { gameChip, renderGame } from './game';
+import { icon } from './rail';
 import { offerUpdate, pendingUpdate } from './update';
 import type { AppState, GameStats, Snapshot } from './types';
 import { clock, fill, h, toast } from './ui';
@@ -33,14 +34,26 @@ export interface HudHooks {
   game: GameStats | null;
   gameOpen: boolean;
   toggleGame(): void;
+  /** Opens the waybill; null when no floor writes its own tickets. */
+  write: (() => void) | null;
+  /** The day's quests and their card beside the right rail (null = none today). */
+  quests: { done: number; total: number; open: boolean; toggle(): void } | null;
 }
 
 
 const SCOPES: [Scope, string, string][] = [
-  ['all', '전체', '팀 전체의 상자를 봅니다'],
-  ['mine', '내 작업', '내가 담당하거나 내가 승인할 상자만 봅니다'],
-  ['unassigned', '미배정', '담당자가 없는 상자만 봅니다'],
+  ['all', '전체', '팀 전체 보기'],
+  ['mine', '내 작업', '내 작업만 보기'],
+  ['unassigned', '미배정', '미배정만 보기'],
 ];
+
+/** A tip with its shortcut, if it has one. */
+const tipKey = (text: string, key: Parameters<typeof keyLabel>[0]) => (keyLabel(key) ? `${text} · ${keyLabel(key)}` : text);
+
+/** A rail button: an icon, a name shown when pointed at, and maybe a number. */
+function railButton(name: string, tip: string, attrs: Record<string, unknown>, badge?: Node | string | null) {
+  return h('button', { class: 'ib', type: 'button', 'aria-label': tip, 'data-tip': tip, ...attrs }, icon(name), badge ? (typeof badge === 'string' ? h('span', { class: 'n' }, badge) : badge) : null);
+}
 
 /** Why the team server is not in step, in words. */
 export const SERVER_NEEDS: Record<string, string> = {
@@ -130,9 +143,8 @@ export function renderHud(state: AppState, snap: Snapshot | null, space: number,
       .map((s, i) =>
         h(
           'button',
-          { class: i === space ? 'on' : '', 'aria-pressed': String(i === space), onclick: () => hooks.setSpace(i) },
+          { class: i === space ? 'on' : '', 'aria-pressed': String(i === space), 'aria-label': `${i + 1}층 ${s.name}`, 'data-tip': `${s.name}${s.project ? ` · ${s.project}` : ''}`, onclick: () => hooks.setSpace(i) },
           h('b', {}, `${i + 1}F`),
-          h('span', { class: 'name' }, s.name, s.project ? h('small', {}, s.project) : null),
           h('span', { class: 'count' }, String(s.zones.filter((z) => z.kind !== 'done' && z.kind !== 'returned').reduce((n, z) => n + z.count, 0))),
           s.zones.some((z) => z.staleCount) ? h('span', { class: 'old-dot', title: '묵은 상자 있음' }) : null,
         ),
@@ -142,9 +154,8 @@ export function renderHud(state: AppState, snap: Snapshot | null, space: number,
     snap
       ? h(
           'button',
-          { class: space < 0 ? 'on' : '', 'aria-pressed': String(space < 0), onclick: () => hooks.setSpace(-1) },
+          { class: space < 0 ? 'on' : '', 'aria-pressed': String(space < 0), 'aria-label': '지하 숙소', 'data-tip': '숙소 · 휴가 중인 사람', onclick: () => hooks.setSpace(-1) },
           h('b', {}, 'B1'),
-          h('span', { class: 'name' }, '숙소'),
           h('span', { class: 'count' }, String((hooks.game?.away ?? []).filter((a) => a.active).length)),
         )
       : null,
@@ -217,45 +228,6 @@ export function renderHud(state: AppState, snap: Snapshot | null, space: number,
     h(
       'div',
       { class: 'tools' },
-      snap ? h('button', { class: 'find', title: `상자 찾기${keyLabel('search') ? ` (${keyLabel('search')})` : ''}`, 'aria-label': '상자 찾기', onclick: hooks.search }, h('span', { class: 'find-ico', 'aria-hidden': 'true' }), keyLabel('search') ? h('kbd', {}, keyLabel('search')) : null) : null,
-      snap
-        ? h(
-            'div',
-            { class: 'scope', role: 'group', 'aria-label': '보이는 작업' },
-            ...SCOPES.map(([scope, text, tip]) =>
-              h('button', { class: hooks.filter.scope === scope ? 'on' : '', 'aria-pressed': String(hooks.filter.scope === scope), title: tip, onclick: () => hooks.filter.scope !== scope && hooks.setFilter({ ...hooks.filter, scope }) },
-                text,
-                scope === 'unassigned' && hooks.unassigned.count
-                  ? h('span', { class: `n${hooks.unassigned.stale ? ' old' : ''}`, title: hooks.unassigned.stale ? `묵은 미배정 ${hooks.unassigned.stale}건` : '' }, String(hooks.unassigned.count))
-                  : null,
-              ),
-            ),
-          )
-        : null,
-      snap
-        ? h(
-            'button',
-            { class: `filter-btn${extraCount(hooks.filter) ? ' on' : ''}`, 'aria-expanded': String(hooks.filtersOpen), 'aria-controls': 'filters', title: '묵은 상자, 유형으로 걸러 보기', onclick: hooks.toggleFilters },
-            '필터',
-            extraCount(hooks.filter) ? h('span', { class: 'n' }, String(extraCount(hooks.filter))) : null,
-          )
-        : null,
-      // today's deployments: mine, and the whole team's, each opening its tickets
-      hooks.deploys.all
-        ? h(
-            'div',
-            { class: 'deploy', role: 'group', 'aria-label': '오늘 운영 배포' },
-            h(
-              'button',
-              { class: 'deploy-btn', disabled: !hooks.deploys.mine, title: hooks.deploys.mine ? '오늘 운영 배포가 있는 내 티켓을 모두 엽니다' : '오늘 배포할 내 티켓이 없습니다', onclick: () => hooks.deploys.open(true) },
-              h('span', { class: 'txt' }, '오늘 '),
-              h('span', { class: 'my' }, '내 '),
-              '배포',
-              h('span', { class: 'n' }, String(hooks.deploys.mine)),
-            ),
-            h('button', { class: 'deploy-btn all', title: '팀 전체의 오늘 운영 배포 티켓을 모두 엽니다', onclick: () => hooks.deploys.open(false) }, '전체', h('span', { class: 'n' }, String(hooks.deploys.all))),
-          )
-        : null,
       strip,
       lastError ? h('span', { class: 'chip warn', title: lastError }, '갱신 실패') : null,
       state.server && state.serverNeeds === 'login'
@@ -274,23 +246,95 @@ export function renderHud(state: AppState, snap: Snapshot | null, space: number,
             `경고 ${snap.warnings.length}건`,
           )
         : null,
-      h(
-        'button',
-        {
-          class: `bell${hooks.notices.approvals || hooks.notices.urgent ? ' urgent' : ''}`,
-          'aria-expanded': String(hooks.notices.open),
-          'aria-controls': 'notices',
-          'aria-label': `알림: 내 승인 대기 ${hooks.notices.approvals}건, 새 알림 ${hooks.notices.unread}건, Argus 긴급 ${hooks.notices.urgent}건`,
-          title: hooks.notices.approvals ? `내 승인 대기 ${hooks.notices.approvals}건` : '알림',
-          onclick: hooks.notices.toggle,
-        },
-        h('span', { class: 'bell-ico', 'aria-hidden': 'true' }),
-        hooks.notices.approvals + hooks.notices.unread + hooks.notices.urgent ? h('span', { class: 'n' }, String(hooks.notices.approvals + hooks.notices.unread + hooks.notices.urgent)) : null,
-      ),
       h('span', { class: 'quiet when' }, snap ? `${clock(snap.fetchedAt)} 갱신` : '불러오는 중'),
-      // In a narrow window the button is its sign alone, and tells the time of the last reading when pointed at.
-      h('button', { class: 'refresh', onclick: hooks.refresh, 'aria-label': '새로 고침', title: snap ? `지금 Jira에서 다시 읽기 · ${clock(snap.fetchedAt)} 갱신` : '지금 Jira에서 다시 읽기' }, h('span', { class: 'ico', 'aria-hidden': 'true' }, '↻'), h('span', { class: 'txt' }, '새로 고침')),
       strip ? null : h('button', { 'aria-expanded': String(hooks.profileOpen), 'aria-controls': 'profile', onclick: hooks.toggleProfile }, state.me || '내 상태'),
     ),
+  );
+  renderRails(snap, hooks);
+}
+
+/** The rails: choosing what is seen on the left, what comes to me on the right. */
+function renderRails(snap: Snapshot | null, hooks: HudHooks) {
+  const left = document.querySelector('#rail-left .rail-tools')!;
+  const right = document.querySelector('#rail-right .rail-tools')!;
+  const f = hooks.filter;
+  const extra = extraCount(f);
+  const u = hooks.unassigned;
+  fill(
+    left,
+    snap ? h('hr', {}) : null,
+    snap ? railButton('search', tipKey('상자 찾기', 'search'), { class: 'ib find', onclick: hooks.search }) : null,
+    snap
+      ? h(
+          'div',
+          { class: 'scope', role: 'group', 'aria-label': `보이는 작업 (${keyLabel('mine') || '단축키 없음'}로 차례로 전환)` },
+          ...SCOPES.map(([scope, , tip]) =>
+            railButton(
+              scope,
+              scope === 'mine' ? tipKey(tip, 'mine') : tip,
+              { class: `ib${f.scope === scope ? ' on' : ''}`, 'aria-pressed': String(f.scope === scope), onclick: () => f.scope !== scope && hooks.setFilter({ ...f, scope }) },
+              scope === 'unassigned' && u.count ? h('span', { class: `n${u.stale ? ' old' : ''}`, title: u.stale ? `묵은 미배정 ${u.stale}건` : '' }, String(u.count)) : null,
+            ),
+          ),
+        )
+      : null,
+    snap
+      ? railButton(
+          'filter',
+          extra ? `필터 ${extra}개 적용 중` : '필터 · 묵은 상자, 유형',
+          { class: `ib${extra ? ' on' : ''}`, 'aria-expanded': String(hooks.filtersOpen), 'aria-controls': 'filters', onclick: hooks.toggleFilters },
+          extra ? String(extra) : null,
+        )
+      : null,
+    // today's deployments: mine, and the whole team's, each opening its tickets
+    hooks.deploys.all
+      ? h(
+          'div',
+          { class: 'deploy', role: 'group', 'aria-label': '오늘 운영 배포' },
+          railButton(
+            'rocket',
+            hooks.deploys.mine ? `오늘 내 배포 ${hooks.deploys.mine}건 모두 열기` : '오늘 배포할 내 티켓이 없습니다',
+            { class: 'ib deploy-btn', disabled: !hooks.deploys.mine, onclick: () => hooks.deploys.open(true) },
+            hooks.deploys.mine ? String(hooks.deploys.mine) : null,
+          ),
+          h(
+            'button',
+            { class: 'deploy-all', type: 'button', 'aria-label': `팀 전체 오늘 배포 ${hooks.deploys.all}건 모두 열기`, 'data-tip': `팀 전체 오늘 배포 ${hooks.deploys.all}건 모두 열기`, onclick: () => hooks.deploys.open(false) },
+            '전체 ',
+            h('b', {}, String(hooks.deploys.all)),
+          ),
+        )
+      : null,
+    hooks.write ? h('hr', {}) : null,
+    hooks.write ? railButton('pen', tipKey('송장 쓰기', 'write'), { class: 'ib write', onclick: hooks.write }) : null,
+  );
+  const n = hooks.notices;
+  const all = n.approvals + n.unread + n.urgent;
+  const q = hooks.quests;
+  fill(
+    right,
+    railButton(
+      'bell',
+      n.approvals ? `알림 · 내 승인 대기 ${n.approvals}건` : tipKey('알림', 'notices'),
+      {
+        class: `ib bell${n.approvals || n.urgent ? ' urgent' : ''}${n.open ? ' on' : ''}`,
+        'aria-expanded': String(n.open),
+        'aria-controls': 'notices',
+        'aria-label': `알림: 내 승인 대기 ${n.approvals}건, 새 알림 ${n.unread}건, Argus 긴급 ${n.urgent}건`,
+        onclick: n.toggle,
+      },
+      all ? String(all) : null,
+    ),
+    q
+      ? railButton(
+          'flag',
+          `오늘의 퀘스트 ${q.done}/${q.total}`,
+          { class: `ib quest-btn${q.open ? ' on' : ''}`, 'aria-expanded': String(q.open), 'aria-controls': 'quests', onclick: q.toggle },
+          h('span', { class: `n tally${q.done === q.total ? ' all' : ''}` }, `${q.done}/${q.total}`),
+        )
+      : null,
+    hooks.game ? railButton('trophy', '기록 · 레벨과 배지', { class: `ib${hooks.gameOpen ? ' on' : ''}`, 'aria-expanded': String(hooks.gameOpen), 'aria-controls': 'game', onclick: hooks.toggleGame }) : null,
+    railButton('refresh', snap ? `${tipKey('새로 고침', 'refresh')} · ${clock(snap.fetchedAt)} 갱신` : tipKey('새로 고침', 'refresh'), { class: 'ib refresh', onclick: hooks.refresh }),
+    h('hr', {}),
   );
 }

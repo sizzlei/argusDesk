@@ -22,7 +22,8 @@ interface Win {
   el: HTMLElement;
   body: HTMLElement; // the scrolling part
   actionsEl: HTMLElement | null;
-  detailEl: HTMLElement | null;
+  detailEl: HTMLElement | null; // what to read: forms, description, files
+  talkEl: HTMLElement | null; // the comments, next to what can be done
   cancelEl: HTMLElement | null; // top of the window: where a request is cancelled
   claimEl: HTMLElement | null; // top of the window: taking a box nobody holds
   min: boolean; // minimised: shrunk to its title bar, still where it was put
@@ -53,12 +54,6 @@ function flush(w: Win) {
     run?.();
   }, 200);
 }
-function commentSlot(w: Win) {
-  const slot = h('div', { class: 'comment-slot' });
-  if (w.commentBox) slot.append(w.commentBox);
-  return slot;
-}
-
 function row(name: string, value: string | Node | undefined) {
   if (!value) return null;
   return h('div', { class: 'row' }, h('dt', {}, name), h('dd', {}, value));
@@ -551,7 +546,7 @@ function renderActions(w: Win, snap: Snapshot, backend: Backend) {
   });
   w.commentBox = h('div', { class: 'comment-box' }, text, h('div', { class: 'act-row' }, code, desk ? audience : null, send));
   mentions(text, w.commentBox, draft.who, (q) => backend.findPeople(q), keep);
-  w.detailEl?.querySelector('.comment-slot')?.replaceChildren(w.commentBox);
+  w.el.querySelector('.comment-slot')?.replaceChildren(w.commentBox);
   if (focused) {
     text.focus();
     text.setSelectionRange(focused[0], focused[1]);
@@ -648,7 +643,8 @@ function renderDetail(w: Win, backend: Backend) {
   const entry = details.get(b.key);
   if (!entry || entry.updated !== b.updated) {
     details.set(b.key, { updated: b.updated });
-    fill(host, h('p', { class: 'quiet' }, '내용을 불러오는 중입니다.'), h('h3', {}, '댓글'), commentSlot(w));
+    fill(host, h('p', { class: 'quiet' }, '내용을 불러오는 중입니다.'));
+    if (w.talkEl) fill(w.talkEl, h('h3', {}, '댓글'), h('p', { class: 'quiet' }, '댓글을 불러오는 중입니다.'));
     backend.ticketDetail(b.key).then(
       (detail) => details.set(b.key, { updated: b.updated, detail }),
       (e) => details.set(b.key, { updated: b.updated, error: errText(e) }),
@@ -662,7 +658,8 @@ function renderDetail(w: Win, backend: Backend) {
     return;
   }
   if (entry.error) {
-    fill(host, h('p', { class: 'error' }, `내용을 불러오지 못했습니다: ${entry.error}`), h('h3', {}, '댓글'), commentSlot(w));
+    fill(host, h('p', { class: 'error' }, `내용을 불러오지 못했습니다: ${entry.error}`));
+    if (w.talkEl) fill(w.talkEl, h('h3', {}, '댓글'));
     return;
   }
   const d = entry.detail;
@@ -696,8 +693,11 @@ function renderDetail(w: Win, backend: Backend) {
     hasDescription || forms.length === 0 ? h('h3', {}, '설명') : null,
     hasDescription ? rich(d.descriptionHtml, backend) : forms.length === 0 ? h('p', { class: 'quiet' }, '설명이 없습니다.') : null,
     ...files(w, d, backend),
+  );
+  if (!w.talkEl) return;
+  fill(
+    w.talkEl,
     h('h3', {}, d.comments.length ? `댓글 ${d.comments.length}개` : '댓글'),
-    commentSlot(w),
     d.comments.length
       ? h(
           'ol',
@@ -735,6 +735,7 @@ function draw(w: Win, snap: Snapshot, backend: Backend) {
   const scroll = w.body.scrollTop;
   const zone = snap.spaces.find((s) => s.id === b.space)?.zones.find((z) => z.id === b.zone);
   w.detailEl = h('div', { class: 'tw-detail' });
+  w.talkEl = h('div', { class: 'tw-talk' });
   w.actionsEl = h('section', { class: 'tw-actions' });
   w.cancelEl = h('span', { class: 'tw-cancel' });
   w.claimEl = h('div', { class: 'tw-claim', hidden: !!b.assigneeId });
@@ -744,8 +745,9 @@ function draw(w: Win, snap: Snapshot, backend: Backend) {
     h('b', {}, b.key),
     h('span', { class: 'tw-sum', title: b.summary }, b.summary),
   );
-  fill(
-    w.body,
+  const lead = h(
+    'div',
+    { class: 'tw-top' },
     h(
       'p',
       { class: 'key' },
@@ -756,12 +758,15 @@ function draw(w: Win, snap: Snapshot, backend: Backend) {
       w.cancelEl,
     ),
     h('h2', {}, b.summary),
+    pills(b, zone?.name),
     w.claimEl,
+  );
+  const read = h(
+    'div',
+    { class: 'tw-col tw-read' },
     h(
       'dl',
       {},
-      row('구역', zone?.name),
-      row('상태', b.status),
       row('담당자', b.assignee || '미배정'),
       row('요청자', b.reporter),
       row('우선순위', b.priority),
@@ -769,7 +774,6 @@ function draw(w: Win, snap: Snapshot, backend: Backend) {
       row('구역 도착', dateTime(b.enteredAt)),
       row('경과', ageLine(b, snap)),
     ),
-    w.actionsEl,
     b.path?.length
       ? h(
           'div',
@@ -786,15 +790,50 @@ function draw(w: Win, snap: Snapshot, backend: Backend) {
       : null,
     w.detailEl,
   );
+  const todo = h('div', { class: 'tw-col tw-do' }, w.actionsEl, w.talkEl);
+  // Two columns when the window is wide: what to read on the left, what to do on
+  // the right. Narrow, the two stack. The box to answer in stays at the bottom.
+  const scrolls = [...w.body.querySelectorAll<HTMLElement>('.tw-col')].map((c) => c.scrollTop);
+  fill(w.body, lead, h('div', { class: 'tw-cols' }, read, todo));
   renderActions(w, snap, backend);
   renderDetail(w, backend);
   w.body.scrollTop = scroll;
+  [read, todo].forEach((c, i) => (c.scrollTop = scrolls[i] ?? 0));
 }
+
+/** The line under the title: where the box is and what is due, always in sight. */
+function pills(b: Box, zone: string | undefined) {
+  const at = b.deploy ? dateTime(b.deploy) : '';
+  const route = b.path?.length ? b.path : null;
+  return h(
+    'div',
+    { class: 'tw-pills' },
+    h('span', { class: 'pill status', title: zone ? `구역: ${zone}` : undefined }, b.status),
+    zone ? h('span', { class: 'pill' }, zone) : null,
+    b.stale ? h('span', { class: 'pill stale', title: '오래 머문 상자입니다' }, '묵음') : null,
+    b.urgent ? h('span', { class: 'pill urgent' }, '긴급') : null,
+    b.reply ? h('span', { class: 'pill reply', title: dateTime(b.reply) }, '요청자 답변') : null,
+    at ? h('span', { class: 'pill deploy', title: '운영 배포 일시' }, `배포 ${at}`) : null,
+    route
+      ? h(
+          'span',
+          { class: 'mini-route', 'aria-label': `경로 ${route.map((s) => s.name).join(' → ')}` },
+          ...route.map((s) => h('i', { class: s.state, title: s.name })),
+        )
+      : null,
+  );
+}
+
 
 export interface TicketHooks {
   /** A window came to the front: its box is the one marked in the room. */
   onFocus(key: string): void;
   onClose(key: string): void;
+}
+
+/** How wide the icon rail on that side is (0 when there is none). */
+function railWidth(side: 'left' | 'right') {
+  return document.getElementById(`rail-${side}`)?.getBoundingClientRect().width ?? 0;
 }
 
 /** Shrinks a window to its title bar, or opens it out again at the size it had. */
@@ -821,8 +860,8 @@ function front(w: Win, hooks: TicketHooks) {
   // A window dragged out of sight comes back when it is asked for.
   const host = w.el.parentElement;
   if (host && (w.el.offsetLeft > host.clientWidth - 120 || w.el.offsetTop > host.clientHeight - 60 || w.el.offsetLeft + w.el.offsetWidth < 120)) {
-    w.el.style.left = `${Math.max(12, host.clientWidth - w.el.offsetWidth - 16)}px`;
-    w.el.style.top = '66px';
+    w.el.style.left = `${Math.max(railWidth('left') + 24, host.clientWidth - w.el.offsetWidth - railWidth('right') - 24)}px`;
+    w.el.style.top = '74px';
   }
   wins.forEach((o) => o.el.classList.toggle('front', o === w));
   hooks.onFocus(w.key);
@@ -860,17 +899,21 @@ export function openTicket(b: Box, snap: Snapshot, backend: Backend, hooks: Tick
   const fold = h('button', { class: 'close fold', 'aria-label': `${b.key} 창 최소화`, title: '최소화' }, '–');
   const head = h('header', { class: 'tw-head' }, title, h('span', { class: 'tw-buttons' }, fold, shut));
   const body = h('div', { class: 'tw-body' });
-  const el = h('section', { class: 'tw', role: 'dialog', 'aria-label': `${b.key} ${b.summary}` }, head, body);
-  const win: Win = { key: b.key, box: b, el, body, actionsEl: null, detailEl: null, cancelEl: null, claimEl: null, min: false, size: { w: '', h: '' }, text: null, commentBox: null, busy: false, commenting: false, attach: false, sending: 0, pending: null };
+  const foot = h('footer', { class: 'tw-foot' }, h('div', { class: 'comment-slot' }));
+  const el = h('section', { class: 'tw', role: 'dialog', 'aria-label': `${b.key} ${b.summary}` }, head, body, foot);
+  const win: Win = { key: b.key, box: b, el, body, actionsEl: null, detailEl: null, talkEl: null, cancelEl: null, claimEl: null, min: false, size: { w: '', h: '' }, text: null, commentBox: null, busy: false, commenting: false, attach: false, sending: 0, pending: null };
   w = win;
   wins.set(b.key, win);
 
   // Each new window opens a step down and to the left of the last, from the right edge.
   const n = wins.size - 1;
-  const width = Math.min(560, host.clientWidth - 24);
+  // Wide enough for two columns when the screen allows, left of the right rail.
+  const right = railWidth('right') + 24;
+  const room = host.clientWidth - right - railWidth('left') - 36;
+  const width = Math.max(360, Math.min(860, room));
   el.style.width = `${width}px`;
-  el.style.left = `${Math.max(12, host.clientWidth - width - 16 - n * 32)}px`;
-  el.style.top = `${66 + n * 30}px`;
+  el.style.left = `${Math.max(railWidth('left') + 24, host.clientWidth - width - right - n * 32)}px`;
+  el.style.top = `${74 + n * 30}px`;
 
   shut.addEventListener('click', () => close(win, hooks));
   // Minimised, a window is just its title bar: small, and still movable.
