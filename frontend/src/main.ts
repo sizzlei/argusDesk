@@ -14,6 +14,9 @@ import type { AppState, Box, Change, GameStats, Snapshot } from './types';
 import { checkForUpdates, initUpdates } from './update';
 import { showBriefing, watchPresence } from './briefing';
 import { renderQuests, updateQuests } from './quests';
+import { readDust } from './dust';
+import { deployPopupDue, deploysToday } from './deploy';
+import { WEATHER_NAME, setWeatherOn, weatherAt, weatherOn } from './weather';
 import { openAvatarPicker, openVacation, cancelVacation } from './vacation';
 import { startTour, tourRunning, tourSeen } from './tour';
 import { chooseAction, confirmAction, errText, openDiagnostics, toast } from './ui';
@@ -111,6 +114,10 @@ async function boot() {
   });
   scene.setMe(state.meId, state.me);
   await scene.init();
+  // The weather outside, by the season; it turns every three hours.
+  const sky = () => scene.setWeather(weatherOn() ? weatherAt() : 'clear');
+  sky();
+  window.setInterval(sky, 10 * 60_000);
   onAnswered((key, approve) => scene.stamp(key, approve));
   // The room dims in the evening; whoever would rather not has it switched off, on this computer.
   const HOURS = 'argusdesk.hours';
@@ -239,6 +246,14 @@ async function boot() {
           run: () => argusLogin(),
         },
       !!state.server && { label: 'Argus 연결 끊기', run: () => void backend.forgetServer().then(apply, fail) },
+      {
+        label: weatherOn() ? '날씨 끄기' : '날씨 켜기',
+        run: () => {
+          setWeatherOn(!weatherOn());
+          sky();
+        },
+        note: `지금 창밖: ${WEATHER_NAME[weatherAt()]} · 계절에 따라 눈, 비, 바람, 낙엽이 지나갑니다`,
+      },
       { label: scene.hours ? '시간대 조명 끄기' : '시간대 조명 켜기', run: () => setHours(!scene.hours), note: '저녁과 밤에 센터 조명이 어두워집니다' },
       { label: '출근 브리핑 보기', run: () => showBriefing(snap, game?.away ?? [], visit, true), note: '내 승인 대기, 요청자 답변, 새로 들어온 상자, 내 묵은 상자' },
       { label: '둘러보기 다시 보기', run: () => tour(true) },
@@ -249,6 +264,14 @@ async function boot() {
     ];
     return list.filter((a): a is ProfileAction => !!a);
   };
+  /** Opens a window for every ticket that goes to production today. */
+  const openDeploys = () => {
+    if (!snap) return;
+    const list = deploysToday(snap);
+    list.slice(0, 6).forEach((d) => openTicket(d.box, snap!, backend, tickets));
+    toast(list.length > 6 ? `오늘 배포 ${list.length}건 중 6건을 열었습니다. 창은 6개까지 열립니다.` : `오늘 배포 ${list.length}건을 열었습니다.`);
+  };
+
   /** Moves the day's quests along; a quest done, or the whole day, is celebrated. */
   const quests = () => {
     const meId = snap?.members.find((m) => m.me)?.id || state.meId;
@@ -306,6 +329,7 @@ async function boot() {
       },
       search: openFinder,
       unassigned: unassigned(snap),
+      deploys: { count: deploysToday(snap).length, open: () => openDeploys() },
       notices: {
         ...noticeCount(snap),
         open: noticesOpen(),
@@ -512,10 +536,18 @@ async function boot() {
   backend.onBoard((ev) => {
     snap = ev.snapshot;
     lastError = '';
+    // dust monsters, from the whole centre; one swept away goes up in a puff
+    const { dust, gone } = readDust(ev.snapshot);
+    gone.forEach((d) => scene.sweep(d.key));
+    if (gone.length) toast(`먼지 괴물을 물리쳤습니다! (${gone.map((d) => d.name).join(', ')})`);
+    scene.setDust(dust);
     draw(ev.changes);
     syncTickets(ev.snapshot, backend);
     addNotes(ev.notes, ev.snapshot.fetchedAt);
     quests();
+    // the first view of a day with deployments: the morning card, which leads with them
+    // (counted as shown when a briefing is already up: it has them too)
+    if (tourSeen() && !tourRunning() && deployPopupDue(ev.snapshot) && !document.querySelector('dialog.brief[open]')) showBriefing(ev.snapshot, game?.away ?? [], visit, true);
     const arrived = awaited && ev.snapshot.boxes.find((b) => b.key === awaited);
     if (arrived) {
       awaited = '';

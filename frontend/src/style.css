@@ -3319,7 +3319,7 @@ dialog.brief h2 {
 
 .brief-sum {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(6, 1fr);
   gap: 8px;
   margin: 0 0 12px;
   padding: 0;
@@ -3347,6 +3347,16 @@ dialog.brief h2 {
 
 .brief-sum li.approval:not(.none) b {
   color: var(--accent);
+}
+
+.brief-sum li.deploy:not(.none) b {
+  color: #7048e8;
+}
+
+.brief-body section.deploy {
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: color-mix(in srgb, #7048e8 7%, transparent);
 }
 
 .brief-sum li.reply:not(.none) b {
@@ -3531,4 +3541,37 @@ dialog.brief .act-row {
   border-radius: 8px;
   background: color-mix(in srgb, #2f9e6a 9%, transparent);
   font-size: 13px;
+}
+
+/* Today's production deployments: one button opens them all */
+button.deploy-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-color: color-mix(in srgb, #7048e8 45%, var(--line));
+  color: #5f3dc4;
+  font-weight: 600;
+}
+
+button.deploy-btn .n {
+  min-width: 16px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: #7048e8;
+  color: #fff;
+  font-size: 11px;
+  text-align: center;
+}
+
+@media (max-width: 1600px) {
+  button.deploy-btn .txt {
+    display: none;
+  }
+}
+
+@media (max-width: 1520px) {
+  #hud .tools .when {
+    display: none;
+  }
 }

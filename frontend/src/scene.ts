@@ -8,9 +8,11 @@ import 'pixi.js/unsafe-eval';
 import { Application, Container, Graphics, Polygon } from 'pixi.js';
 import { lookOf } from './avatars';
 import type { Away, Box, Change, Member, Snapshot, SpaceView, ZoneView } from './types';
+import type { Dust } from './dust';
+import type { Weather } from './weather';
 import { TW, TH, ZW, ZH, COL_GAP, ROW_GAP, ATRIUM_GAP, grid, COLS, PAD, WALL_H, STOREY, iso, DESK_EXTRA, rowY, roomOrigin } from './scene/grid';
 import { INK, QUIET, ACCENT, FLOOR, AGE, shade, ageStep, shortAge, shortName } from './scene/palette';
-import { hatch, label, block, BOX, BOX_H, drawBox, floorPoly, tree, hedge, purifier, cooler, bench, sofa, dbTank, Lamp, rack, chiller, desk, person, truck, decorate, furnish, packing } from './scene/props';
+import { hatch, label, block, BOX, BOX_H, drawBox, floorPoly, tree, hedge, purifier, cooler, bench, sofa, dbTank, Lamp, rack, chiller, desk, person, truck, decorate, furnish, packing, dustMonster } from './scene/props';
 import { LANE_LEN, LANE_TOP, lanePitch, pallet, palletCols, slots } from './scene/layout';
 import { Sprite, Leg, BeltTile, Belt, BELT_SPEED, BELT_UP, CALM, easeInOut, SQUASH } from './scene/parts';
 import { drawBuilding, beltTile } from './scene/building';
@@ -68,6 +70,11 @@ export class Scene {
   signs = new Container(); // room signs and name tags, always on top
   private sprites = new Map<string, Sprite>();
   private rooms: DropRoom[] = []; // where boxes can be dropped on this floor
+  private dust = new Map<string, Dust>(); // dust monsters by "space/zone"
+  private sky = new Graphics(); // rain, snow, leaves: drawn in window space every frame
+  private weather: Weather = 'clear';
+  private flakes: { x: number; y: number; v: number; s: number; ph: number }[] = [];
+  private dustAt = new Map<string, { x: number; y: number }>(); // where each monster of this floor stands
   private carry: { sp: Sprite; x: number; y: number; on: boolean } | null = null; // a box being dragged
   private dropMark = new Graphics(); // the room or lane a dragged box would land in
   private space = 0;
@@ -125,6 +132,8 @@ export class Scene {
     this.things.sortableChildren = true;
     this.lift.addChild(this.world);
     this.app.stage.addChild(this.lift);
+    this.sky.eventMode = 'none';
+    this.app.stage.addChild(this.sky); // the weather: over the building, under celebrations
     this.app.stage.addChild(this.fx);
     this.fx.eventMode = 'none';
     this.app.stage.eventMode = 'static';
@@ -230,6 +239,90 @@ export class Scene {
     const mine = snap.boxes.filter((b) => b.space === space.id && b.assigneeId === id);
     const open = new Set(space.zones.filter((z) => z.kind === 'work' || z.kind === 'desk').map((z) => z.id));
     return [...others, { id, name: real?.name || this.me.name, space: space.id, zone, count: mine.filter((b) => open.has(b.zone)).length, me: true }];
+  }
+
+  /** Sets the weather outside (none in the lodge, underground). */
+  setWeather(w: Weather) {
+    if (w === this.weather) return;
+    this.weather = w;
+    const { width, height } = this.app.screen;
+    const n = { clear: 0, cloudy: 0, snow: 230, rain: 280, wind: 80, leaves: 70, blossom: 80 }[w];
+    this.flakes = Array.from({ length: n }, () => ({ x: Math.random() * width, y: Math.random() * height, v: 0.6 + Math.random() * 0.8, s: 0.6 + Math.random() * 0.9, ph: Math.random() * 6.3 }));
+    this.drawSky(0);
+  }
+
+  /** Draws the weather for this frame. */
+  private drawSky(ms: number) {
+    const g = this.sky;
+    g.clear();
+    const w = this.weather;
+    if (w === 'clear' || this.space < 0) return;
+    const { width, height } = this.app.screen;
+    // a veil over the day: grey for rain and cloud, pale for snow
+    const veil = { cloudy: [0x56647a, 0.08], rain: [0x4a5a72, 0.11], snow: [0x8796ad, 0.1], wind: [0x8090a8, 0.04], leaves: [0xe8a04a, 0.03], blossom: [0xf7c6d6, 0.04] }[w] as [number, number];
+    g.rect(0, 0, width, height).fill({ color: veil[0], alpha: veil[1] });
+    if (CALM) return;
+    const T = this.clock / 1000;
+    const dt = ms / 1000;
+    for (const f of this.flakes) {
+      switch (w) {
+        case 'snow':
+          f.y += (24 + f.v * 30) * dt;
+          f.x += Math.sin(T * 1.2 + f.ph) * 14 * dt;
+          g.circle(f.x + 0.6, f.y + 0.8, 1.6 + f.s * 1.8).fill({ color: 0x5a6a85, alpha: 0.18 }); // a faint shadow, so it shows on a pale floor
+          g.circle(f.x, f.y, 1.6 + f.s * 1.8).fill({ color: 0xffffff, alpha: 0.95 });
+          break;
+        case 'rain':
+          f.y += (520 + f.v * 260) * dt;
+          f.x -= (90 + f.v * 40) * dt;
+          g.moveTo(f.x, f.y).lineTo(f.x + 5, f.y - 16 - f.s * 8).stroke({ width: 1.5, color: 0x6f8fbf, alpha: 0.7 });
+          break;
+        case 'wind': {
+          f.x += (480 + f.v * 380) * dt;
+          f.y += Math.sin(T * 2 + f.ph) * 10 * dt;
+          const len = 30 + f.s * 50;
+          if (f.s > 1.2) g.rect(f.x, f.y, 4, 3).fill({ color: 0x8a7f70, alpha: 0.85 }); // a bit of something blown along
+          else g.moveTo(f.x, f.y).quadraticCurveTo(f.x - len / 2, f.y - 4, f.x - len, f.y + 2).stroke({ width: 1.8, color: 0x9fb0c8, alpha: 0.6 });
+          break;
+        }
+        case 'leaves':
+        case 'blossom': {
+          f.y += (30 + f.v * 26) * dt;
+          f.x += (Math.sin(T * 1.5 + f.ph) * 30 + 14) * dt;
+          const c = w === 'leaves' ? [0xe07b39, 0xc9472f, 0xe8b23a][Math.floor(f.ph) % 3] : [0xf7b6c8, 0xfbd3df, 0xf29bb5][Math.floor(f.ph) % 3];
+          const r = (w === 'leaves' ? 6 : 4.6) * f.s;
+          const a = T * 2 * f.v + f.ph;
+          const cx = Math.cos(a) * r;
+          const sy = Math.sin(a) * r * 0.5;
+          g.poly([f.x - cx, f.y - sy, f.x + sy, f.y - r * 0.45, f.x + cx, f.y + sy, f.x - sy, f.y + r * 0.45]).fill({ color: c, alpha: 0.92 });
+          break;
+        }
+      }
+      // round again from the other side
+      if (f.y > height + 20) [f.y, f.x] = [-20, Math.random() * width];
+      if (f.x < -90) f.x = width + 20;
+      if (f.x > width + 90) [f.x, f.y] = [-40, Math.random() * height];
+    }
+  }
+
+  /** Takes the dust monsters of the whole centre. */
+  setDust(dust: Map<string, Dust>) {
+    this.dust = dust;
+  }
+
+  /** A monster was swept away: a puff of dust where it stood (if it was on this floor). */
+  sweep(key: string) {
+    const at = this.dustAt.get(key);
+    if (!at || CALM) return;
+    const p = this.world.toGlobal(at);
+    for (let i = 0; i < 26; i++) {
+      const g = new Graphics().rect(-3, -3, 6, 6).fill([0x8e8a95, 0xaaa6b0, 0x6f6b76][i % 3]);
+      g.position.set(p.x, p.y - 30);
+      const a = Math.random() * Math.PI * 2;
+      const v = 0.15 + Math.random() * 0.35;
+      this.fx.addChild(g);
+      this.bits.push({ g, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 0.25, spin: (Math.random() - 0.5) * 0.03, life: 700 + Math.random() * 500 });
+    }
   }
 
   /** Who I am, so my avatar can follow me. */
@@ -526,6 +619,7 @@ export class Scene {
     this.truck = null;
     this.people = [];
     this.rooms = [];
+    this.dustAt.clear();
     this.belts = [];
     this.belt = null;
     this.lamps = [];
@@ -671,6 +765,20 @@ export class Scene {
         d: o.d,
         lanes: zone.kind === 'desk' ? lanes.map((id, li) => ({ id, gy: o.gy + LANE_TOP + li * lanePitch(lanes.length, o.d) - 0.5, h: lanePitch(lanes.length, o.d) })) : [],
       });
+
+      // A dust monster where old boxes pile up, at the front of the room.
+      const dust = this.dust.get(`${space.id}/${zone.id}`);
+      if (dust) {
+        // on the free strip along the front, between the bench (left) and the pallet's sign (right)
+        const gx = o.gx + 4.1;
+        const gy = o.gy + o.d - 0.45;
+        const p = iso(gx, gy);
+        const g = prop(gx, gy, (pg) => dustMonster(pg, dust.size, dust.hurt), 250); // in front of the planters along the wall
+        g.position.set(p.x, p.y);
+        this.people.push({ g, x: p.x, y: p.y, phase: zi * 2.3, slow: dust.hurt > 0.5 });
+        this.dustAt.set(`${space.id}/${zone.id}`, { x: p.x, y: p.y });
+        this.tag(`먼지 괴물 · 묵은 상자 ${dust.count}`, gx, gy, 34 + dust.size * 20, false);
+      }
 
       // Boxes nobody holds stand apart on a marked pallet. Not in the first
       // room, where everything has just arrived and nothing is held yet.
@@ -1123,6 +1231,7 @@ export class Scene {
   }
 
   private animate(ms: number) {
+    this.drawSky(ms);
     const k = 1 - Math.pow(0.002, ms / 1000); // frame-rate independent easing
     const slide = (this.pushTo - this.push) * k;
     this.world.x += slide;

@@ -3,8 +3,10 @@
 package board
 
 import (
+	"encoding/json"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/sizzlei/argusDesk/internal/config"
@@ -103,6 +105,7 @@ func Assemble(in Input) *model.Snapshot {
 					b.Path = route(&wf, t.StatusID, in.StatusName)
 				}
 			}
+			b.Deploy = deployOf(sp, typ, *t, in.FieldID)
 			if at, ok := in.Replied[t.Key]; ok {
 				b.Reply = &at
 			}
@@ -248,4 +251,24 @@ func Diff(prev, next *model.Snapshot) []model.Change {
 		}
 	}
 	return changes
+}
+
+// deployOf reads when a ticket goes to production, from the field the
+// settings name for its type (or its floor). "" when none is set.
+func deployOf(sp *config.Space, typ *config.Type, t model.Ticket, fieldID map[string]string) string {
+	name := sp.DeployField
+	if typ != nil && typ.DeployField != "" {
+		name = typ.DeployField
+	}
+	switch name {
+	case "":
+		return ""
+	case "duedate":
+		return t.Due
+	}
+	var s string
+	if err := json.Unmarshal(t.Custom[fieldID[name]], &s); err != nil {
+		return ""
+	}
+	return strings.TrimSpace(s)
 }

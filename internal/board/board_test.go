@@ -394,3 +394,13 @@ func TestUrgentArrival(t *testing.T) {
 		}
 	}
 }
+
+func TestDeployDate(t *testing.T) {
+	cfg := example(t)
+	cfg.Spaces[0].DeployField = "작업 완료 요청일시"
+	b := Assemble(Input{Config: cfg, Tickets: map[string][]model.Ticket{cfg.Spaces[0].ID: {toTicket(issue("REQ-1", "10002", "검토 중"))}},
+		FieldID: map[string]string{"작업 완료 요청일시": "customfield_1"}, Me: "u1", BrowseURL: func(k string) string { return k }, Now: now})
+	if len(b.Boxes) != 1 || b.Boxes[0].Deploy != "2026-11-30T18:00:00.000+0900" {
+		t.Fatalf("deploy = %+v", b.Boxes)
+	}
+}

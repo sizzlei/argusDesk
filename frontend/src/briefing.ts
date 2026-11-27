@@ -5,10 +5,13 @@
 import type { Away, Box, Snapshot } from './types';
 import { dateTime, h } from './ui';
 import { questsToday } from './quests';
+import { deploysToday } from './deploy';
 
 const SEEN_KEY = 'argusdesk.seenAt'; // when this window was last in view
 const GAP = 2 * 60 * 60 * 1000; // away this long: there is something to tell
 const MAX_ROWS = 6;
+// the tiles at the top are narrow: shorter names there
+const SHORT: Record<string, string> = { deploy: '오늘 배포', approval: '승인 대기', reply: '요청자 답변', new: '새 상자', moved: '내 상자 변화', stale: '묵은 상자' };
 
 let seenAt = read();
 let since = seenAt; // the absence the next briefing covers
@@ -63,7 +66,10 @@ export function showBriefing(snap: Snapshot | null, away: Away[], go: (box: Box)
   const at = (iso?: string) => (iso ? Date.parse(iso) : 0);
   const boxes = snap.boxes;
   const isNew = (b: Box) => at(b.created) > from;
+  const deploys = deploysToday(snap);
+  const when = new Map(deploys.map((d) => [d.box.key, d.at]));
   const sections: [string, string, Box[]][] = [
+    ['deploy', '오늘 운영 배포', deploys.map((d) => d.box)],
     ['approval', '내 승인 대기', boxes.filter((b) => b.myApproval)],
     ['reply', '요청자 답변', boxes.filter((b) => b.reply && (b.mine || !b.assigneeId))],
     ['new', '새로 들어온 상자', boxes.filter(isNew).sort((a, b) => at(b.created) - at(a.created))],
@@ -85,7 +91,7 @@ export function showBriefing(snap: Snapshot | null, away: Away[], go: (box: Box)
         { onclick: () => (close(), go(b)) },
         h('b', {}, b.key),
         h('span', { class: 'what' }, b.summary),
-        h('span', { class: 'quiet' }, [b.status, b.assignee || '미배정'].filter(Boolean).join(' · ')),
+        h('span', { class: 'quiet' }, [when.has(b.key) ? `배포 ${when.get(b.key) || '오늘'}` : '', b.status, b.assignee || '미배정'].filter(Boolean).join(' · ')),
       ),
     );
   const any = sections.some(([, , list]) => list.length);
@@ -95,7 +101,7 @@ export function showBriefing(snap: Snapshot | null, away: Away[], go: (box: Box)
     h(
       'ul',
       { class: 'brief-sum' },
-      ...sections.map(([kind, name, list]) => h('li', { class: `${kind}${list.length ? '' : ' none'}` }, h('b', {}, String(list.length)), h('span', {}, name))),
+      ...sections.map(([kind, name, list]) => h('li', { class: `${kind}${list.length ? '' : ' none'}` }, h('b', {}, String(list.length)), h('span', {}, SHORT[kind] ?? name))),
     ),
     questsToday().length
       ? h('p', { class: 'brief-quests' }, h('b', {}, '오늘의 퀘스트 '), questsToday().map((q) => `${q.done ? '✓ ' : ''}${q.title}`).join(' · '))

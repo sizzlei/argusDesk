@@ -27,6 +27,7 @@ export interface Box {
   myApproval?: boolean; // waiting for the signed-in user to approve
   reply?: string; // the requester wrote last, at this time: an answer is due
   urgent?: boolean; // its priority is one the settings call urgent
+  deploy?: string; // when it goes to production: a date or a date-time, as Jira has it
   enteredAt?: string;
   staleFrom?: string;
   staleRatio: number;

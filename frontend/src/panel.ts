@@ -559,7 +559,8 @@ function renderDetail(w: Win, backend: Backend) {
       ? h(
           'ol',
           { class: 'comments' },
-          ...d.comments.map((c) =>
+          // the newest first, just under the box to answer in
+          ...[...d.comments].reverse().map((c) =>
             h(
               'li',
               { class: c.internal ? 'internal' : '' },

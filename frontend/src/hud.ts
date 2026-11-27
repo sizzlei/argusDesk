@@ -24,6 +24,8 @@ export interface HudHooks {
   toggleFilters(): void;
   search(): void;
   unassigned: { count: number; stale: number }; // open boxes nobody holds
+  /** Production deployments set for today, and opening them all. */
+  deploys: { count: number; open(): void };
   notices: { approvals: number; unread: number; urgent: number; open: boolean; toggle(): void };
   setSpace(index: number): void;
   game: GameStats | null;
@@ -219,6 +221,9 @@ export function renderHud(state: AppState, snap: Snapshot | null, space: number,
             '필터',
             extraCount(hooks.filter) ? h('span', { class: 'n' }, String(extraCount(hooks.filter))) : null,
           )
+        : null,
+      hooks.deploys.count
+        ? h('button', { class: 'deploy-btn', title: '오늘 운영 배포가 있는 티켓을 모두 엽니다', onclick: hooks.deploys.open }, h('span', { class: 'txt' }, '오늘 '), '배포', h('span', { class: 'n' }, String(hooks.deploys.count)))
         : null,
       strip,
       lastError ? h('span', { class: 'chip warn', title: lastError }, '갱신 실패') : null,

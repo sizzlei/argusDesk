@@ -1,0 +1,40 @@
+// Production deployments set for today, read from the field the settings
+// name (deploy_field). A date counts for that whole day; a date-time is shown
+// with its hour.
+
+import type { Box, Snapshot } from './types';
+
+const dayOf = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+/** When a box goes out today: "14:00", "" for a date without an hour, null when not today. */
+export function deployToday(b: Box, now = new Date()): string | null {
+  const v = b.deploy?.trim();
+  if (!v) return null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(v)) return v === dayOf(now) ? '' : null;
+  const t = new Date(v.replace(/([+-]\d{2})(\d{2})$/, '$1:$2'));
+  if (Number.isNaN(t.getTime()) || dayOf(t) !== dayOf(now)) return null;
+  return `${String(t.getHours()).padStart(2, '0')}:${String(t.getMinutes()).padStart(2, '0')}`;
+}
+
+/** Today's deployments, earliest first (those without an hour last). */
+export function deploysToday(snap: Snapshot | null): { box: Box; at: string }[] {
+  if (!snap) return [];
+  return snap.boxes
+    .map((box) => ({ box, at: deployToday(box) }))
+    .filter((d): d is { box: Box; at: string } => d.at !== null)
+    .sort((a, b) => (a.at || '99') .localeCompare(b.at || '99'));
+}
+
+const SHOWN = 'argusdesk.deployDay';
+/** True once a day: the first time it is asked on a day with deployments. */
+export function deployPopupDue(snap: Snapshot | null): boolean {
+  if (!deploysToday(snap).length) return false;
+  const today = dayOf(new Date());
+  try {
+    if (localStorage.getItem(SHOWN) === today) return false;
+    localStorage.setItem(SHOWN, today);
+  } catch {
+    return false;
+  }
+  return true;
+}

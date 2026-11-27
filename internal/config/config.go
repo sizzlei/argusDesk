@@ -130,7 +130,8 @@ type Space struct {
 	Create bool `yaml:"create"`
 	// Attach lets files be added to this space's tickets from the app.
 	Attach      bool                `yaml:"attach"`
-	JQL         string              `yaml:"jql"` // optional; replaces the generated query
+	DeployField string              `yaml:"deploy_field"` // when a ticket goes to production, for every type of the floor ("" = none)
+	JQL         string              `yaml:"jql"`          // optional; replaces the generated query
 	Zones       []Zone              `yaml:"zones"`
 	StatusZones map[string]string   `yaml:"status_zones"` // status id -> zone id
 	Workflows   map[string]Workflow `yaml:"workflows"`
@@ -175,6 +176,7 @@ type Type struct {
 	StaleField  string       `yaml:"stale_field"` // "created", "duedate" or a field name
 	XP          int          `yaml:"xp"`          // experience when finished; 0 = the game's default
 	Unscheduled *Unscheduled `yaml:"unscheduled"`
+	DeployField string       `yaml:"deploy_field"` // when it goes to production: "duedate" or a field name ("" = the floor's)
 }
 
 // Unscheduled marks boxes that have no date yet: they are not aged.
@@ -241,8 +243,10 @@ func (c *Config) FieldNames() []string {
 		out = append(out, n)
 	}
 	for _, s := range c.Spaces {
+		add(s.DeployField)
 		for _, t := range s.Types {
 			add(t.StaleField)
+			add(t.DeployField)
 			if t.Unscheduled != nil {
 				add(t.Unscheduled.UnlessChecked)
 			}

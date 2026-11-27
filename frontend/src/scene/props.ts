@@ -445,3 +445,62 @@ export function furnish(g: Graphics, kind: ZoneKind, gx: number, gy: number) {
       break;
   }
 }
+
+/**
+ * The dust monster: a ball of grey fluff that gathers where old boxes pile up.
+ * `size` 1..3 grows with the pile; `hurt` 0..1 is how much of it the team has
+ * already swept away (it shrinks and looks worried). Drawn round (0, 0), its feet.
+ */
+export function dustMonster(g: Graphics, size: number, hurt = 0) {
+  const s = (0.75 + size * 0.3) * (1 - hurt * 0.35);
+  const R = 26 * s;
+  const cy = -R * 0.95; // the middle of the body
+  g.ellipse(0, 2, R * 1.05, R * 0.42).fill({ color: 0x1b2233, alpha: 0.16 });
+  // feet
+  for (const fx of [-0.45, 0.45]) g.ellipse(fx * R, -2 * s, 7 * s, 4 * s).fill(0x55515c);
+  // the fluff: a jagged ball in three tones, light from the top left
+  const ball = (r: number, dx: number, dy: number, spikes: number, colour: number) => {
+    const pts: number[] = [];
+    for (let i = 0; i < spikes * 2; i++) {
+      const a = (i / (spikes * 2)) * Math.PI * 2;
+      const rr = r * (i % 2 ? 0.86 : 1.06 + ((i * 37) % 5) * 0.025);
+      pts.push(dx + Math.cos(a) * rr, cy + dy + Math.sin(a) * rr * 0.92);
+    }
+    g.poly(pts).fill(colour);
+  };
+  ball(R, 0, 0, 13, 0x6f6b76);
+  ball(R * 0.86, -R * 0.08, -R * 0.08, 11, 0x8e8a95);
+  ball(R * 0.55, -R * 0.26, -R * 0.3, 9, 0xaaa6b0);
+  // a few loose tufts on top
+  for (const [tx, ty, h] of [[-0.3, -1.0, 9], [0.05, -1.08, 12], [0.35, -0.98, 8]] as const) {
+    g.poly([tx * R - 3 * s, cy + ty * R + 6 * s, tx * R + 3 * s, cy + ty * R + 6 * s, tx * R + 1 * s, cy + ty * R - h * s]).fill(0x7c7883);
+  }
+  // eyes: big and round; brows down when it is strong, up when it is losing
+  const ey = cy - R * 0.12;
+  for (const side of [-1, 1]) {
+    const ex = side * R * 0.33;
+    g.ellipse(ex, ey, 7.5 * s, 8.5 * s).fill(0xffffff).stroke({ width: 1, color: 0x3a3742 });
+    g.circle(ex + side * -1.2 * s, ey + 1.8 * s, 3.6 * s).fill(0x1f1d24);
+    g.circle(ex + side * -2.2 * s, ey + 0.4 * s, 1.2 * s).fill(0xffffff);
+    // angry: the inner end lower than the outer; worried: the other way round
+    const tilt = (hurt > 0.5 ? -3.5 : 4.5) * s;
+    const inner = { x: ex - side * 6 * s, y: ey - 9 * s + tilt };
+    const outer = { x: ex + side * 7 * s, y: ey - 9 * s - tilt };
+    g.moveTo(inner.x, inner.y).lineTo(outer.x, outer.y).stroke({ width: 2.6 * s, color: 0x2b2830, cap: 'round' });
+  }
+  // mouth: a jagged grin, or a wobbly worried line
+  const my = cy + R * 0.35;
+  if (hurt > 0.5) {
+    g.moveTo(-7 * s, my).quadraticCurveTo(-3.5 * s, my - 3 * s, 0, my).quadraticCurveTo(3.5 * s, my + 3 * s, 7 * s, my).stroke({ width: 2 * s, color: 0x2b2830, cap: 'round' });
+  } else {
+    g.poly([-10 * s, my - 2 * s, 10 * s, my - 2 * s, 7 * s, my + 5 * s, -7 * s, my + 5 * s]).fill(0x2b2830);
+    for (let i = 0; i < 4; i++) {
+      const x = -7.5 * s + i * 5 * s;
+      g.poly([x, my - 2 * s, x + 3.2 * s, my - 2 * s, x + 1.6 * s, my + 1.6 * s]).fill(0xf4f1ea);
+    }
+  }
+  // dust in the air around it
+  for (const [px, py, r] of [[-1.25, -1.5, 2.2], [1.2, -1.2, 1.8], [-1.05, -0.3, 1.5], [1.35, -0.55, 2.4], [0.2, -2.05, 1.6]] as const) {
+    g.rect(px * R - r * s, cy + (py + 1) * R - r * s, r * 2 * s, r * 2 * s).fill({ color: 0x8e8a95, alpha: 0.7 });
+  }
+}
