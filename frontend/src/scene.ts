@@ -74,7 +74,7 @@ export class Scene {
   private sky = new Graphics(); // rain, snow, leaves: drawn in window space every frame
   private weather: Weather = 'clear';
   private flakes: { x: number; y: number; v: number; s: number; ph: number }[] = [];
-  private dustAt = new Map<string, { x: number; y: number }>(); // where each monster of this floor stands
+  private dustAt = new Map<string, { x: number; y: number; g: Graphics; tag: Container }>(); // where each monster of this floor stands
   private carry: { sp: Sprite; x: number; y: number; on: boolean } | null = null; // a box being dragged
   private dropMark = new Graphics(); // the room or lane a dragged box would land in
   private space = 0;
@@ -158,6 +158,7 @@ export class Scene {
     this.app.stage.on('pointerupoutside', () => (this.drag = null));
     // Dragging a box: it follows the pointer, the room or lane under it lights up.
     this.app.stage.on('globalpointermove', (e) => {
+      this.seeThrough(e.global);
       const c = this.carry;
       if (!c) return;
       if (!(e.buttons & 1)) return void this.letGo(null);
@@ -308,6 +309,16 @@ export class Scene {
   /** Takes the dust monsters of the whole centre. */
   setDust(dust: Map<string, Dust>) {
     this.dust = dust;
+  }
+
+  /** A monster under the pointer turns see-through, so the boxes behind it can be seen and picked. */
+  private seeThrough(at: { x: number; y: number }) {
+    if (!this.dustAt.size) return;
+    const p = this.world.toLocal(at);
+    this.dustAt.forEach((d) => {
+      const near = Math.abs(p.x - d.x) < 48 && p.y < d.y + 14 && p.y > d.y - 110;
+      d.g.alpha = d.tag.alpha = near ? 0.18 : 1;
+    });
   }
 
   /** A monster was swept away: a puff of dust where it stood (if it was on this floor). */
@@ -775,9 +786,11 @@ export class Scene {
         const p = iso(gx, gy);
         const g = prop(gx, gy, (pg) => dustMonster(pg, dust.size, dust.hurt), 250); // in front of the planters along the wall
         g.position.set(p.x, p.y);
+        g.eventMode = 'none'; // never in the way of a click on a box behind it
         this.people.push({ g, x: p.x, y: p.y, phase: zi * 2.3, slow: dust.hurt > 0.5 });
-        this.dustAt.set(`${space.id}/${zone.id}`, { x: p.x, y: p.y });
-        this.tag(`먼지 괴물 · 묵은 상자 ${dust.count}`, gx, gy, 34 + dust.size * 20, false);
+        const tag = this.tag(`먼지 괴물 · 묵은 상자 ${dust.count}`, gx, gy, 34 + dust.size * 20, false);
+        tag.eventMode = 'none';
+        this.dustAt.set(`${space.id}/${zone.id}`, { x: p.x, y: p.y, g, tag });
       }
 
       // Boxes nobody holds stand apart on a marked pallet. Not in the first
