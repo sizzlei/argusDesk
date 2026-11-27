@@ -1,5 +1,6 @@
 // My state at a glance, behind my avatar: how worn I am, what I hold, what I
-// have finished, and the settings that used to sit in a menu.
+// have finished, and the things I do often (holidays, my avatar) at the top.
+// Settings are behind the gear beside the app's name.
 
 import { avatarIcon, lookOf } from './avatars';
 import { TAGS, ageStep } from './scene';
@@ -15,7 +16,7 @@ export function toggleProfile(force?: boolean) {
   open = force ?? !open;
 }
 
-/** One line of the settings list. */
+/** One thing to do, in my state or in the settings. */
 export interface ProfileAction {
   label: string;
   run(): void;
@@ -62,6 +63,13 @@ export function renderProfile(state: AppState, snap: Snapshot | null, game: Game
       h('span', { class: 'who' }, me && game ? avatarIcon(lookOf(me.id, game.avatars), 40) : null, h('span', {}, h('strong', {}, state.me || '나'), game ? h('span', { class: 'quiet' }, `Lv.${game.me.level}`) : null)),
       h('button', { class: 'close', 'aria-label': '내 상태 닫기', onclick: close }, '×'),
     ),
+    // the things I do often, first
+    h(
+      'div',
+      { class: 'quick' },
+      ...actions.map((a) => h('button', { class: a.danger ? 'danger' : '', title: a.note ?? '', onclick: () => (toggleProfile(false), redraw(), a.run()) }, a.label)),
+    ),
+    away ? h('p', { class: 'quiet away-note' }, `${away.kind || '휴가'} ${away.from === away.to ? away.from : `${away.from} ~ ${away.to}`}${away.cover ? ` · 대무자 ${away.cover}` : ''}${away.active ? ' (지금 휴가 중)' : ''}`) : null,
 
     h('h3', {}, '피로도'),
     game
@@ -75,7 +83,6 @@ export function renderProfile(state: AppState, snap: Snapshot | null, game: Game
         )
       : h('p', { class: 'quiet' }, '기록을 읽는 중입니다.'),
     h('p', { class: game?.myFatigue === 0 ? 'error' : 'quiet' }, game?.myFatigue === 0 ? '이번 주 피로도를 다 썼습니다. 상자를 더 가져올 수 없고, 아바타는 벤치에서 쉽니다. 월요일에 다시 채워집니다.' : '월요일에 가득 차고, 이번 주에 작업을 끝낼 때마다 줄어듭니다. 0이 되면 상자를 더 가져올 수 없습니다.'),
-    away ? h('p', { class: 'quiet' }, `${away.kind || '휴가'} ${away.from === away.to ? away.from : `${away.from} ~ ${away.to}`}${away.cover ? ` · 대무자 ${away.cover}` : ''}${away.active ? ' (지금 휴가 중)' : ''}`) : null,
 
     h('h3', {}, '지금 가진 작업'),
     h(
@@ -117,15 +124,5 @@ export function renderProfile(state: AppState, snap: Snapshot | null, game: Game
           stat('시즌', game.me.done.toLocaleString(), `${game.me.xp.toLocaleString()} XP`),
         )
       : h('p', { class: 'quiet' }, '기록을 읽는 중입니다.'),
-
-    h('h3', {}, '설정'),
-    h(
-      'ul',
-      { class: 'actions' },
-      ...actions.map((a) =>
-        h('li', {}, h('button', { class: a.danger ? 'danger' : '', onclick: () => (toggleProfile(false), redraw(), a.run()) }, a.label), a.note ? h('span', { class: 'quiet' }, a.note) : null),
-      ),
-    ),
-    h('p', { class: 'quiet' }, `ArgusDesk v${state.version}${state.server ? ` · Argus ${state.server.replace(/^https?:\/\//, '')}` : ''}`),
   );
 }

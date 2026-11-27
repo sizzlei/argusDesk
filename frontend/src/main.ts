@@ -16,6 +16,7 @@ import { showBriefing, watchPresence } from './briefing';
 import { renderQuests, updateQuests } from './quests';
 import { readDust } from './dust';
 import { loading } from './loading';
+import { type SettingsGroup, renderSettings, settingsOpen, toggleSettings } from './settings';
 import { deployPopupDue, deploysToday } from './deploy';
 import { WEATHER_NAME, setWeatherOn, weatherAt, weatherOn } from './weather';
 import { openAvatarPicker, openVacation, cancelVacation } from './vacation';
@@ -206,28 +207,17 @@ async function boot() {
     hud();
   };
   // The panels on the right (notifications, filters, my state) take the same place: one at a time.
-  const only = (which: 'notices' | 'filters' | 'profile' | '') => {
+  const only = (which: 'notices' | 'filters' | 'profile' | 'settings' | '') => {
+    if (which !== 'settings') toggleSettings(false);
     if (which !== 'notices') toggleNotices(false);
     if (which !== 'filters') toggleFilters(false);
     if (which !== 'profile') toggleProfile(false);
   };
-  /** The settings that sit under my state. */
-  const actions = (): ProfileAction[] => {
-    const setNotify = (on: boolean) =>
-      void backend.setNotify(on).then((next) => {
-        apply(next);
-        toast(on ? (next.notifyProblem ? `알림을 켰지만 보낼 수 없습니다: ${next.notifyProblem}` : '알림을 켰습니다.') : '알림을 껐습니다.');
-      }, fail);
+  /** What I do often, at the top of my state: holidays, my avatar, the briefing. */
+  const quick = (): ProfileAction[] => {
     const myAway = game?.away.find((a) => a.me);
     const when = myAway ? (myAway.from === myAway.to ? myAway.from : `${myAway.from} ~ ${myAway.to}`) : '';
     const list: (ProfileAction | false)[] = [
-      {
-        label: '아바타 선택',
-        run: () => {
-          const me = snap?.members.find((m) => m.me);
-          openAvatarPicker(backend, me ? game?.avatars[me.id] : undefined);
-        },
-      },
       {
         label: myAway ? '휴가 변경' : '휴가 등록',
         note: myAway ? `${myAway.kind || '휴가'} ${when}${myAway.cover ? ` · 대무자 ${myAway.cover}` : ''}` : undefined,
@@ -238,32 +228,63 @@ async function boot() {
         },
       },
       !!myAway && { label: '휴가 취소', run: () => void cancelVacation(backend, when), danger: true },
-      { label: state.notify ? '알림 끄기' : '알림 켜기', run: () => setNotify(!state.notify), note: state.notify && state.notifyProblem ? `알림을 보낼 수 없습니다: ${state.notifyProblem}` : undefined },
-      openTickets() > 1 && { label: `티켓 창 모두 닫기 (${openTickets()})`, run: () => closeTickets(tickets) },
-      { label: 'Argus에서 설정 다시 받기', run: () => void backend.reloadConfig().then(apply, fail) },
-      !!state.server &&
-        state.serverNeeds === 'login' && {
-          label: 'Argus에 다시 로그인',
-          run: () => argusLogin(),
-        },
-      !!state.server && { label: 'Argus 연결 끊기', run: () => void backend.forgetServer().then(apply, fail) },
+      { label: '출근 브리핑', run: () => showBriefing(snap, game?.away ?? [], visit, true), note: '내 승인 대기, 요청자 답변, 오늘 배포, 새로 들어온 상자' },
       {
-        label: weatherOn() ? '날씨 끄기' : '날씨 켜기',
+        label: '아바타',
         run: () => {
-          setWeatherOn(!weatherOn());
-          sky();
+          const me = snap?.members.find((m) => m.me);
+          openAvatarPicker(backend, me ? game?.avatars[me.id] : undefined);
         },
-        note: `지금 창밖: ${WEATHER_NAME[weatherAt()]} · 계절에 따라 눈, 비, 바람, 낙엽이 지나갑니다`,
       },
-      { label: scene.hours ? '시간대 조명 끄기' : '시간대 조명 켜기', run: () => setHours(!scene.hours), note: '저녁과 밤에 센터 조명이 어두워집니다' },
-      { label: '출근 브리핑 보기', run: () => showBriefing(snap, game?.away ?? [], visit, true), note: '내 승인 대기, 요청자 답변, 새로 들어온 상자, 내 묵은 상자' },
-      { label: '둘러보기 다시 보기', run: () => tour(true) },
-      { label: '단축키 설정', run: () => openKeySettings(), note: `송장 쓰기 ${keyLabel('write') || '없음'} · 상자 찾기 ${keyLabel('search') || '없음'} · Esc 창 닫기` },
-      { label: '진단 정보', run: () => void openDiagnostics(() => backend.diagnostics()) },
-      { label: '업데이트 확인', run: () => void checkForUpdates(true) },
-      { label: '로그아웃', run: () => void backend.logout().then(apply, fail), danger: true },
     ];
     return list.filter((a): a is ProfileAction => !!a);
+  };
+  /** Everything else, behind the gear beside the app's name. */
+  const settingsGroups = (): SettingsGroup[] => {
+    const setNotify = (on: boolean) =>
+      void backend.setNotify(on).then((next) => {
+        apply(next);
+        toast(on ? (next.notifyProblem ? `알림을 켰지만 보낼 수 없습니다: ${next.notifyProblem}` : '알림을 켰습니다.') : '알림을 껐습니다.');
+      }, fail);
+    return [
+      {
+        title: '화면',
+        items: [
+          {
+            label: weatherOn() ? '날씨 끄기' : '날씨 켜기',
+            run: () => {
+              setWeatherOn(!weatherOn());
+              sky();
+            },
+            note: `지금 창밖: ${WEATHER_NAME[weatherAt()]} · 계절에 따라 눈, 비, 바람, 낙엽이 지나갑니다`,
+          },
+          { label: scene.hours ? '시간대 조명 끄기' : '시간대 조명 켜기', run: () => setHours(!scene.hours), note: '저녁과 밤에 센터 조명이 어두워집니다' },
+          { label: '단축키 설정', run: () => openKeySettings(), note: `송장 쓰기 ${keyLabel('write') || '없음'} · 상자 찾기 ${keyLabel('search') || '없음'} · Esc 창 닫기` },
+          openTickets() > 1 && { label: `티켓 창 모두 닫기 (${openTickets()})`, run: () => closeTickets(tickets) },
+        ],
+      },
+      {
+        title: '알림',
+        items: [{ label: state.notify ? 'OS 알림 끄기' : 'OS 알림 켜기', run: () => setNotify(!state.notify), note: state.notify && state.notifyProblem ? `알림을 보낼 수 없습니다: ${state.notifyProblem}` : '새 상자, 내 상자의 이동, 승인 요청, 요청자 답변' }],
+      },
+      {
+        title: 'Argus',
+        items: [
+          { label: 'Argus에서 설정 다시 받기', run: () => void backend.reloadConfig().then(apply, fail), note: state.configVersion ? `지금 설정 ${state.configVersion}` : undefined },
+          !!state.server && state.serverNeeds === 'login' && { label: 'Argus에 다시 로그인', run: () => argusLogin() },
+          !!state.server && { label: 'Argus 연결 끊기', run: () => void backend.forgetServer().then(apply, fail) },
+        ],
+      },
+      {
+        title: '도움말',
+        items: [
+          { label: '둘러보기 다시 보기', run: () => tour(true) },
+          { label: '진단 정보', run: () => void openDiagnostics(() => backend.diagnostics()) },
+          { label: '업데이트 확인', run: () => void checkForUpdates(true) },
+          { label: '로그아웃', run: () => void backend.logout().then(apply, fail), danger: true },
+        ],
+      },
+    ];
   };
   /** Opens a window for every ticket that goes to production today. */
   const openDeploys = () => {
@@ -294,7 +315,7 @@ async function boot() {
       state,
       snap,
       game,
-      actions(),
+      quick(),
       visit,
       () => {
         only('');
@@ -303,7 +324,15 @@ async function boot() {
       },
       () => hud(),
     );
+    renderSettings(settingsGroups(), `ArgusDesk v${state.version}${state.server ? ` · Argus ${state.server.replace(/^https?:\/\//, '')}` : ''}`, () => hud());
     renderHud(state, shown, space, lastError, backend, {
+      settingsOpen: settingsOpen(),
+      toggleSettings: () => {
+        const next = !settingsOpen();
+        only(next ? 'settings' : '');
+        toggleSettings(next);
+        hud();
+      },
       refresh: () => void backend.refresh(),
       argusLogin: () => argusLogin(),
       profileOpen: profileOpen(),
@@ -425,7 +454,7 @@ async function boot() {
     if (document.querySelector('dialog[open]') || finderOpen()) return;
     const t = e.target;
     if (t instanceof HTMLElement && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return void t.blur();
-    if (noticesOpen() || filtersOpen() || profileOpen()) {
+    if (noticesOpen() || filtersOpen() || profileOpen() || settingsOpen()) {
       only('');
       hud();
     } else if (gameOpen) {

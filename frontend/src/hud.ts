@@ -12,6 +12,8 @@ import { type Filter, type Scope, extraCount } from './view';
 
 export interface HudHooks {
   refresh(): void;
+  settingsOpen: boolean;
+  toggleSettings(): void;
   /** Signs in to Argus again, in the browser. */
   argusLogin(): void;
   profileOpen: boolean;
@@ -60,6 +62,14 @@ let zonesMin = (() => {
     return false;
   }
 })();
+
+/** A gear, drawn here so nothing is loaded. */
+function gearIcon() {
+  const el = h('span', { class: 'gear-ico', 'aria-hidden': 'true' });
+  el.innerHTML =
+    '<svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M19.4 13a7.6 7.6 0 0 0 0-2l2.1-1.6a.5.5 0 0 0 .1-.6l-2-3.5a.5.5 0 0 0-.6-.2l-2.5 1a7.4 7.4 0 0 0-1.7-1l-.4-2.6a.5.5 0 0 0-.5-.4h-4a.5.5 0 0 0-.5.4L9 5.1a7.4 7.4 0 0 0-1.7 1l-2.5-1a.5.5 0 0 0-.6.2l-2 3.5a.5.5 0 0 0 .1.6L4.6 11a7.6 7.6 0 0 0 0 2l-2.1 1.6a.5.5 0 0 0-.1.6l2 3.5c.1.2.4.3.6.2l2.5-1c.5.4 1.1.7 1.7 1l.4 2.6c0 .2.2.4.5.4h4c.3 0 .5-.2.5-.4l.4-2.6c.6-.3 1.2-.6 1.7-1l2.5 1c.2.1.5 0 .6-.2l2-3.5a.5.5 0 0 0-.1-.6ZM12 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7Z"/></svg>';
+  return el;
+}
 
 const TIRED = ['여유', '피곤', '소진'];
 
@@ -150,6 +160,11 @@ export function renderHud(state: AppState, snap: Snapshot | null, space: number,
       'div',
       { class: 'title' },
       h('strong', { title: snap?.name ?? state.configName ?? '' }, 'Argus Desk'),
+      h(
+        'button',
+        { class: `gear${hooks.settingsOpen ? ' on' : ''}`, 'aria-label': '설정', 'aria-expanded': String(hooks.settingsOpen), 'aria-controls': 'settings', title: '설정', onclick: hooks.toggleSettings },
+        gearIcon(),
+      ),
       h('span', { class: 'quiet ver', title: state.configFileVersion ? `Argus가 배포한 설정 버전 ${state.configVersion} (파일 안의 버전 ${state.configFileVersion})` : '설정 버전' }, state.configVersion || '?'),
       backend.mock ? h('span', { class: 'chip' }, '가짜 데이터') : null,
       (() => {

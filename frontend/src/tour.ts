@@ -41,7 +41,7 @@ interface Step {
 
 const STORE = 'argusdesk.tour';
 /** Raise when steps are added (and mark them with `since`), so they are shown to those who saw the tour before. */
-const VERSION = 2;
+const VERSION = 3;
 const key = (a: Parameters<typeof keyLabel>[0]) => keyLabel(a) || '단축키 없음';
 
 const steps = (): Step[] => [
@@ -113,7 +113,13 @@ const steps = (): Step[] => [
     at: '#quests',
     since: 2,
   },
-  { title: '내 상태', text: '내 아바타를 누르면 피로도와 가진 작업이 보입니다. 휴가 등록, 아바타, 단축키 설정도 여기에 있어요. 피로도가 0이 되면 그 주에는 상자를 더 가져올 수 없습니다.', at: '#hud .team .member.me, #hud [aria-controls="profile"]' },
+  { title: '내 상태', text: '내 아바타를 누르면 피로도와 가진 작업이 보입니다. 휴가 등록, 출근 브리핑, 아바타는 맨 위에 있어요. 피로도가 0이 되면 그 주에는 상자를 더 가져올 수 없습니다.', at: '#hud .team .member.me, #hud [aria-controls="profile"]' },
+  {
+    title: '설정',
+    text: '이름 옆 톱니바퀴에는 날씨·조명, 단축키, OS 알림, Argus 연결, 진단 정보와 업데이트 확인이 있습니다.',
+    at: '#hud .gear',
+    since: 3,
+  },
   { title: '기록', text: '끝낸 작업은 경험치와 배지로 쌓입니다. 센터 레벨은 팀이 함께 올립니다.', at: '#hud .game-chip' },
   {
     title: '창을 닫아도',

@@ -3676,3 +3676,106 @@ button.deploy-btn .n {
     opacity: 1;
   }
 }
+
+/* ---- the gear beside the name, and the settings behind it ---- */
+
+#hud .title .gear {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: none;
+  color: var(--quiet);
+  cursor: pointer;
+}
+
+#hud .title .gear:hover,
+#hud .title .gear.on {
+  border-color: var(--line);
+  background: var(--paper);
+  color: var(--ink);
+}
+
+#hud .title .gear.on .gear-ico {
+  transform: rotate(60deg);
+}
+
+#hud .title .gear-ico {
+  display: grid;
+  transition: transform 0.25s ease;
+}
+
+#settings {
+  position: absolute;
+  top: 66px;
+  left: 12px;
+  z-index: 13;
+  width: min(360px, calc(100% - 24px));
+  max-height: calc(100% - 90px);
+  padding: 14px 16px 16px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: 0 12px 32px rgb(31 42 68 / 16%);
+}
+
+#settings h3 {
+  margin: 14px 0 6px;
+  font-size: 12px;
+  color: var(--quiet);
+}
+
+#settings .actions {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+#settings .actions button {
+  width: 100%;
+  text-align: left;
+}
+
+#settings .actions button.danger {
+  color: var(--old);
+}
+
+#settings .actions .quiet {
+  display: block;
+  padding: 2px 4px 4px;
+  font-size: 12px;
+}
+
+#settings > p.quiet {
+  margin: 14px 0 0;
+  font-size: 12px;
+}
+
+/* my state: what I do often, first */
+#profile .quick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 4px 0 6px;
+}
+
+#profile .quick button {
+  padding: 5px 12px;
+  border-radius: 999px;
+  font-size: 13px;
+}
+
+#profile .quick button.danger {
+  color: var(--old);
+}
+
+#profile .away-note {
+  margin: 0 0 4px;
+  font-size: 12px;
+}
