@@ -136,8 +136,13 @@ func (e *Engine) prepare(ctx context.Context) error {
 	return nil
 }
 
+// DockDays is how many days a finished ticket stays on the dock, counting the
+// day it was finished: one finished on Monday leaves the next Monday.
+const DockDays = 7
+
 // JQL is the query for a space: its configured request types that are open,
-// plus the ones finished today.
+// plus the ones finished in the last week: they stay on the dock for DockDays
+// days, then leave on the truck.
 func JQL(sp *config.Space) string {
 	if sp.JQL != "" {
 		return sp.JQL
@@ -151,7 +156,7 @@ func JQL(sp *config.Space) string {
 	if len(names) > 0 {
 		q += " AND issuetype in (" + strings.Join(names, ", ") + ")"
 	}
-	return q + " AND (statusCategory != Done OR statusCategoryChangedDate >= startOfDay()) ORDER BY created ASC"
+	return q + fmt.Sprintf(" AND (statusCategory != Done OR statusCategoryChangedDate >= startOfDay(-%d)) ORDER BY created ASC", DockDays-1)
 }
 
 // ApprovalJQL finds the tickets of the configured projects that wait for the

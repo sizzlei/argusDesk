@@ -241,7 +241,7 @@ func TestEngineRefresh(t *testing.T) {
 func TestJQL(t *testing.T) {
 	sp := example(t).Space("requests")
 	q := JQL(sp)
-	for _, want := range []string{`project = "REQ"`, `"[REQ] 기타"`, "statusCategory != Done", "startOfDay()"} {
+	for _, want := range []string{`project = "REQ"`, `"[REQ] 기타"`, "statusCategory != Done", "startOfDay(-6)"} {
 		if !strings.Contains(q, want) {
 			t.Errorf("jql lacks %q: %s", want, q)
 		}

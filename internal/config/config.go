@@ -23,7 +23,7 @@ const (
 	KindWait     = "wait"     // waiting on someone outside the team
 	KindWork     = "work"     // the team acts here
 	KindDesk     = "desk"     // the team acts here; boxes sit on assignee desks
-	KindDone     = "done"     // finished today
+	KindDone     = "done"     // finished in the last week (board.DockDays)
 	KindReturned = "returned" // rejected or cancelled
 	KindSiding   = "siding"   // waiting on another team: a spur off the conveyor, not a room
 	KindUnsorted = "unsorted" // statuses the file does not mention

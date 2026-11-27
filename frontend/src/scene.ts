@@ -10,7 +10,6 @@ import { lookOf } from './avatars';
 import type { Away, Box, Change, Member, Snapshot, SpaceView, ZoneView } from './types';
 import type { Dust } from './dust';
 import { seasonItems, yardSlot } from './growth';
-import { deployToday } from './deploy';
 import { paving, pet, yardThing } from './scene/yard';
 import type { Weather } from './weather';
 import { TW, TH, ZW, ZH, COL_GAP, ROW_GAP, ATRIUM_GAP, grid, COLS, PAD, WALL_H, STOREY, iso, DESK_EXTRA, rowY, roomOrigin } from './scene/grid';
@@ -423,73 +422,6 @@ export class Scene {
       c.zIndex = 1e7 - 1;
       c.alpha = k > 0.85 ? (1 - k) / 0.15 : Math.min(1, k * 8);
     }, this.things);
-  }
-
-  /**
-   * Today's production deployment, done: the express truck pulls up along the
-   * front of the building, takes the box on board and drives off with its light flashing.
-   */
-  private express(key: string, bx: number, by: number, width: number, depth: number) {
-    if (CALM) return;
-    const gy = depth + PAD + 3.4; // the road in front, past the yard and the regular truck
-    // stop across from the box: its column on the grid, kept on the road
-    const col = Math.max(1, Math.min(width - 4, (bx / (TW / 2) + by / (TH / 2)) / 2 - 1.5));
-    const g = new Container();
-    const body = new Graphics();
-    truck(body, 0, 0, 0x7048e8, 0x7048e8);
-    const light = new Graphics().circle(0, 0, 4).fill(0xffd43b);
-    const roof = iso(2.35, 0.5);
-    light.position.set(roof.x, roof.y - 34);
-    const load = new Graphics();
-    block(load, 0.65, 0.3, 0.6, 0.5, 13, 0xd9a866);
-    block(load, 0.65, 0.3, 0.6, 0.5, 1, 0xe7bd82, 13);
-    load.visible = false;
-    const tag = label(`${key} 운영 배포 완료`, 12, 0xffffff, '700');
-    const pill = new Graphics().roundRect(-tag.width / 2 - 8, 0, tag.width + 16, 22, 11).fill(0x7048e8);
-    tag.position.set(-tag.width / 2, (22 - tag.height) / 2);
-    const plate = new Container();
-    plate.addChild(pill, tag);
-    const mid = iso(1.4, 0.5);
-    plate.position.set(mid.x, mid.y - 84);
-    g.addChild(body, load, light, plate);
-    const box = new Graphics();
-    block(box, -0.3, -0.25, 0.6, 0.5, 13, 0xd9a866);
-    block(box, -0.3, -0.25, 0.6, 0.5, 1, 0xe7bd82, 13);
-    const from = -7;
-    const to = width + 9;
-    const at = (gx: number) => iso(gx, gy);
-    const cargo = () => {
-      const p = iso(0.95, 0.55);
-      return { x: g.x + p.x, y: g.y + p.y - 42 };
-    };
-    let puffed = 0;
-    this.show(g, 4200, (k, c) => {
-      // in (0–0.3), stop while the box is loaded (0.3–0.55), off faster and faster (0.55–1)
-      const gx = k < 0.3 ? from + (col - from) * easeInOut(k / 0.3) : k < 0.55 ? col : col + (to - col) * ((k - 0.55) / 0.45) ** 2;
-      const p = at(gx);
-      c.position.set(p.x, p.y);
-      light.alpha = Math.sin(k * 90) > 0 ? 1 : 0.25;
-      plate.alpha = k < 0.25 ? 0 : k < 0.32 ? (k - 0.25) / 0.07 : k > 0.88 ? (1 - k) / 0.12 : 1;
-      load.visible = k >= 0.5;
-      c.alpha = k > 0.92 ? (1 - k) / 0.08 : 1;
-      if (k > 0.55 && k * 40 > puffed) {
-        puffed++;
-        const w = this.world.toGlobal({ x: p.x - 10, y: p.y - 4 });
-        this.burst(w.x, w.y, 2, 0.3);
-      }
-    });
-    // the box hops from the dock onto the truck while it waits
-    this.show(box, 4200, (k, c) => {
-      if (k < 0.32 || k >= 0.5) return void (c.visible = false);
-      c.visible = true;
-      const u = (k - 0.32) / 0.18;
-      const end = cargo();
-      c.position.set(bx + (end.x - bx) * u, by + (end.y - by) * u - Math.sin(u * Math.PI) * 50);
-    });
-    setTimeout(() => {
-      const w = this.world.toGlobal(cargo());
-      this.burst(w.x, w.y, 20, 1.1);
-    }, 2150);
   }
 
   /** Old boxes swept out of a room: its dust monster flinches and loses a little. */
@@ -1150,18 +1082,6 @@ export class Scene {
       }
     }
     hits.forEach((n, key) => this.flinch(key, n));
-    // a production deployment set for today, just done: the express truck comes for it
-    for (const c of changes) {
-      const b = c.kind === 'moved' ? boxes.find((x) => x.key === c.key) : undefined;
-      if (b && space.zones.find((z) => z.id === b.zone)?.kind === 'done' && deployToday(b) !== null) {
-        const sp = this.sprites.get(b.key);
-        if (snap.spaces.indexOf(space) === 0 && sp) this.express(b.key, sp.tx, sp.ty, width, depth);
-        else if (sp) {
-          const w = this.world.toGlobal({ x: sp.tx, y: sp.ty - 40 });
-          this.float(`${b.key} 운영 배포 완료`, w.x, w.y, 0x7048e8, 13);
-        }
-      }
-    }
     // the front yard, on the ground floor: what the centre has grown this season
     if (snap.spaces.indexOf(space) === 0) this.yard(width, depth, prop);
     // the season's LEDs: the server room's lamps take new colours

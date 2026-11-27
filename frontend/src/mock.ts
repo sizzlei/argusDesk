@@ -181,7 +181,7 @@ function seed(now: number): Box[] {
   add('review', [0.3, 1, 2.2, 3.5, 7, 20, 52, 400]);
   add('approval', [0.2, 0.8, 1.6, 2.6, 4.2, 14, 75]);
   add('work', [2, 5, 9, 20, 30, 44, 60, 80, 100, 130, 150, 26, 12]);
-  add('dock', [0.5, 1.5, 3, 4.5]);
+  add('dock', Array.from({ length: 30 }, (_, i) => 0.5 + i * 5.5)); // a week of finished boxes waits on the dock
   add('returns', [2, 6]);
   // The work zone ages from a date on the ticket: spread those dates out.
   boxes.filter((b) => b.zone === 'work').forEach((b, i) => {
