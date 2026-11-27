@@ -3814,3 +3814,40 @@ button.deploy-btn .n {
   opacity: 0.55;
   cursor: default;
 }
+
+/* the ticket's schedule, in the window's "처리" part */
+.act-sep {
+  margin: 8px 0 0;
+  padding-top: 8px;
+  border-top: 1px dashed var(--line);
+  color: var(--quiet);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.act.sched {
+  grid-template-columns: 116px 1fr;
+}
+
+.act.sched .act-name {
+  line-height: 1.35;
+  word-break: keep-all;
+}
+
+.act.sched input[type='date'],
+.act.sched input[type='datetime-local'] {
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  font: inherit;
+  color: inherit;
+}
+
+.act.sched label.tick {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 0;
+  cursor: pointer;
+}

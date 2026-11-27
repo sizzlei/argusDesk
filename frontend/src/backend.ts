@@ -27,6 +27,8 @@ export interface Backend {
   // working on a ticket: each of these changes Jira
   ticketActions(key: string): Promise<TicketActions>;
   moveTicket(key: string, transitionId: string): Promise<void>;
+  /** Changes one schedule field of a ticket (see TicketActions.fields). */
+  setTicketField(key: string, id: string, kind: string, value: string, chosen: string[]): Promise<void>;
   /** account: an account id, "me", or "" to leave the ticket unassigned */
   assignTicket(key: string, account: string): Promise<void>;
   answerApproval(key: string, approvalId: string, approve: boolean): Promise<void>;
@@ -85,6 +87,7 @@ async function real(): Promise<Backend> {
     ticketDetail: (key) => call('TicketDetail', key),
     ticketActions: (key) => call('TicketActions', key),
     moveTicket: (key, id) => call('MoveTicket', key, id),
+    setTicketField: (key, id, kind, value, chosen) => call('SetTicketField', key, id, kind, value, chosen),
     assignTicket: (key, account) => call('AssignTicket', key, account),
     answerApproval: (key, id, approve) => call('AnswerApproval', key, id, approve),
     createForm: (space, type) => call('CreateForm', space, type),

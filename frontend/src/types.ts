@@ -262,6 +262,19 @@ export interface TicketActions {
   approvals: Approval[];
   serviceDesk: boolean; // comments are internal or public; otherwise plain
   approvalsError: string;
+  fields?: EditField[]; // its schedule: the deployment date, whether it is settled
+  fieldsError?: string;
+}
+
+/** A field of a ticket the team may change from its window. */
+export interface EditField {
+  id: string;
+  name: string;
+  kind: 'date' | 'datetime' | 'checkbox' | 'option' | 'other';
+  options: { id: string; name: string }[];
+  value: string; // "2026-11-27", or "2026-11-27T14:00" in the centre's time zone; "" = empty
+  chosen: string[]; // option ids ticked
+  editable: boolean;
 }
 
 /** What a person, or the whole team, has done in the season. */

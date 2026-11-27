@@ -2,7 +2,7 @@
 // invented; nothing comes from a real Jira.
 
 import type { Backend } from './backend';
-import type { TicketFile, AppState, Away, Badge, BoardEvent, Box, Change, CreateForm, GameStats, Member, Note, PathStep, ServerFeed, Snapshot, Tally, Vacation, ZoneView } from './types';
+import type { EditField, TicketFile, AppState, Away, Badge, BoardEvent, Box, Change, CreateForm, GameStats, Member, Note, PathStep, ServerFeed, Snapshot, Tally, Vacation, ZoneView } from './types';
 
 // Made-up Argus notices, with times fixed when the page loads.
 const T0 = Math.floor(Date.now() / 3600000) * 3600000; // the same on a reload
@@ -272,6 +272,7 @@ export function mockBackend(): Backend {
   // a few requesters who answered and wait for the team to reply
   boxes.filter((b) => b.zone === 'review' || b.zone === 'work').filter((_, i) => i % 5 === 1).forEach((b) => (b.reply = new Date(now - 50 * 60000).toISOString()));
   let listeners: ((ev: BoardEvent) => void)[] = [];
+  const settled = new Set<string>(); // schedules marked as settled
   const state: AppState = {
     version: '0.1.0',
     configName: '요청 센터',
@@ -521,7 +522,19 @@ export function mockBackend(): Backend {
         b.zone === 'approval'
           ? [{ id: 'a1', name: 'DBA 승인', canAnswer: true, approvers: [{ id: 'u1', name: '김하늘', decision: 'pending' }, { id: 'u3', name: '박서준', decision: 'pending' }] }]
           : [];
-      return { key, transitions: transitions.map((t) => ({ ...t, toZone: zoneOfStatus(t.toId) })), approvals, serviceDesk: b.space === 'requests', approvalsError: '' };
+      // the schedule, as the settings name it: a date-time, and (for some types) whether it is settled
+      const local = (v?: string) => (v && v.length > 10 ? new Date(v).toLocaleString('sv-SE').slice(0, 16).replace(' ', 'T') : v ?? '');
+      const fields: EditField[] = [{ id: 'customfield_1', name: '운영 배포 일시', kind: 'datetime', options: [], value: local(b.deploy), chosen: [], editable: true }];
+      if (b.type.includes('스키마')) fields.push({ id: 'customfield_2', name: '운영 배포 일정 확정 여부', kind: 'checkbox', options: [{ id: '9', name: '확정' }], value: '', chosen: settled.has(key) ? ['9'] : [], editable: true });
+      return { key, transitions: transitions.map((t) => ({ ...t, toZone: zoneOfStatus(t.toId) })), approvals, serviceDesk: b.space === 'requests', approvalsError: '', fields };
+    },
+    setTicketField: async (key, id, _kind, value, chosen) => {
+      await pause();
+      const b = find(key);
+      if (id === 'customfield_1') b.deploy = value ? new Date(value).toISOString() : undefined;
+      if (id === 'customfield_2') chosen.length ? settled.add(key) : settled.delete(key);
+      b.updated = new Date(now + ++stamp).toISOString();
+      publish([{ kind: 'updated', key }]);
     },
     moveTicket: async (key, id) => {
       await pause();

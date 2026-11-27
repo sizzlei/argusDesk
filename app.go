@@ -345,12 +345,65 @@ func (a *App) TicketActions(key string) (*jira.Actions, error) {
 							acts.Transitions[i].ToKind, acts.Transitions[i].ToZone = z.Kind, z.ID
 						}
 					}
+					// the deployment date and whether it is settled: changed from here as in Jira
+					if ids := deployFieldIDs(sp, b.Type, engine); len(ids) > 0 {
+						fields, ferr := c.EditFields(ctx, key, ids, cfg.Location())
+						if ferr != nil {
+							acts.FieldsError = ferr.Error()
+						} else {
+							acts.Fields = fields
+						}
+					}
 				}
 				break
 			}
 		}
 	}
 	return acts, nil
+}
+
+// deployFieldIDs lists the Jira ids of the schedule fields of a ticket of this
+// type, which the team changes when a developer asks: the deployment date,
+// the date the type is aged from (its requested date), and the box that says
+// the schedule is settled. The creation date is not one of them.
+func deployFieldIDs(sp *config.Space, typeName string, engine *board.Engine) []string {
+	names := []string{sp.DeployField}
+	if t, ok := sp.Types[typeName]; ok {
+		if t.DeployField != "" {
+			names[0] = t.DeployField
+		}
+		names = append(names, t.StaleField)
+		if t.Unscheduled != nil {
+			names = append(names, t.Unscheduled.UnlessChecked)
+		}
+	}
+	var ids []string
+	seen := map[string]bool{}
+	for _, n := range names {
+		if n == "" || n == "created" {
+			continue
+		}
+		if id := engine.FieldID(n); id != "" && !seen[id] {
+			seen[id] = true
+			ids = append(ids, id)
+		}
+	}
+	return ids
+}
+
+// SetTicketField changes one of the fields TicketActions lists. value is a
+// date, a local date-time ("2026-11-27T14:00") or "" to clear; chosen are
+// option ids.
+func (a *App) SetTicketField(key, id, kind, value string, chosen []string) error {
+	a.mu.Lock()
+	loc := time.Local
+	if a.cfg != nil {
+		loc = a.cfg.Location()
+	}
+	a.mu.Unlock()
+	return a.write(key, func(ctx context.Context, c *jira.Client, _ *jira.User) error {
+		return c.SetField(ctx, key, id, kind, value, chosen, loc)
+	})
 }
 
 // MoveTicket makes one of the ticket's transitions.

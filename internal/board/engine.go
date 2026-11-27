@@ -43,6 +43,20 @@ type Engine struct {
 	// last is read from other goroutines while a refresh is under way, so it
 	// does not sit behind mu: a refresh holds mu for as long as Jira takes.
 	last atomic.Pointer[model.Snapshot]
+	// the field ids found when preparing, readable while a refresh is under way
+	ids atomic.Pointer[map[string]string]
+}
+
+// FieldID is the Jira id of a field the settings name ("duedate" as it is;
+// "" when Jira has no such field or the engine has not prepared yet).
+func (e *Engine) FieldID(name string) string {
+	if name == "duedate" || strings.HasPrefix(name, "customfield_") {
+		return name
+	}
+	if m := e.ids.Load(); m != nil {
+		return (*m)[name]
+	}
+	return ""
 }
 
 // reply is what the newest public comment of a ticket said, as of when the
@@ -91,6 +105,11 @@ func (e *Engine) prepare(ctx context.Context) error {
 			}
 		}
 	}
+	ids := make(map[string]string, len(e.fieldID))
+	for n, id := range e.fieldID {
+		ids[n] = id
+	}
+	e.ids.Store(&ids)
 	for _, sp := range e.cfg.Spaces {
 		if sp.Project == "" {
 			continue

@@ -45,6 +45,10 @@ type Actions struct {
 	Approvals      []Approval   `json:"approvals"`      // pending ones only
 	ServiceDesk    bool         `json:"serviceDesk"`    // a service desk request: comments are internal or public
 	ApprovalsError string       `json:"approvalsError"` // why approvals could not be read ("" = fine)
+	// Fields the team keeps up to date from the window (when it goes to
+	// production, whether that is settled), filled in by the app.
+	Fields      []EditField `json:"fields"`
+	FieldsError string      `json:"fieldsError"`
 }
 
 // Actions reads the moves and pending approvals of one ticket. Jira returns

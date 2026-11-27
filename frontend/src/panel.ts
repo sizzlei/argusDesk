@@ -2,7 +2,7 @@
 
 import type { Backend } from './backend';
 import { sanitize } from './sanitize';
-import type { Box, Snapshot, TicketActions, TicketDetail } from './types';
+import type { Box, EditField, Snapshot, TicketActions, TicketDetail } from './types';
 import { filesOf, sendFiles, sizeText } from './attach';
 import { mentions, type Who } from './mention';
 import { codeBlock, confirmAction, copyButton, dateTime, errText, fill, h, limitText, span, toast } from './ui';
@@ -136,6 +136,83 @@ export function onAnswered(cb: (key: string, approve: boolean) => void) {
 /** Tells the windows how much strength is left for the week. */
 export function setStrength(left: number | undefined) {
   spent = left === 0;
+}
+
+/** 을 or 를, by whether the word ends in a final consonant. */
+function eul(word: string) {
+  const c = word.trim().charCodeAt(word.trim().length - 1);
+  return c >= 0xac00 && c <= 0xd7a3 && (c - 0xac00) % 28 ? '을' : '를';
+}
+
+// A schedule being changed survives redraws until it is saved.
+const fieldDrafts = new Map<string, string>();
+
+/**
+ * The ticket's schedule: its deployment date and whether that is settled,
+ * changed here as a developer asks. A date waits for "저장"; a box ticks at once.
+ */
+function schedule(w: Win, a: TicketActions | undefined, redraw: () => void, backend: Backend): HTMLElement[] {
+  const fields = a?.fields ?? [];
+  if (!fields.length && !a?.fieldsError) return [];
+  const b = w.box;
+  const save = (f: EditField, value: string, chosen: string[], done: string) =>
+    void act(
+      w,
+      done,
+      async () => {
+        await backend.setTicketField(b.key, f.id, f.kind, value, chosen);
+        fieldDrafts.delete(`${b.key}|${f.id}`);
+      },
+      redraw,
+    );
+  const rows = fields.map((f) => {
+    const name = h('span', { class: 'act-name', title: f.name }, f.name);
+    if (!f.editable || f.kind === 'other') {
+      const shown = f.value ? f.value.replace('T', ' ') : f.chosen.length ? f.options.filter((o) => f.chosen.includes(o.id)).map((o) => o.name).join(', ') || '선택됨' : '없음';
+      return h('div', { class: 'act sched' }, name, h('span', { class: 'quiet' }, `${shown} · Jira에서만 바꿀 수 있습니다`));
+    }
+    if (f.kind === 'checkbox' || f.kind === 'option') {
+      // one tick box per option; a single "확정" option reads as a plain switch
+      return h(
+        'div',
+        { class: 'act sched' },
+        name,
+        h(
+          'div',
+          { class: 'act-row' },
+          ...f.options.map((o) => {
+            const on = f.chosen.includes(o.id);
+            const box = h('input', { type: 'checkbox', disabled: w.busy }) as HTMLInputElement;
+            box.checked = on;
+            box.addEventListener('change', () => {
+              const chosen = f.kind === 'option' ? (box.checked ? [o.id] : []) : box.checked ? [...f.chosen, o.id] : f.chosen.filter((x) => x !== o.id);
+              save(f, '', chosen, `${f.name}: ${box.checked ? o.name : `${o.name} 해제`}`);
+            });
+            return h('label', { class: 'tick' }, box, f.options.length === 1 ? (on ? '확정됨' : '미확정') : o.name);
+          }),
+        ),
+      );
+    }
+    const key = `${b.key}|${f.id}`;
+    const input = h('input', { type: f.kind === 'date' ? 'date' : 'datetime-local', disabled: w.busy, 'aria-label': f.name }) as HTMLInputElement;
+    input.value = fieldDrafts.get(key) ?? f.value;
+    const ok = h('button', { type: 'button', class: 'primary', disabled: true }, '저장');
+    const changed = () => {
+      fieldDrafts.set(key, input.value);
+      ok.disabled = w.busy || input.value === f.value;
+    };
+    input.addEventListener('input', changed);
+    input.addEventListener('change', changed);
+    changed();
+    if (input.value === f.value) fieldDrafts.delete(key);
+    ok.addEventListener('click', () => save(f, input.value, [], input.value ? `${f.name}${eul(f.name)} ${input.value.replace('T', ' ')}(으)로 바꿨습니다.` : `${f.name}${eul(f.name)} 비웠습니다.`));
+    return h('div', { class: 'act sched' }, name, h('div', { class: 'act-row' }, input, ok));
+  });
+  return [
+    h('div', { class: 'act-sep' }, '일정'),
+    ...rows,
+    ...(a?.fieldsError ? [h('p', { class: 'quiet' }, `일정 필드를 읽지 못했습니다: ${a.fieldsError}`)] : []),
+  ];
 }
 
 /** The "처리" part of the panel: assignee, approvals, moves and a comment box. */
@@ -395,6 +472,7 @@ function renderActions(w: Win, snap: Snapshot, backend: Backend) {
     host,
     h('h3', {}, '처리', busy ? h('span', { class: 'chip' }, 'Jira에 반영 중') : null),
     h('div', { class: 'act' }, h('span', { class: 'act-name' }, '담당자'), assign),
+    ...schedule(w, a, redraw, backend),
     ...approvals,
     stepApproval,
     a?.approvalsError ? h('p', { class: 'quiet' }, `승인 정보를 읽지 못했습니다: ${a.approvalsError}`) : null,
