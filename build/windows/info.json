@@ -1,12 +1,12 @@
 {
 	"fixed": {
-		"file_version": "1.0.7",
-		"product_version": "1.0.7"
+		"file_version": "1.0.8",
+		"product_version": "1.0.8"
 	},
 	"info": {
 		"0409": {
-			"FileVersion": "1.0.7",
-			"ProductVersion": "1.0.7",
+			"FileVersion": "1.0.8",
+			"ProductVersion": "1.0.8",
 			"CompanyName": "sizzlei",
 			"FileDescription": "Jira service desk as a fulfilment centre",
 			"LegalCopyright": "© 2026 sizzlei",

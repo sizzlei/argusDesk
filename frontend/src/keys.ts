@@ -10,7 +10,7 @@ const NAMES: Record<KeyAction, string> = {
   search: '상자 찾기',
   write: '송장 쓰기',
   refresh: '새로 고침',
-  mine: '전체 / 내 작업 전환',
+  mine: '전체 / 내 작업 / 미배정 차례로 전환',
   notices: '알림 열기',
   profile: '내 상태 열기',
   floorUp: '위층으로',

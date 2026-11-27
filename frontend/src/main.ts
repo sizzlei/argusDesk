@@ -364,7 +364,13 @@ async function boot() {
       search: toggleFinder,
       write,
       refresh: () => void backend.refresh(),
-      mine: () => setFilter({ ...filter, scope: filter.scope === 'mine' ? 'all' : 'mine' }),
+      // 전체 → 내 작업 → 미배정 → 전체: one key goes round every view.
+      mine: () => {
+        const order = ['all', 'mine', 'unassigned'] as const;
+        const scope = order[(order.indexOf(filter.scope as (typeof order)[number]) + 1) % order.length];
+        setFilter({ ...filter, scope });
+        toast({ all: '전체 보기', mine: '내 작업만 보기', unassigned: '미배정만 보기' }[scope]);
+      },
       notices: () => panel('notices', noticesOpen(), toggleNotices),
       profile: () => panel('profile', profileOpen(), toggleProfile),
       floorUp: () => floor(1),
