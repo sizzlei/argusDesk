@@ -21,6 +21,10 @@ type EditField struct {
 	Value    string   `json:"value"`    // date "2026-11-27", date-time "2026-11-27T14:00" (local), "" = empty
 	Chosen   []string `json:"chosen"`   // option ids ticked
 	Editable bool     `json:"editable"` // false: Jira does not let this user change it here
+	// Role is what the field means to the centre, filled in by the app:
+	// "deploy" (when it goes to production), "date" (another date of the
+	// schedule) or "confirm" (the box that says the deployment date is settled).
+	Role string `json:"role"`
 }
 
 // EditFields reads the given fields of a ticket: whether this user may edit

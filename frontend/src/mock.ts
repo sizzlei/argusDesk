@@ -524,8 +524,8 @@ export function mockBackend(): Backend {
           : [];
       // the schedule, as the settings name it: a date-time, and (for some types) whether it is settled
       const local = (v?: string) => (v && v.length > 10 ? new Date(v).toLocaleString('sv-SE').slice(0, 16).replace(' ', 'T') : v ?? '');
-      const fields: EditField[] = [{ id: 'customfield_1', name: '운영 배포 일시', kind: 'datetime', options: [], value: local(b.deploy), chosen: [], editable: true }];
-      if (b.type.includes('스키마')) fields.push({ id: 'customfield_2', name: '운영 배포 일정 확정 여부', kind: 'checkbox', options: [{ id: '9', name: '확정' }], value: '', chosen: settled.has(key) ? ['9'] : [], editable: true });
+      const fields: EditField[] = [{ id: 'customfield_1', name: '운영 배포 일시', kind: 'datetime', options: [], value: local(b.deploy), chosen: [], editable: true, role: 'deploy' }];
+      if (b.type.includes('스키마')) fields.push({ id: 'customfield_2', name: '운영 배포 일정 확정 여부', kind: 'checkbox', options: [{ id: '9', name: '확정' }], value: '', chosen: settled.has(key) ? ['9'] : [], editable: true, role: 'confirm' });
       return { key, transitions: transitions.map((t) => ({ ...t, toZone: zoneOfStatus(t.toId) })), approvals, serviceDesk: b.space === 'requests', approvalsError: '', fields };
     },
     setTicketField: async (key, id, _kind, value, chosen) => {

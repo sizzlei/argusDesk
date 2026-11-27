@@ -346,11 +346,14 @@ func (a *App) TicketActions(key string) (*jira.Actions, error) {
 						}
 					}
 					// the deployment date and whether it is settled: changed from here as in Jira
-					if ids := deployFieldIDs(sp, b.Type, engine); len(ids) > 0 {
+					if ids, roles := scheduleFields(sp, b.Type, engine); len(ids) > 0 {
 						fields, ferr := c.EditFields(ctx, key, ids, cfg.Location())
 						if ferr != nil {
 							acts.FieldsError = ferr.Error()
 						} else {
+							for i := range fields {
+								fields[i].Role = roles[fields[i].ID]
+							}
 							acts.Fields = fields
 						}
 					}
@@ -362,33 +365,34 @@ func (a *App) TicketActions(key string) (*jira.Actions, error) {
 	return acts, nil
 }
 
-// deployFieldIDs lists the Jira ids of the schedule fields of a ticket of this
-// type, which the team changes when a developer asks: the deployment date,
-// the date the type is aged from (its requested date), and the box that says
-// the schedule is settled. The creation date is not one of them.
-func deployFieldIDs(sp *config.Space, typeName string, engine *board.Engine) []string {
-	names := []string{sp.DeployField}
+// scheduleFields lists the Jira ids, with their roles, of the schedule fields
+// of a ticket of this type, which the team changes when a developer asks:
+// the deployment date ("deploy"), the date the type is aged from ("date"; not
+// the creation date) and the box that says the deployment is settled
+// ("confirm").
+func scheduleFields(sp *config.Space, typeName string, engine *board.Engine) (ids []string, roles map[string]string) {
+	type named struct{ name, role string }
+	list := []named{{sp.DeployField, "deploy"}}
 	if t, ok := sp.Types[typeName]; ok {
 		if t.DeployField != "" {
-			names[0] = t.DeployField
+			list[0].name = t.DeployField
 		}
-		names = append(names, t.StaleField)
+		list = append(list, named{t.StaleField, "date"})
 		if t.Unscheduled != nil {
-			names = append(names, t.Unscheduled.UnlessChecked)
+			list = append(list, named{t.Unscheduled.UnlessChecked, "confirm"})
 		}
 	}
-	var ids []string
-	seen := map[string]bool{}
-	for _, n := range names {
-		if n == "" || n == "created" {
+	roles = map[string]string{}
+	for _, n := range list {
+		if n.name == "" || n.name == "created" {
 			continue
 		}
-		if id := engine.FieldID(n); id != "" && !seen[id] {
-			seen[id] = true
+		if id := engine.FieldID(n.name); id != "" && roles[id] == "" {
+			roles[id] = n.role
 			ids = append(ids, id)
 		}
 	}
-	return ids
+	return ids, roles
 }
 
 // SetTicketField changes one of the fields TicketActions lists. value is a

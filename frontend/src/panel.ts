@@ -146,68 +146,100 @@ function eul(word: string) {
 
 // A schedule being changed survives redraws until it is saved.
 const fieldDrafts = new Map<string, string>();
+// tickets whose "settled" box was just ticked: the date is chosen, then both are saved
+const confirming = new Set<string>();
 
 /**
- * The ticket's schedule: its deployment date and whether that is settled,
- * changed here as a developer asks. A date waits for "저장"; a box ticks at once.
+ * The ticket's schedule, changed here as a developer asks. Where the type has
+ * a "settled" box, the deployment date is chosen only once it is ticked, and
+ * the two are saved together; unticking it is saved at once. Other dates wait
+ * for "저장".
  */
 function schedule(w: Win, a: TicketActions | undefined, redraw: () => void, backend: Backend): HTMLElement[] {
   const fields = a?.fields ?? [];
   if (!fields.length && !a?.fieldsError) return [];
   const b = w.box;
-  const save = (f: EditField, value: string, chosen: string[], done: string) =>
-    void act(
-      w,
-      done,
-      async () => {
-        await backend.setTicketField(b.key, f.id, f.kind, value, chosen);
-        fieldDrafts.delete(`${b.key}|${f.id}`);
-      },
-      redraw,
-    );
-  const rows = fields.map((f) => {
-    const name = h('span', { class: 'act-name', title: f.name }, f.name);
-    if (!f.editable || f.kind === 'other') {
-      const shown = f.value ? f.value.replace('T', ' ') : f.chosen.length ? f.options.filter((o) => f.chosen.includes(o.id)).map((o) => o.name).join(', ') || '선택됨' : '없음';
-      return h('div', { class: 'act sched' }, name, h('span', { class: 'quiet' }, `${shown} · Jira에서만 바꿀 수 있습니다`));
-    }
-    if (f.kind === 'checkbox' || f.kind === 'option') {
-      // one tick box per option; a single "확정" option reads as a plain switch
-      return h(
-        'div',
-        { class: 'act sched' },
-        name,
-        h(
-          'div',
-          { class: 'act-row' },
-          ...f.options.map((o) => {
-            const on = f.chosen.includes(o.id);
-            const box = h('input', { type: 'checkbox', disabled: w.busy }) as HTMLInputElement;
-            box.checked = on;
-            box.addEventListener('change', () => {
-              const chosen = f.kind === 'option' ? (box.checked ? [o.id] : []) : box.checked ? [...f.chosen, o.id] : f.chosen.filter((x) => x !== o.id);
-              save(f, '', chosen, `${f.name}: ${box.checked ? o.name : `${o.name} 해제`}`);
-            });
-            return h('label', { class: 'tick' }, box, f.options.length === 1 ? (on ? '확정됨' : '미확정') : o.name);
-          }),
-        ),
-      );
-    }
+  const confirm = fields.find((f) => f.role === 'confirm' && f.editable && (f.kind === 'checkbox' || f.kind === 'option') && f.options.length);
+  const deploy = fields.find((f) => f.role === 'deploy');
+  const confirmed = !!confirm?.chosen.length;
+  const pending = !!confirm && !confirmed && confirming.has(b.key);
+  const gated = !!confirm && !!deploy; // the date waits for the box
+
+  const shown = (f: EditField) => (f.value ? f.value.replace('T', ' ') : '없음');
+  const readOnly = (f: EditField, note: string) =>
+    h('div', { class: 'act sched' }, h('span', { class: 'act-name', title: f.name }, f.name), h('span', { class: 'quiet' }, `${shown(f)} · ${note}`));
+
+  // A date row: an input and a button. `then` runs after the date is saved (ticking the box).
+  const dateRow = (f: EditField, label: string, then?: () => Promise<void>) => {
     const key = `${b.key}|${f.id}`;
     const input = h('input', { type: f.kind === 'date' ? 'date' : 'datetime-local', disabled: w.busy, 'aria-label': f.name }) as HTMLInputElement;
     input.value = fieldDrafts.get(key) ?? f.value;
-    const ok = h('button', { type: 'button', class: 'primary', disabled: true }, '저장');
+    const ok = h('button', { type: 'button', class: 'primary', disabled: true }, label);
     const changed = () => {
       fieldDrafts.set(key, input.value);
-      ok.disabled = w.busy || input.value === f.value;
+      // confirming needs a date; a plain save needs a change
+      ok.disabled = w.busy || (then ? !input.value : input.value === f.value);
     };
     input.addEventListener('input', changed);
     input.addEventListener('change', changed);
     changed();
     if (input.value === f.value) fieldDrafts.delete(key);
-    ok.addEventListener('click', () => save(f, input.value, [], input.value ? `${f.name}${eul(f.name)} ${input.value.replace('T', ' ')}(으)로 바꿨습니다.` : `${f.name}${eul(f.name)} 비웠습니다.`));
-    return h('div', { class: 'act sched' }, name, h('div', { class: 'act-row' }, input, ok));
-  });
+    ok.addEventListener('click', () => {
+      const value = input.value;
+      const done = then ? `운영 배포 일정을 ${value.replace('T', ' ')}(으)로 확정했습니다.` : value ? `${f.name}${eul(f.name)} ${value.replace('T', ' ')}(으)로 바꿨습니다.` : `${f.name}${eul(f.name)} 비웠습니다.`;
+      void act(
+        w,
+        done,
+        async () => {
+          if (value !== f.value) await backend.setTicketField(b.key, f.id, f.kind, value, []);
+          await then?.();
+          fieldDrafts.delete(key);
+          confirming.delete(b.key);
+        },
+        redraw,
+      );
+    });
+    return h('div', { class: 'act sched' }, h('span', { class: 'act-name', title: f.name }, f.name), h('div', { class: 'act-row' }, input, ok));
+  };
+
+  const rows: HTMLElement[] = [];
+  if (confirm) {
+    const box = h('input', { type: 'checkbox', disabled: w.busy }) as HTMLInputElement;
+    box.checked = confirmed || pending;
+    box.addEventListener('change', () => {
+      if (box.checked) {
+        // ticked: now the date can be chosen; nothing is saved yet
+        confirming.add(b.key);
+        if (!deploy) void act(w, `${confirm.name}: 확정`, () => backend.setTicketField(b.key, confirm.id, confirm.kind, '', [confirm.options[0].id]), redraw);
+        else redraw();
+      } else if (pending) {
+        confirming.delete(b.key); // changed my mind before saving
+        redraw();
+      } else {
+        void act(w, '운영 배포 일정 확정을 해제했습니다.', () => backend.setTicketField(b.key, confirm.id, confirm.kind, '', []), redraw);
+      }
+    });
+    rows.push(
+      h(
+        'div',
+        { class: 'act sched' },
+        h('span', { class: 'act-name', title: confirm.name }, confirm.name),
+        h('label', { class: 'tick' }, box, confirmed ? '확정됨' : pending ? '확정하는 중: 날짜를 고르세요' : '미확정'),
+      ),
+    );
+  }
+  for (const f of fields) {
+    if (f === confirm) continue;
+    if (!f.editable || f.kind === 'other' || f.kind === 'checkbox' || f.kind === 'option') {
+      rows.push(readOnly(f, 'Jira에서만 바꿀 수 있습니다'));
+    } else if (gated && f === deploy && !confirmed && !pending) {
+      rows.push(readOnly(f, '확정하면 고를 수 있습니다'));
+    } else if (gated && f === deploy && pending) {
+      rows.push(dateRow(f, '확정 저장', () => backend.setTicketField(b.key, confirm!.id, confirm!.kind, '', [confirm!.options[0].id])));
+    } else {
+      rows.push(dateRow(f, '저장'));
+    }
+  }
   return [
     h('div', { class: 'act-sep' }, '일정'),
     ...rows,

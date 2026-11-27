@@ -275,6 +275,7 @@ export interface EditField {
   value: string; // "2026-11-27", or "2026-11-27T14:00" in the centre's time zone; "" = empty
   chosen: string[]; // option ids ticked
   editable: boolean;
+  role: 'deploy' | 'date' | 'confirm' | ''; // what it means to the centre
 }
 
 /** What a person, or the whole team, has done in the season. */
