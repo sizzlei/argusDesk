@@ -10,7 +10,7 @@ import (
 // Note is one thing worth telling the user about.
 type Note struct {
 	Key   string `json:"key"`  // the ticket it is about ("" for a summary)
-	Kind  string `json:"kind"` // "approval" | "reply" | "new" | "arrive" | "mine" | "assigned" | "summary"
+	Kind  string `json:"kind"` // "urgent" | "approval" | "reply" | "new" | "arrive" | "mine" | "assigned" | "summary"
 	Title string `json:"title"`
 	Body  string `json:"body"`
 }
@@ -50,6 +50,8 @@ func Notes(snap *model.Snapshot, changes []model.Change, skip map[string]bool) [
 		z := zones[b.Space+"/"+b.Zone]
 		body := b.Key + " " + b.Summary
 		switch {
+		case b.Urgent && (c.Kind == "added" || c.Kind == "urgent"):
+			first = append(first, Note{Key: b.Key, Kind: "urgent", Title: "긴급 상자 · " + z.Name, Body: body})
 		case b.MyApproval && (c.Kind == "approval" || c.Kind == "added" || (c.Kind == "moved" && c.FromZone != c.ToZone)):
 			first = append(first, Note{Key: b.Key, Kind: "approval", Title: "내 승인 요청 · " + z.Name, Body: body})
 		case c.Kind == "added":
@@ -74,7 +76,7 @@ func Notes(snap *model.Snapshot, changes []model.Change, skip map[string]bool) [
 func Fold(notes []Note) []Note {
 	var out, rest []Note
 	for _, n := range notes {
-		if n.Kind == "approval" || n.Kind == "reply" {
+		if n.Kind == "approval" || n.Kind == "reply" || n.Kind == "urgent" {
 			out = append(out, n)
 		} else {
 			rest = append(rest, n)

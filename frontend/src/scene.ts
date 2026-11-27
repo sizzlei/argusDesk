@@ -506,6 +506,8 @@ export class Scene {
     const boxes = snap.boxes.filter((b) => b.space === space.id);
     const members = this.placeMe(snap, space, rooms);
     const added = new Set(changes.filter((c) => c.kind === 'added').map((c) => c.key));
+    // An urgent box arriving on this floor, or a box made urgent here, sounds the alarm.
+    if (changes.some((c) => (c.kind === 'added' || c.kind === 'urgent') && boxes.some((b) => b.key === c.key && b.urgent))) this.alarm();
     const now = Date.parse(snap.fetchedAt);
 
     this.ground.removeChildren().forEach((c) => c.destroy({ children: true }));
@@ -991,6 +993,39 @@ export class Scene {
       sp.body.addChild(badge);
       sp.badge = badge;
     }
+    // An urgent box carries a turning red light on its lid.
+    if (b.urgent && !sp.beacon) {
+      sp.beacon = new Graphics();
+      sp.body.addChild(sp.beacon);
+    } else if (!b.urgent && sp.beacon) {
+      sp.beacon.destroy();
+      sp.beacon = undefined;
+    }
+    if (sp.beacon) this.turnBeacon(sp, this.clock / 1000);
+  }
+
+  /** Draws an urgent box's light at time T: a red dome with a beam going round. */
+  private turnBeacon(sp: Sprite, T: number) {
+    const g = sp.beacon!;
+    const y = -BOX_H - 12;
+    const a = CALM ? 0 : T * 5;
+    g.clear();
+    // the beam: a wedge of light that sweeps round, brighter towards the viewer
+    const side = Math.cos(a);
+    const front = (Math.sin(a) + 1) / 2;
+    g.poly([0, y - 4, side * 48 - 9, y - 16 + front * 12, side * 48 + 9, y + 6 + front * 12]).fill({ color: 0xff3b30, alpha: 0.16 + front * 0.26 });
+    g.ellipse(0, y + 6, 10, 4.6).fill(0x2f3038); // the base
+    g.roundRect(-7.5, y - 9, 15, 15, 7.5).fill(0xe5383b).stroke({ width: 1, color: 0x9e1f22 });
+    g.ellipse(-2.5, y - 4.5, 3, 3.8).fill({ color: 0xffffff, alpha: 0.5 + front * 0.45 }); // the lamp inside
+  }
+
+  /** An urgent box came in: the edges of the window flash red a few times. */
+  alarm() {
+    const { width, height } = this.app.screen;
+    const g = new Graphics();
+    const t = 26;
+    g.rect(0, 0, width, t).fill(0xff3b30).rect(0, height - t, width, t).fill(0xff3b30).rect(0, 0, t, height).fill(0xff3b30).rect(width - t, 0, t, height).fill(0xff3b30);
+    this.show(g, 1800, (k, c) => (c.alpha = Math.max(0, Math.sin(k * Math.PI * 3)) * 0.35 * (1 - k)), this.fx);
   }
 
   private spawn(b: Box): Sprite {
@@ -1145,6 +1180,7 @@ export class Scene {
         }
         return;
       }
+      if (s.beacon && !CALM) this.turnBeacon(s, T);
       if (s.held) {
         // carried: above everything, under the pointer
         r.x += (s.held.x - r.x) * Math.min(1, ms / 40);

@@ -13,6 +13,7 @@ import { renderSetup } from './setup';
 import type { AppState, Box, Change, GameStats, Snapshot } from './types';
 import { checkForUpdates, initUpdates } from './update';
 import { showBriefing, watchPresence } from './briefing';
+import { renderQuests, updateQuests } from './quests';
 import { openAvatarPicker, openVacation, cancelVacation } from './vacation';
 import { startTour, tourRunning, tourSeen } from './tour';
 import { chooseAction, confirmAction, errText, openDiagnostics, toast } from './ui';
@@ -248,7 +249,20 @@ async function boot() {
     ];
     return list.filter((a): a is ProfileAction => !!a);
   };
+  /** Moves the day's quests along; a quest done, or the whole day, is celebrated. */
+  const quests = () => {
+    const meId = snap?.members.find((m) => m.me)?.id || state.meId;
+    const won = updateQuests(snap, game, meId);
+    if (won.day) {
+      toast(`오늘의 퀘스트를 모두 끝냈습니다! 연속 ${won.day}일`);
+      scene.celebrate();
+    } else if (won.quest) toast(`퀘스트 완료: ${won.quest}`);
+    renderQuests(document.getElementById('quests')!, document.getElementById('floors'));
+  };
+
   const hud = () => {
+    // after this draw, when the floor list has its height
+    requestAnimationFrame(() => renderQuests(document.getElementById('quests')!, document.getElementById('floors')));
     renderNotices(snap, visit, () => hud(), (url) => backend.openUrl(url));
     const shown = view();
     renderFilters(snap, space, filter, shown?.boxes.length ?? 0, snap?.boxes.length ?? 0, setFilter, () => hud());
@@ -450,6 +464,7 @@ async function boot() {
     if (!next) return;
     const fresh = news(game, next);
     game = next;
+    quests();
     setStrength(next.myFatigue);
     scene.setTeam(next.fatigue ?? {}, next.away ?? [], next.avatars ?? {});
     hud();
@@ -500,6 +515,7 @@ async function boot() {
     draw(ev.changes);
     syncTickets(ev.snapshot, backend);
     addNotes(ev.notes, ev.snapshot.fetchedAt);
+    quests();
     const arrived = awaited && ev.snapshot.boxes.find((b) => b.key === awaited);
     if (arrived) {
       awaited = '';

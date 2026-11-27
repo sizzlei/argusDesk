@@ -26,6 +26,7 @@ export interface Box {
   mine: boolean;
   myApproval?: boolean; // waiting for the signed-in user to approve
   reply?: string; // the requester wrote last, at this time: an answer is due
+  urgent?: boolean; // its priority is one the settings call urgent
   enteredAt?: string;
   staleFrom?: string;
   staleRatio: number;
@@ -119,7 +120,7 @@ export interface Snapshot {
 }
 
 export interface Change {
-  kind: 'added' | 'moved' | 'updated' | 'removed' | 'reply';
+  kind: 'added' | 'moved' | 'updated' | 'removed' | 'reply' | 'urgent';
   key: string;
   fromZone?: string;
   toZone?: string;
@@ -128,7 +129,7 @@ export interface Change {
 /** Something worth telling the user: shown in the notification centre. */
 export interface Note {
   key: string; // the ticket it is about ("" for a summary)
-  kind: 'approval' | 'reply' | 'new' | 'arrive' | 'mine' | 'assigned' | 'summary';
+  kind: 'urgent' | 'approval' | 'reply' | 'new' | 'arrive' | 'mine' | 'assigned' | 'summary';
   title: string;
   body: string;
 }

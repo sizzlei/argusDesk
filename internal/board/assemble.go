@@ -90,6 +90,10 @@ func Assemble(in Input) *model.Snapshot {
 				Created: t.Created, Updated: t.Updated, Space: sp.ID, Zone: zoneID,
 				Mine: in.Me != "" && t.AssigneeID == in.Me,
 			}
+			// Urgent until it is done or sent back: a finished box has nothing left to rush.
+			if z := sp.Zone(zoneID); cfg.IsUrgent(t.Priority) && (z == nil || (z.Kind != config.KindDone && z.Kind != config.KindReturned)) {
+				b.Urgent = true
+			}
 			if in.BrowseURL != nil {
 				b.URL = in.BrowseURL(t.Key)
 			}
@@ -226,6 +230,9 @@ func Diff(prev, next *model.Snapshot) []model.Change {
 			changes = append(changes, model.Change{Kind: "approval", Key: b.Key, Space: b.Space, ToZone: b.Zone})
 		case o.Zone != b.Zone || o.Space != b.Space || o.AssigneeID != b.AssigneeID:
 			changes = append(changes, model.Change{Kind: "moved", Key: b.Key, Space: b.Space, FromZone: o.Zone, ToZone: b.Zone})
+		case b.Urgent && !o.Urgent:
+			// raised to an urgent priority where it stands
+			changes = append(changes, model.Change{Kind: "urgent", Key: b.Key, Space: b.Space, ToZone: b.Zone})
 		case b.Reply != nil && (o.Reply == nil || b.Reply.After(*o.Reply)):
 			// the requester wrote again
 			changes = append(changes, model.Change{Kind: "reply", Key: b.Key, Space: b.Space, ToZone: b.Zone})

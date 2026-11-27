@@ -40,14 +40,17 @@ const (
 
 // Config is the whole settings file.
 type Config struct {
-	Version     string   `yaml:"version"`
-	Name        string   `yaml:"name"`
-	Site        string   `yaml:"site"`
-	Timezone    string   `yaml:"timezone"`
-	PollSeconds int      `yaml:"poll_seconds"`
-	Spaces      []Space  `yaml:"spaces"`
-	Game        Game     `yaml:"game"`
-	Vacation    Vacation `yaml:"vacation"`
+	Version     string `yaml:"version"`
+	Name        string `yaml:"name"`
+	Site        string `yaml:"site"`
+	Timezone    string `yaml:"timezone"`
+	PollSeconds int    `yaml:"poll_seconds"`
+	// Urgent lists the Jira priorities whose boxes arrive with a beacon and are
+	// told first (default: Highest, High).
+	Urgent   []string `yaml:"urgent"`
+	Spaces   []Space  `yaml:"spaces"`
+	Game     Game     `yaml:"game"`
+	Vacation Vacation `yaml:"vacation"`
 
 	loc *time.Location
 }
@@ -178,6 +181,20 @@ type Type struct {
 type Unscheduled struct {
 	UnlessChecked string `yaml:"unless_checked"` // checkbox field name
 	Label         string `yaml:"label"`
+}
+
+// IsUrgent says whether a box of this priority is urgent.
+func (c *Config) IsUrgent(priority string) bool {
+	list := c.Urgent
+	if len(list) == 0 {
+		list = []string{"Highest", "High"}
+	}
+	for _, p := range list {
+		if strings.EqualFold(strings.TrimSpace(p), strings.TrimSpace(priority)) && priority != "" {
+			return true
+		}
+	}
+	return false
 }
 
 // Location is the time zone date-only fields are read in.

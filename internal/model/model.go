@@ -53,6 +53,7 @@ type Box struct {
 	Mine       bool       `json:"mine"`
 	MyApproval bool       `json:"myApproval"`          // waiting for the signed-in user to approve
 	Reply      *time.Time `json:"reply,omitempty"`     // the requester wrote last, at this time: an answer is due
+	Urgent     bool       `json:"urgent,omitempty"`    // its priority is one the settings call urgent
 	EnteredAt  *time.Time `json:"enteredAt,omitempty"` // when it entered its zone
 	StaleFrom  *time.Time `json:"staleFrom,omitempty"` // what the age is counted from
 	StaleRatio float64    `json:"staleRatio"`          // elapsed / limit; 0 = not counted

@@ -9,6 +9,7 @@ name: 요청 센터
 site: example.atlassian.net
 timezone: Asia/Seoul # 날짜만 있는 필드를 읽는 시간대
 poll_seconds: 60
+urgent: [Highest, High] # 긴급 상자로 볼 우선순위 (경광등, 먼저 알림)
 
 spaces:
   - id: requests

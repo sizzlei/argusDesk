@@ -369,3 +369,28 @@ func TestRequesterReply(t *testing.T) {
 		t.Fatalf("notes = %+v", notes)
 	}
 }
+
+func TestUrgentArrival(t *testing.T) {
+	f := &fake{issues: []jira.Issue{issue("REQ-1", "10002", "검토 중")}}
+	e := NewEngine(example(t), f, "u1")
+	e.now = func() time.Time { return now }
+	if _, _, err := e.Refresh(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	hot := issue("REQ-2", "10001", "요청 부서 승인 대기")
+	hot.Fields["priority"] = json.RawMessage(`{"name":"Highest"}`)
+	f.issues = append(f.issues, hot)
+	snap, changes, err := e.Refresh(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	notes := Notes(snap, changes, nil)
+	if len(notes) == 0 || notes[0].Kind != "urgent" || notes[0].Key != "REQ-2" {
+		t.Fatalf("notes = %+v", notes)
+	}
+	for _, b := range snap.Boxes {
+		if (b.Key == "REQ-2") != b.Urgent {
+			t.Fatalf("%s urgent = %v", b.Key, b.Urgent)
+		}
+	}
+}

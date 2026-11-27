@@ -70,6 +70,11 @@ const steps = (): Step[] => [
     text: '상자 위에 "요청자 답변" 말풍선이 뜨면 요청자가 마지막으로 댓글을 단 것입니다. 공개 댓글로 답하면 말풍선이 사라집니다.',
     since: 2,
   },
+  {
+    title: '긴급 상자',
+    text: '우선순위가 높은 상자는 뚜껑에 경광등이 돌고, 들어올 때 화면 가장자리가 붉게 깜빡입니다. 알림도 다른 것보다 먼저 갑니다.',
+    since: 2,
+  },
   // the window opened two steps ago would stand in front of what comes next
   { title: '층', text: '층마다 Jira 프로젝트가 하나씩 있습니다. 지하 숙소에는 휴가 중인 사람이 쉬고 있어요.', at: '#floors', enter: (host) => void host.closeWindows() },
   {
@@ -89,6 +94,12 @@ const steps = (): Step[] => [
   {
     title: '출근 브리핑',
     text: '두 시간 넘게 자리를 비웠다 돌아오면, 그사이 들어온 상자와 내 승인 대기, 요청자 답변을 한 장으로 정리해 드립니다. 내 상태에서 언제든 다시 볼 수 있어요.',
+    since: 2,
+  },
+  {
+    title: '오늘의 퀘스트',
+    text: '매일 아침 그날 센터에 필요한 일로 퀘스트 세 개가 나옵니다. 상자를 처리하면 저절로 체크되고, 다 끝내면 연속 달성 일수가 쌓입니다.',
+    at: '#quests',
     since: 2,
   },
   { title: '내 상태', text: '내 아바타를 누르면 피로도와 가진 작업이 보입니다. 휴가 등록, 아바타, 단축키 설정도 여기에 있어요. 피로도가 0이 되면 그 주에는 상자를 더 가져올 수 없습니다.', at: '#hud .team .member.me, #hud [aria-controls="profile"]' },

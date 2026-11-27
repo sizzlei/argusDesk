@@ -4,6 +4,7 @@
 
 import type { Away, Box, Snapshot } from './types';
 import { dateTime, h } from './ui';
+import { questsToday } from './quests';
 
 const SEEN_KEY = 'argusdesk.seenAt'; // when this window was last in view
 const GAP = 2 * 60 * 60 * 1000; // away this long: there is something to tell
@@ -96,6 +97,9 @@ export function showBriefing(snap: Snapshot | null, away: Away[], go: (box: Box)
       { class: 'brief-sum' },
       ...sections.map(([kind, name, list]) => h('li', { class: `${kind}${list.length ? '' : ' none'}` }, h('b', {}, String(list.length)), h('span', {}, name))),
     ),
+    questsToday().length
+      ? h('p', { class: 'brief-quests' }, h('b', {}, '오늘의 퀘스트 '), questsToday().map((q) => `${q.done ? '✓ ' : ''}${q.title}`).join(' · '))
+      : null,
     resting.length ? h('p', { class: 'brief-away' }, `오늘 쉬는 사람: ${resting.map((a) => `${a.name}${a.kind ? ` (${a.kind})` : ''}`).join(', ')}`) : null,
     any
       ? h(

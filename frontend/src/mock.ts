@@ -131,6 +131,8 @@ function place(b: Box, zone: string, now: number) {
   if (zone === 'work' && !b.assigneeId && rand(4) > 0) [b.assigneeId, b.assignee] = people[rand(people.length)];
   b.mine = b.assigneeId === 'u1';
   b.myApproval = zone === 'approval'; // in the prototype, every approval waits for me
+  // in the prototype only Highest, so the beacons stay few; a finished box has nothing left to rush
+  b.urgent = b.priority === 'Highest' && zone !== 'dock' && zone !== 'returns';
 }
 
 function make(zone: string, ageHours: number, now: number): Box {
@@ -143,7 +145,7 @@ function make(zone: string, ageHours: number, now: number): Box {
     tag,
     statusId: '',
     status: '',
-    priority: rand(6) === 0 ? 'High' : 'Medium',
+    priority: rand(8) === 0 ? 'Highest' : rand(6) === 0 ? 'High' : 'Medium',
     assigneeId: '',
     assignee: '',
     reporter: reporters[rand(reporters.length)],
@@ -251,7 +253,8 @@ function notesFor(snap: Snapshot, changes: Change[]): Note[] {
     if (!b) continue;
     const zone = snap.spaces.flatMap((s) => s.zones).find((z) => z.id === b.zone)?.name ?? '';
     const body = `${b.key} ${b.summary}`;
-    if (b.myApproval && c.kind === 'moved') out.unshift({ key: b.key, kind: 'approval', title: `내 승인 요청 · ${zone}`, body });
+    if (b.urgent && c.kind === 'added') out.unshift({ key: b.key, kind: 'urgent', title: `긴급 상자 · ${zone}`, body });
+    else if (b.myApproval && c.kind === 'moved') out.unshift({ key: b.key, kind: 'approval', title: `내 승인 요청 · ${zone}`, body });
     else if (c.kind === 'added') out.push({ key: b.key, kind: 'new', title: `새 상자 · ${zone}`, body });
     else if (c.kind === 'moved' && b.mine) out.push({ key: b.key, kind: 'mine', title: `내 상자 이동 · ${zone}`, body });
   }

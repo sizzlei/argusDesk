@@ -3429,3 +3429,106 @@ dialog.brief .act-row {
     grid-template-columns: repeat(3, 1fr);
   }
 }
+
+/* ---- today's quests, under the floors ---- */
+
+#quests {
+  position: absolute;
+  left: 16px;
+  z-index: 5;
+  width: 178px;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  font-size: 12px;
+}
+
+#quests .quest-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  padding: 4px 6px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+#quests .quest-head:hover {
+  background: var(--paper);
+}
+
+#quests .quest-count {
+  padding: 0 7px;
+  border-radius: 999px;
+  background: var(--paper);
+  font-variant-numeric: tabular-nums;
+}
+
+#quests .quest-count.all {
+  background: #2f9e6a;
+  color: #fff;
+}
+
+#quests ul {
+  display: grid;
+  gap: 2px;
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+#quests li {
+  display: grid;
+  grid-template-columns: 16px 1fr auto;
+  gap: 6px;
+  align-items: center;
+  padding: 4px 6px;
+  border-radius: 6px;
+}
+
+#quests li .check {
+  display: grid;
+  place-items: center;
+  width: 15px;
+  height: 15px;
+  border: 1.5px solid var(--line);
+  border-radius: 4px;
+  font-size: 11px;
+  line-height: 1;
+}
+
+#quests li.done .check {
+  border-color: #2f9e6a;
+  background: #2f9e6a;
+  color: #fff;
+}
+
+#quests li.done .what {
+  color: var(--quiet);
+  text-decoration: line-through;
+}
+
+#quests li .n {
+  color: var(--quiet);
+  font-variant-numeric: tabular-nums;
+}
+
+#quests .quest-streak {
+  margin: 4px 6px 2px;
+  color: #c27c0e;
+  font-weight: 600;
+}
+
+.brief-quests {
+  margin: 0 0 8px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: color-mix(in srgb, #2f9e6a 9%, transparent);
+  font-size: 13px;
+}
