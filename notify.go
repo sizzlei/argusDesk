@@ -18,6 +18,7 @@ import (
 type notifier struct {
 	svc   *notifications.NotificationService
 	ready atomic.Bool
+	log   func(format string, args ...any) // the diagnostics diary
 	seq   atomic.Int64
 
 	mu    sync.Mutex
@@ -52,11 +53,17 @@ func (n *notifier) start(ctx context.Context, options application.ServiceOptions
 			n.setProblem("시스템 설정에서 ArgusDesk의 알림이 꺼져 있습니다")
 		default:
 			n.ready.Store(true)
+			if n.log != nil {
+				n.log("OS 알림 허용됨")
+			}
 		}
 	}()
 }
 
 func (n *notifier) setProblem(why string) {
+	if n.log != nil {
+		n.log("OS 알림을 쓸 수 없음: %s", why)
+	}
 	n.mu.Lock()
 	n.why = why
 	n.mu.Unlock()
@@ -94,15 +101,37 @@ func (n *notifier) skip() map[string]bool {
 }
 
 func (n *notifier) send(notes []board.Note) {
-	if !n.ready.Load() {
+	if len(notes) == 0 {
 		return
 	}
-	defer func() { _ = recover() }()
+	logf := func(format string, args ...any) {
+		if n.log != nil {
+			n.log(format, args...)
+		}
+	}
+	if !n.ready.Load() {
+		logf("OS 알림 %d건을 보내지 않음: %s", len(notes), orDash(n.problem()))
+		return
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			logf("OS 알림 보내다 멈춤: %v", r)
+		}
+	}()
+	sent := 0
 	for _, note := range notes {
-		_ = n.svc.SendNotification(notifications.NotificationOptions{
+		err := n.svc.SendNotification(notifications.NotificationOptions{
 			ID:    fmt.Sprintf("argusdesk-%d-%d", time.Now().Unix(), n.seq.Add(1)),
 			Title: note.Title,
 			Body:  note.Body,
 		})
+		if err != nil {
+			logf("OS 알림 보내기 실패: %v", err)
+			continue
+		}
+		sent++
+	}
+	if sent > 0 {
+		logf("OS 알림 %d건 보냄", sent)
 	}
 }

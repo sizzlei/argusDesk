@@ -116,6 +116,7 @@ type BoardError struct {
 // settings file and the sign-in from the last run.
 func (a *App) ServiceStartup(ctx context.Context, options application.ServiceOptions) error {
 	go update.Cleanup() // leftovers of the previous self-update
+	a.notify.log = a.note
 	a.notify.start(ctx, options)
 	a.kick = make(chan struct{}, 1)
 	a.prefs, _ = secret.LoadPrefs()
@@ -591,6 +592,8 @@ func (a *App) startPolling() {
 				a.mu.Unlock()
 				if wanted {
 					a.notify.send(board.Fold(notes))
+				} else if len(notes) > 0 {
+					a.note("OS 알림 %d건: 알림을 꺼 두어 보내지 않음", len(notes))
 				}
 				a.refreshGame(ctx, snap, changes)
 			case errors.Is(err, jira.ErrUnauthorized):
