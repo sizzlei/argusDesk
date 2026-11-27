@@ -165,9 +165,11 @@ function schedule(w: Win, a: TicketActions | undefined, redraw: () => void, back
   const pending = !!confirm && !confirmed && confirming.has(b.key);
   const gated = !!confirm && !!deploy; // the date waits for the box
 
+  // Jira's field names can be long codes (DT_EDD_…): the row says what the field is for, the name shows on hover
+  const nameOf = (f: EditField) => ({ deploy: '운영 배포 일시', confirm: '배포 일정 확정' } as Record<string, string>)[f.role] ?? f.name;
   const shown = (f: EditField) => (f.value ? f.value.replace('T', ' ') : '없음');
   const readOnly = (f: EditField, note: string) =>
-    h('div', { class: 'act sched' }, h('span', { class: 'act-name', title: f.name }, f.name), h('span', { class: 'quiet' }, `${shown(f)} · ${note}`));
+    h('div', { class: 'act sched' }, h('span', { class: 'act-name', title: f.name }, nameOf(f)), h('span', { class: 'quiet' }, `${shown(f)} · ${note}`));
 
   // A date row: an input and a button. `then` runs after the date is saved (ticking the box).
   const dateRow = (f: EditField, label: string, then?: () => Promise<void>) => {
@@ -186,7 +188,7 @@ function schedule(w: Win, a: TicketActions | undefined, redraw: () => void, back
     if (input.value === f.value) fieldDrafts.delete(key);
     ok.addEventListener('click', () => {
       const value = input.value;
-      const done = then ? `운영 배포 일정을 ${value.replace('T', ' ')}(으)로 확정했습니다.` : value ? `${f.name}${eul(f.name)} ${value.replace('T', ' ')}(으)로 바꿨습니다.` : `${f.name}${eul(f.name)} 비웠습니다.`;
+      const done = then ? `운영 배포 일정을 ${value.replace('T', ' ')}(으)로 확정했습니다.` : value ? `${nameOf(f)}${eul(nameOf(f))} ${value.replace('T', ' ')}(으)로 바꿨습니다.` : `${nameOf(f)}${eul(nameOf(f))} 비웠습니다.`;
       void act(
         w,
         done,
@@ -199,7 +201,7 @@ function schedule(w: Win, a: TicketActions | undefined, redraw: () => void, back
         redraw,
       );
     });
-    return h('div', { class: 'act sched' }, h('span', { class: 'act-name', title: f.name }, f.name), h('div', { class: 'act-row' }, input, ok));
+    return h('div', { class: 'act sched' }, h('span', { class: 'act-name', title: f.name }, nameOf(f)), h('div', { class: 'act-row' }, input, ok));
   };
 
   const rows: HTMLElement[] = [];
@@ -210,7 +212,7 @@ function schedule(w: Win, a: TicketActions | undefined, redraw: () => void, back
       if (box.checked) {
         // ticked: now the date can be chosen; nothing is saved yet
         confirming.add(b.key);
-        if (!deploy) void act(w, `${confirm.name}: 확정`, () => backend.setTicketField(b.key, confirm.id, confirm.kind, '', [confirm.options[0].id]), redraw);
+        if (!deploy) void act(w, '배포 일정을 확정했습니다.', () => backend.setTicketField(b.key, confirm.id, confirm.kind, '', [confirm.options[0].id]), redraw);
         else redraw();
       } else if (pending) {
         confirming.delete(b.key); // changed my mind before saving
@@ -223,7 +225,7 @@ function schedule(w: Win, a: TicketActions | undefined, redraw: () => void, back
       h(
         'div',
         { class: 'act sched' },
-        h('span', { class: 'act-name', title: confirm.name }, confirm.name),
+        h('span', { class: 'act-name', title: confirm.name }, nameOf(confirm)),
         h('label', { class: 'tick' }, box, confirmed ? '확정됨' : pending ? '확정하는 중: 날짜를 고르세요' : '미확정'),
       ),
     );

@@ -3830,8 +3830,14 @@ button.deploy-btn .n {
 }
 
 .act.sched .act-name {
+  min-width: 0;
   line-height: 1.35;
   word-break: keep-all;
+  overflow-wrap: anywhere; /* a name with no spaces still breaks, inside its column */
+}
+
+.act.sched > :last-child {
+  min-width: 0;
 }
 
 .act.sched input[type='date'],
