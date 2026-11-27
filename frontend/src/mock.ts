@@ -261,6 +261,8 @@ function notesFor(snap: Snapshot, changes: Change[]): Note[] {
 export function mockBackend(): Backend {
   let now = Date.now();
   const boxes = seed(now);
+  // a few requesters who answered and wait for the team to reply
+  boxes.filter((b) => b.zone === 'review' || b.zone === 'work').filter((_, i) => i % 5 === 1).forEach((b) => (b.reply = new Date(now - 50 * 60000).toISOString()));
   let listeners: ((ev: BoardEvent) => void)[] = [];
   const state: AppState = {
     version: '0.1.0',
@@ -510,7 +512,7 @@ export function mockBackend(): Backend {
         b.zone === 'approval'
           ? [{ id: 'a1', name: 'DBA 승인', canAnswer: true, approvers: [{ id: 'u1', name: '김하늘', decision: 'pending' }, { id: 'u3', name: '박서준', decision: 'pending' }] }]
           : [];
-      return { key, transitions, approvals, serviceDesk: b.space === 'requests', approvalsError: '' };
+      return { key, transitions: transitions.map((t) => ({ ...t, toZone: zoneOfStatus(t.toId) })), approvals, serviceDesk: b.space === 'requests', approvalsError: '' };
     },
     moveTicket: async (key, id) => {
       await pause();
@@ -606,6 +608,7 @@ export function mockBackend(): Backend {
       for (const p of mentioned) body.innerHTML = body.innerHTML.split(`@${p.name}`).join(`<a class="user-hover" href="#">@${p.name}</a>`);
       written.set(key, [...(written.get(key) ?? []), { author: '김하늘', created: new Date(now).toISOString(), bodyHtml: body.outerHTML, internal: mode === 'internal' }]);
       b.updated = new Date(now + ++stamp).toISOString();
+      if (mode !== 'internal') b.reply = undefined; // answered
       publish([{ kind: 'updated', key }]);
     },
     openUrl: (url) => console.info('open', url),

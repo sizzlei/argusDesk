@@ -114,6 +114,40 @@ export function tree(g: Graphics, gx: number, gy: number) {
     g.poly([c.x - w, c.y - up, c.x, c.y - up + 7, c.x, c.y - up - h]).fill(0x5cb37a);
     g.poly([c.x + w, c.y - up, c.x, c.y - up + 7, c.x, c.y - up - h]).fill(0x3f9460);
   }
+  if (season() === 'xmas') dressTree(g, c.x, c.y);
+}
+
+/**
+ * The season the centre dresses up for. December: every tree becomes a
+ * Christmas tree. `?season=xmas` (or `none`) in the address forces one, to look at.
+ */
+export function season(now = new Date()): 'xmas' | '' {
+  const forced = typeof location !== 'undefined' ? new URLSearchParams(location.search).get('season') : null;
+  if (forced) return forced === 'xmas' ? 'xmas' : '';
+  return now.getMonth() === 11 ? 'xmas' : '';
+}
+
+const BAUBLES = [0xe5484d, 0xf5c542, 0x4c8df6, 0xf2f2f2, 0xd9479c];
+
+/** Baubles, a garland and a star on a tree whose foot is at (x, y) on screen. */
+function dressTree(g: Graphics, x: number, y: number) {
+  // a garland winding down: a few gold strokes across the layers
+  for (const [w, up] of [[9, 66], [13, 49], [17, 32]] as const) {
+    g.moveTo(x - w, y - up + 2).quadraticCurveTo(x, y - up + 9, x + w, y - up - 2).stroke({ width: 1.4, color: 0xf5c542, alpha: 0.9 });
+  }
+  // baubles, the same on every tree so the floor does not flicker between redraws
+  const at: [number, number][] = [[-12, 26], [8, 30], [15, 24], [-5, 40], [10, 43], [-9, 52], [4, 58], [-2, 70], [-15, 29], [2, 34]];
+  at.forEach(([dx, up], i) => g.circle(x + dx, y - up, 2.1).fill(BAUBLES[i % BAUBLES.length]));
+  // the star on top
+  const sx = x;
+  const sy = y - 78;
+  const pts: number[] = [];
+  for (let k = 0; k < 10; k++) {
+    const r = k % 2 ? 2.6 : 6;
+    const a = -Math.PI / 2 + (k * Math.PI) / 5;
+    pts.push(sx + Math.cos(a) * r, sy + Math.sin(a) * r);
+  }
+  g.poly(pts).fill(0xf5c542).stroke({ width: 0.8, color: 0xc99a1e });
 }
 
 /** A long planter of low bushes, to line a wall. */

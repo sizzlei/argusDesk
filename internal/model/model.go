@@ -18,6 +18,7 @@ type Ticket struct {
 	AssigneeID string
 	Assignee   string
 	Reporter   string
+	ReporterID string
 	Created    time.Time
 	Updated    time.Time
 	Due        string                     // "2026-11-25" or ""
@@ -51,6 +52,7 @@ type Box struct {
 	Workflow   string     `json:"workflow"` // "" when the type is not configured
 	Mine       bool       `json:"mine"`
 	MyApproval bool       `json:"myApproval"`          // waiting for the signed-in user to approve
+	Reply      *time.Time `json:"reply,omitempty"`     // the requester wrote last, at this time: an answer is due
 	EnteredAt  *time.Time `json:"enteredAt,omitempty"` // when it entered its zone
 	StaleFrom  *time.Time `json:"staleFrom,omitempty"` // what the age is counted from
 	StaleRatio float64    `json:"staleRatio"`          // elapsed / limit; 0 = not counted

@@ -12,9 +12,10 @@ import { type ProfileAction, profileOpen, renderProfile, toggleProfile } from '.
 import { renderSetup } from './setup';
 import type { AppState, Box, Change, GameStats, Snapshot } from './types';
 import { checkForUpdates, initUpdates } from './update';
+import { showBriefing, watchPresence } from './briefing';
 import { openAvatarPicker, openVacation, cancelVacation } from './vacation';
 import { startTour, tourRunning, tourSeen } from './tour';
-import { errText, openDiagnostics, toast } from './ui';
+import { chooseAction, confirmAction, errText, openDiagnostics, toast } from './ui';
 import { openWaybill } from './waybill';
 import { type Filter, applyFilter, loadFilter, saveFilter, unassigned } from './view';
 
@@ -91,6 +92,7 @@ async function boot() {
   };
   const scene = new Scene(document.getElementById('scene')!, {
     onWrite: () => write(),
+    onDrop: (box, zone, to) => void dropBox(box, zone, to),
     onSelect: (box) => {
       selected = box;
       if (box && snap) openTicket(box, snap, backend, tickets);
@@ -129,6 +131,56 @@ async function boot() {
   document.getElementById('zoom-in')!.addEventListener('click', () => scene.zoom(1.25));
   document.getElementById('zoom-out')!.addEventListener('click', () => scene.zoom(0.8));
   document.getElementById('zoom-fit')!.addEventListener('click', () => scene.resetView());
+  /**
+   * A box dragged onto a desk lane is given to that person; dragged into
+   * another room, it is moved by the Jira transition that leads there (and
+   * given to the lane's person too, when dropped on one). Each is confirmed.
+   */
+  async function dropBox(box: Box, zone: string, to: string | undefined) {
+    if (!snap) return;
+    const sp = snap.spaces.find((s) => s.id === box.space);
+    const zoneName = sp?.zones.find((z) => z.id === zone)?.name ?? zone;
+    const who = (id: string) => (id === '' ? '미배정' : `${snap?.members.find((m) => m.id === id)?.name ?? '그 사람'} 님`);
+    const assignTo = to !== undefined && to !== box.assigneeId ? to : undefined;
+    const meId = snap.members.find((m) => m.me)?.id ?? state.meId;
+    const assign = async () => {
+      if (assignTo === undefined) return;
+      await backend.assignTicket(box.key, assignTo === meId ? 'me' : assignTo);
+    };
+    try {
+      if (zone === box.zone) {
+        if (assignTo === undefined) return;
+        const off = game?.away.find((a) => a.active && a.id === assignTo);
+        const text = assignTo === '' ? `${box.key}의 담당자를 비웁니다.` : `${box.key}을(를) ${who(assignTo)}에게 배정합니다.${off ? ` ${who(assignTo)}은(는) 지금 ${off.kind || '휴가'} 중입니다.` : ''}`;
+        if (!(await confirmAction('담당자 변경', text, assignTo === '' ? '비우기' : '배정'))) return;
+        await assign();
+        toast(assignTo === '' ? `${box.key}의 담당자를 비웠습니다.` : `${box.key}을(를) ${who(assignTo)}에게 배정했습니다.`);
+        return;
+      }
+      const acts = await backend.ticketActions(box.key);
+      const ways = acts.transitions.filter((t) => t.toZone === zone);
+      if (!ways.length) return void toast(`${box.key}은(는) 지금 ${zoneName}(으)로 바로 옮길 수 없습니다. 티켓 창에서 가능한 처리를 확인해 주세요.`, 'error');
+      const free = ways.filter((t) => !t.needs.length);
+      if (!free.length) {
+        return void toast(`${zoneName}(으)로 옮기려면 Jira에서 ${ways[0].needs.join(', ')}을(를) 입력해야 합니다.`, 'error', [{ label: 'Jira에서 열기', run: () => backend.openUrl(box.url) }]);
+      }
+      const also = assignTo !== undefined ? ` 담당자는 ${who(assignTo)}(으)로 바꿉니다.` : '';
+      let pick = free[0].id;
+      if (free.length > 1) {
+        const chosen = await chooseAction('상자 옮기기', `${box.key}을(를) ${zoneName}(으)로 옮깁니다.${also} 어떤 처리로 옮길까요?`, free.map((t) => ({ label: t.name, value: t.id })));
+        if (!chosen) return;
+        pick = chosen;
+      } else if (!(await confirmAction('상자 옮기기', `${box.key}을(를) ${zoneName}(으)로 옮깁니다 (${free[0].name}).${also}`, '옮기기'))) return;
+      await backend.moveTicket(box.key, pick);
+      await assign();
+      toast(`${box.key}을(를) ${zoneName}(으)로 옮겼습니다.`);
+    } catch (e) {
+      toast(errText(e), 'error');
+    } finally {
+      void backend.refresh();
+    }
+  }
+
   /** Opens a ticket from a notification: its floor comes into view and its window opens. */
   const visit = (box: Box) => {
     if (!snap) return;
@@ -141,6 +193,7 @@ async function boot() {
     selected = box;
     openTicket(box, snap, backend, tickets);
     scene.focus(box.key);
+    scene.walkTo(box.key);
     hud();
   };
   // The panels on the right (notifications, filters, my state) take the same place: one at a time.
@@ -186,6 +239,7 @@ async function boot() {
         },
       !!state.server && { label: 'Argus 연결 끊기', run: () => void backend.forgetServer().then(apply, fail) },
       { label: scene.hours ? '시간대 조명 끄기' : '시간대 조명 켜기', run: () => setHours(!scene.hours), note: '저녁과 밤에 센터 조명이 어두워집니다' },
+      { label: '출근 브리핑 보기', run: () => showBriefing(snap, game?.away ?? [], visit, true), note: '내 승인 대기, 요청자 답변, 새로 들어온 상자, 내 묵은 상자' },
       { label: '둘러보기 다시 보기', run: () => tour() },
       { label: '단축키 설정', run: () => openKeySettings(), note: `송장 쓰기 ${keyLabel('write') || '없음'} · 상자 찾기 ${keyLabel('search') || '없음'} · Esc 창 닫기` },
       { label: '진단 정보', run: () => void openDiagnostics(() => backend.diagnostics()) },
@@ -490,6 +544,13 @@ async function boot() {
   score(await backend.gameStats().catch(() => null));
   window.addEventListener('argusdesk:update', () => hud());
   initUpdates(backend);
+  // Back after a long absence: what happened meanwhile, once the centre is in view.
+  watchPresence(() => {
+    const ready = () => snap && !tourRunning() && !document.querySelector('#setup:not([hidden])');
+    const show = () => showBriefing(snap, game?.away ?? [], visit);
+    if (ready()) return show();
+    const wait = window.setInterval(() => ready() && (window.clearInterval(wait), show()), 1000);
+  });
 }
 
 boot().catch((e) => {

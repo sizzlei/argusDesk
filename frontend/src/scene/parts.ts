@@ -21,6 +21,7 @@ export interface Sprite {
   gone: number; // ms since it started leaving
   squash: number; // ms left of the landing squash
   phase: number; // offsets idle motion so boxes do not move in step
+  held?: { x: number; y: number }; // being dragged: where the pointer holds it, in world space
 }
 
 /** One stretch of a box's way: through the air in an arc, or flat along the belt. */

@@ -209,6 +209,36 @@ func (c *Client) Search(ctx context.Context, jql string, fields []string) ([]Iss
 	return all, nil
 }
 
+// LastPublicComment returns the author and time of the newest comment the
+// requester can see (internal notes of a service desk are passed over). ok
+// is false when there is none among the latest few.
+func (c *Client) LastPublicComment(ctx context.Context, key string) (author string, at time.Time, ok bool, err error) {
+	var res struct {
+		Comments []struct {
+			Author struct {
+				AccountID string `json:"accountId"`
+			} `json:"author"`
+			Created   string `json:"created"`
+			JsdPublic *bool  `json:"jsdPublic"` // only on service desk requests
+		} `json:"comments"`
+	}
+	path := "/rest/api/3/issue/" + url.PathEscape(key) + "/comment?orderBy=-created&maxResults=10"
+	if err := c.do(ctx, http.MethodGet, path, nil, &res); err != nil {
+		return "", time.Time{}, false, err
+	}
+	for _, cm := range res.Comments {
+		if cm.JsdPublic != nil && !*cm.JsdPublic {
+			continue
+		}
+		t, perr := ParseTime(cm.Created)
+		if perr != nil {
+			continue
+		}
+		return cm.Author.AccountID, t, true, nil
+	}
+	return "", time.Time{}, false, nil
+}
+
 // StatusEnteredAt returns when the ticket last moved into the given status.
 // ok is false when the history has no such move (the ticket was created in
 // that status): use the creation time then.

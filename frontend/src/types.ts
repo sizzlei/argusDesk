@@ -25,6 +25,7 @@ export interface Box {
   workflow: string;
   mine: boolean;
   myApproval?: boolean; // waiting for the signed-in user to approve
+  reply?: string; // the requester wrote last, at this time: an answer is due
   enteredAt?: string;
   staleFrom?: string;
   staleRatio: number;
@@ -118,7 +119,7 @@ export interface Snapshot {
 }
 
 export interface Change {
-  kind: 'added' | 'moved' | 'updated' | 'removed';
+  kind: 'added' | 'moved' | 'updated' | 'removed' | 'reply';
   key: string;
   fromZone?: string;
   toZone?: string;
@@ -127,7 +128,7 @@ export interface Change {
 /** Something worth telling the user: shown in the notification centre. */
 export interface Note {
   key: string; // the ticket it is about ("" for a summary)
-  kind: 'approval' | 'new' | 'arrive' | 'mine' | 'assigned' | 'summary';
+  kind: 'approval' | 'reply' | 'new' | 'arrive' | 'mine' | 'assigned' | 'summary';
   title: string;
   body: string;
 }
@@ -234,6 +235,7 @@ export interface Transition {
   toId: string;
   toName: string;
   toKind: string; // kind of the zone it leads to ("" = unknown)
+  toZone: string; // the zone it leads to ("" = unknown)
   needs: string[]; // fields Jira insists on: such a move is made in Jira
 }
 

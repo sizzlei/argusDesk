@@ -157,6 +157,9 @@ type fake struct {
 	pending []jira.Issue // what waits for this user's approval
 	history int
 	broken  error // what a history lookup fails with (nil = it works)
+	// who wrote the newest public comment, by ticket key
+	replies  map[string]string
+	comments int
 }
 
 func (f *fake) Fields(context.Context) ([]jira.Field, error) {
@@ -178,6 +181,13 @@ func (f *fake) StatusEnteredAt(context.Context, string, string) (time.Time, bool
 	}
 	return now.Add(-4 * time.Hour), true, nil
 }
+func (f *fake) LastPublicComment(_ context.Context, key string) (string, time.Time, bool, error) {
+	f.comments++
+	if r, ok := f.replies[key]; ok {
+		return r, now.Add(-time.Hour), true, nil
+	}
+	return "", time.Time{}, false, nil
+}
 func (f *fake) BrowseURL(k string) string { return "https://x/browse/" + k }
 
 func issue(key, status, statusName string) jira.Issue {
@@ -188,7 +198,7 @@ func issue(key, status, statusName string) jira.Issue {
 		"issuetype":     raw(map[string]string{"name": "[REQ] 기타"}),
 		"priority":      raw(map[string]string{"name": "Medium"}),
 		"assignee":      raw(map[string]string{"accountId": "u1", "displayName": "김하늘"}),
-		"reporter":      raw(map[string]string{"displayName": "박서준"}),
+		"reporter":      raw(map[string]string{"accountId": "r9", "displayName": "박서준"}),
 		"created":       raw("2026-11-25T09:00:00.000+0900"),
 		"updated":       raw("2026-11-25T10:00:00.000+0900"),
 		"customfield_1": raw("2026-11-30T18:00:00.000+0900"),
@@ -314,5 +324,48 @@ func TestOneBrokenHistoryDoesNotStopTheCentre(t *testing.T) {
 	}
 	if e.Last() == nil {
 		t.Error("the last snapshot is not kept")
+	}
+}
+
+func TestRequesterReply(t *testing.T) {
+	f := &fake{issues: []jira.Issue{issue("REQ-1", "10002", "검토 중"), issue("REQ-2", "10004", "작업 대기")}, replies: map[string]string{"REQ-1": "r9", "REQ-2": "u1"}}
+	e := NewEngine(example(t), f, "u1")
+	e.now = func() time.Time { return now }
+	snap, _, err := e.Refresh(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]bool{}
+	for _, b := range snap.Boxes {
+		got[b.Key] = b.Reply != nil
+	}
+	if !got["REQ-1"] || got["REQ-2"] {
+		t.Fatalf("replies = %v (REQ-1: the requester wrote last; REQ-2: the team did)", got)
+	}
+	asked := f.comments
+	if _, _, err := e.Refresh(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if f.comments != asked {
+		t.Fatalf("comments read again for unchanged tickets: %d -> %d", asked, f.comments)
+	}
+
+	// The requester writes again on REQ-2: it changes, is read again, and is told.
+	f.replies["REQ-2"] = "r9"
+	f.issues[1].Fields["updated"] = json.RawMessage(`"2026-11-25T11:00:00.000+0900"`)
+	snap, changes, err := e.Refresh(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, c := range changes {
+		found = found || (c.Key == "REQ-2" && c.Kind == "reply")
+	}
+	if !found {
+		t.Fatalf("no reply change in %+v", changes)
+	}
+	notes := Notes(snap, changes, nil)
+	if len(notes) == 0 || notes[0].Kind != "reply" {
+		t.Fatalf("notes = %+v", notes)
 	}
 }

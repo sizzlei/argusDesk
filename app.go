@@ -341,7 +341,7 @@ func (a *App) TicketActions(key string) (*jira.Actions, error) {
 				if sp := cfg.Space(b.Space); sp != nil {
 					for i, t := range acts.Transitions {
 						if z := sp.Zone(sp.StatusZones[t.ToID]); z != nil {
-							acts.Transitions[i].ToKind = z.Kind
+							acts.Transitions[i].ToKind, acts.Transitions[i].ToZone = z.Kind, z.ID
 						}
 					}
 				}

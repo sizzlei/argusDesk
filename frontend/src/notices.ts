@@ -78,7 +78,7 @@ export function toggleNotices(force?: boolean) {
   if (open) feed.forEach((f) => (f.read = true));
 }
 
-const ICON: Record<Note['kind'], string> = { approval: '!', new: '+', arrive: '→', mine: '↪', assigned: '@', summary: '…' };
+const ICON: Record<Note['kind'], string> = { approval: '!', reply: '“', new: '+', arrive: '→', mine: '↪', assigned: '@', summary: '…' };
 
 /** Draws the centre. `go` opens a ticket (and shows its floor). */
 export function renderNotices(snap: Snapshot | null, go: (box: Box) => void, redraw: () => void, open2: (url: string) => void = () => {}) {

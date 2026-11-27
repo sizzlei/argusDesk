@@ -41,6 +41,22 @@ export interface SceneHooks {
   onZoom?(scale: number): void;
   /** The packing bench was clicked: a ticket is to be written on this floor. */
   onWrite?(): void;
+  /**
+   * A box was dragged into a room, or onto a teammate's desk lane (`to`:
+   * their account id, "" = the shared shelf). The box goes back to its place;
+   * what follows is up to the app.
+   */
+  onDrop?(box: Box, zone: string, to: string | undefined): void;
+}
+
+/** Where a box can be dropped: a room, and in a desk room each lane. */
+interface DropRoom {
+  zone: string;
+  name: string;
+  gx: number;
+  gy: number;
+  d: number;
+  lanes: { id: string; gy: number; h: number }[];
 }
 
 export class Scene {
@@ -51,6 +67,9 @@ export class Scene {
   things = new Container(); // furniture, boxes and people, depth-sorted
   signs = new Container(); // room signs and name tags, always on top
   private sprites = new Map<string, Sprite>();
+  private rooms: DropRoom[] = []; // where boxes can be dropped on this floor
+  private carry: { sp: Sprite; x: number; y: number; on: boolean } | null = null; // a box being dragged
+  private dropMark = new Graphics(); // the room or lane a dragged box would land in
   private space = 0;
   private snap: Snapshot | null = null;
   private spot = ''; // the teammate whose boxes are lit
@@ -102,7 +121,7 @@ export class Scene {
       resolution: Math.min(2, window.devicePixelRatio || 1),
     });
     this.host.appendChild(this.app.canvas);
-    this.world.addChild(this.ground, this.things, this.lampLayer, this.shows, this.signs);
+    this.world.addChild(this.ground, this.dropMark, this.things, this.lampLayer, this.shows, this.signs);
     this.things.sortableChildren = true;
     this.lift.addChild(this.world);
     this.app.stage.addChild(this.lift);
@@ -128,6 +147,23 @@ export class Scene {
       this.held = true;
     });
     this.app.stage.on('pointerupoutside', () => (this.drag = null));
+    // Dragging a box: it follows the pointer, the room or lane under it lights up.
+    this.app.stage.on('globalpointermove', (e) => {
+      const c = this.carry;
+      if (!c) return;
+      if (!(e.buttons & 1)) return void this.letGo(null);
+      if (!c.on && Math.hypot(e.global.x - c.x, e.global.y - c.y) < 6) return;
+      if (!c.on) {
+        c.on = true;
+        this.hooks.onHover(null, 0, 0);
+        this.app.canvas.style.cursor = 'grabbing';
+      }
+      const p = this.world.toLocal(e.global);
+      c.sp.held = { x: p.x, y: p.y + 12 };
+      this.showDrop(this.dropAt(p.x, p.y), c.sp.box);
+    });
+    this.app.stage.on('pointerup', (e) => this.carry && this.letGo(this.world.toLocal(e.global)));
+    this.app.stage.on('pointerupoutside', () => this.carry && this.letGo(null));
     this.app.canvas.addEventListener(
       'wheel',
       (e) => {
@@ -260,16 +296,65 @@ export class Scene {
     this.pushTo = rest > limit ? limit - rest : 0;
   }
 
+  private dropped = ''; // the box a drag just ended on: its click is not a click
+
+  /** The room, and lane, under a point of the floor (world space). */
+  private dropAt(x: number, y: number): { room: DropRoom; lane?: DropRoom['lanes'][number] } | null {
+    const a = (2 * x) / TW;
+    const b = (2 * y) / TH;
+    const gx = (a + b) / 2;
+    const gy = (b - a) / 2;
+    const room = this.rooms.find((r) => gx >= r.gx && gx <= r.gx + ZW && gy >= r.gy && gy <= r.gy + r.d);
+    if (!room) return null;
+    const lane = room.lanes.find((l) => gy >= l.gy && gy < l.gy + l.h);
+    return { room, lane };
+  }
+
+  /** Lights up where a dragged box would land: green where it can go, nothing over its own place. */
+  private showDrop(at: ReturnType<Scene['dropAt']>, box: Box) {
+    const g = this.dropMark;
+    g.clear();
+    if (!at) return;
+    const same = at.room.zone === box.zone && (!at.lane || at.lane.id === box.assigneeId);
+    if (same) return;
+    const [x0, y0, w, d] = at.lane ? [at.room.gx + 0.3, at.lane.gy, ZW - 0.6, at.lane.h] : [at.room.gx, at.room.gy, ZW, at.room.d];
+    const pts = [iso(x0, y0), iso(x0 + w, y0), iso(x0 + w, y0 + d), iso(x0, y0 + d)].flatMap((p) => [p.x, p.y]);
+    g.poly(pts).fill({ color: ACCENT, alpha: 0.12 }).stroke({ width: 3, color: ACCENT, alpha: 0.8 });
+  }
+
+  /** Ends a drag. `at`: where it was let go (world space), or null to call it off. */
+  private letGo(at: { x: number; y: number } | null) {
+    const c = this.carry;
+    this.carry = null;
+    this.dropMark.clear();
+    this.app.canvas.style.cursor = '';
+    if (!c?.on) return; // a press without a drag: a click
+    c.sp.held = undefined;
+    this.hop(c.sp, 260, 10); // back to its place, until Jira says otherwise
+    this.dropped = c.sp.box.key;
+    window.setTimeout(() => this.dropped === c.sp.box.key && (this.dropped = ''), 0);
+    const spot = at && this.dropAt(at.x, at.y);
+    if (!spot) return;
+    const b = c.sp.box;
+    const to = spot.lane ? spot.lane.id : undefined;
+    if (spot.room.zone === b.zone && (to === undefined || to === b.assigneeId)) return;
+    this.hooks.onDrop?.(b, spot.room.zone, to);
+  }
+
   select(key: string) {
     this.mark(key);
-    // I walk over to the room the box is in.
+    this.walkTo(key);
+    this.hooks.onSelect(this.sprites.get(key)?.box ?? null);
+  }
+
+  /** I walk over to the room a box of this floor is in. */
+  walkTo(key: string) {
     const b = this.sprites.get(key)?.box;
     const space = this.snap?.spaces[this.space];
     if (b && space && b.space === space.id && (this.myRoom?.zone !== b.zone || this.myRoom.space !== space.id)) {
       this.myRoom = { space: space.id, zone: b.zone };
       if (this.snap) this.update(this.snap, []);
     }
-    this.hooks.onSelect(this.sprites.get(key)?.box ?? null);
   }
 
   /**
@@ -438,6 +523,7 @@ export class Scene {
     const depth = rowY(rows - 1) + grid.rowDepths[rows - 1];
     this.truck = null;
     this.people = [];
+    this.rooms = [];
     this.belts = [];
     this.belt = null;
     this.lamps = [];
@@ -574,6 +660,15 @@ export class Scene {
           }
         });
       }
+
+      this.rooms.push({
+        zone: zone.id,
+        name: zone.name,
+        gx: o.gx,
+        gy: o.gy,
+        d: o.d,
+        lanes: zone.kind === 'desk' ? lanes.map((id, li) => ({ id, gy: o.gy + LANE_TOP + li * lanePitch(lanes.length, o.d) - 0.5, h: lanePitch(lanes.length, o.d) })) : [],
+      });
 
       // Boxes nobody holds stand apart on a marked pallet. Not in the first
       // room, where everything has just arrived and nothing is held yet.
@@ -877,11 +972,17 @@ export class Scene {
     sp.badge = null;
     // Old boxes say how old: the colour gives the step, the badge the time.
     // A box that waits for my approval says so, before anything else.
-    const text = b.myApproval ? '승인 요청' : b.note ? '미정' : ageStep(b) >= 2 && b.staleFrom ? shortAge(now - Date.parse(b.staleFrom)) : '';
+    // Then a requester who wrote last: a speech bubble, until someone answers.
+    const reply = !b.myApproval && !!b.reply;
+    const text = b.myApproval ? '승인 요청' : reply ? '요청자 답변' : b.note ? '미정' : ageStep(b) >= 2 && b.staleFrom ? shortAge(now - Date.parse(b.staleFrom)) : '';
     if (text) {
-      const t = label(text, 10, 0xffffff, '700');
+      const t = label(text, 10, reply ? REPLY : 0xffffff, '700');
       const g = new Graphics();
-      g.roundRect(0, 0, t.width + 10, 16, 8).fill(b.myApproval ? ACCENT : b.note ? QUIET : shade(AGE[ageStep(b)], 0.15));
+      if (reply) {
+        g.roundRect(0, 0, t.width + 10, 16, 8).fill(0xffffff).stroke({ width: 1.5, color: REPLY });
+        g.poly([t.width / 2 - 1, 15, t.width / 2 + 7, 15, t.width / 2 + 1, 22]).fill(0xffffff).stroke({ width: 1.5, color: REPLY });
+        g.rect(t.width / 2 - 0.5, 13.5, 7, 2.5).fill(0xffffff); // the tail joins the bubble without a seam
+      } else g.roundRect(0, 0, t.width + 10, 16, 8).fill(b.myApproval ? ACCENT : b.note ? QUIET : shade(AGE[ageStep(b)], 0.15));
       if (b.myApproval) g.poly([t.width / 2 + 1, 16, t.width / 2 + 9, 16, t.width / 2 + 5, 21]).fill(ACCENT); // points at the box
       t.position.set(5, (16 - t.height) / 2);
       const badge = new Container();
@@ -913,7 +1014,13 @@ export class Scene {
     const sp: Sprite = { root, body, g, num, badge: null, box: b, tx: 0, ty: 0, depth: 0, hover: false, leaving: false, legs: [], exit: '', gone: 0, squash: 0, phase: Math.random() * 10 };
     root.on('pointertap', (e) => {
       e.stopPropagation();
+      if (this.dropped === sp.box.key) return void (this.dropped = ''); // the end of a drag, not a click
       this.select(sp.box.key);
+    });
+    root.on('pointerdown', (e) => {
+      if (e.button !== 0 || !this.hooks.onDrop) return;
+      e.stopPropagation(); // the floor does not pan under a box
+      this.carry = { sp, x: e.global.x, y: e.global.y, on: false };
     });
     root.on('pointerover', (e) => {
       sp.hover = true;
@@ -1038,6 +1145,14 @@ export class Scene {
         }
         return;
       }
+      if (s.held) {
+        // carried: above everything, under the pointer
+        r.x += (s.held.x - r.x) * Math.min(1, ms / 40);
+        r.y += (s.held.y - r.y) * Math.min(1, ms / 40);
+        r.zIndex = 1e7;
+        r.alpha = 0.9;
+        return;
+      }
       r.x = s.tx;
       r.y = s.ty;
       if (r.alpha < 1) r.alpha = Math.min(1, r.alpha + ms / 300);
@@ -1141,6 +1256,9 @@ export class Scene {
   }
 
 }
+
+/** The colour of a requester's answer waiting on a box. */
+const REPLY = 0x0f8a6c;
 
 /** How long my avatar takes to walk to another room. */
 const WALK_MS = 900;

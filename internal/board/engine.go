@@ -22,6 +22,7 @@ type Source interface {
 	ProjectStatuses(ctx context.Context, project string) (map[string]string, error)
 	Search(ctx context.Context, jql string, fields []string) ([]jira.Issue, error)
 	StatusEnteredAt(ctx context.Context, key, statusID string) (time.Time, bool, error)
+	LastPublicComment(ctx context.Context, key string) (author string, at time.Time, ok bool, err error)
 	BrowseURL(key string) string
 }
 
@@ -38,9 +39,17 @@ type Engine struct {
 	statusName map[string]string
 	notes      []string           // problems found while preparing, repeated as warnings
 	entered    map[string]entered // ticket key -> status entry time
+	replies    map[string]reply   // ticket key -> who wrote last, as of an update time
 	// last is read from other goroutines while a refresh is under way, so it
 	// does not sit behind mu: a refresh holds mu for as long as Jira takes.
 	last atomic.Pointer[model.Snapshot]
+}
+
+// reply is what the newest public comment of a ticket said, as of when the
+// ticket was last updated: asked again only when the ticket changes.
+type reply struct {
+	updated time.Time
+	at      *time.Time // the requester wrote last, at this time (nil = not the requester)
 }
 
 type entered struct {
@@ -50,7 +59,7 @@ type entered struct {
 
 // NewEngine makes an engine for one settings file and one signed-in user.
 func NewEngine(cfg *config.Config, src Source, me string) *Engine {
-	return &Engine{cfg: cfg, src: src, me: me, now: time.Now, entered: map[string]entered{}}
+	return &Engine{cfg: cfg, src: src, me: me, now: time.Now, entered: map[string]entered{}, replies: map[string]reply{}}
 }
 
 // Last returns the most recent snapshot (nil before the first refresh).
@@ -167,6 +176,9 @@ func (e *Engine) Refresh(ctx context.Context) (*model.Snapshot, []model.Change, 
 			t := toTicket(is)
 			alive[t.Key] = true
 			tickets[sp.ID] = append(tickets[sp.ID], t)
+			if err := e.readReply(ctx, t); err != nil {
+				return nil, nil, err
+			}
 			// The entry time is only needed where a zone counts from it, and
 			// only asked again when the status changed.
 			z := sp.Zone(sp.StatusZones[t.StatusID])
@@ -193,6 +205,15 @@ func (e *Engine) Refresh(ctx context.Context) (*model.Snapshot, []model.Change, 
 			e.entered[t.Key] = entered{status: t.StatusID, at: at}
 		}
 	}
+	replied := map[string]time.Time{}
+	for key, r := range e.replies {
+		switch {
+		case !alive[key]:
+			delete(e.replies, key)
+		case r.at != nil:
+			replied[key] = *r.at
+		}
+	}
 	enteredAt := map[string]time.Time{}
 	for key, c := range e.entered {
 		if !alive[key] {
@@ -206,7 +227,7 @@ func (e *Engine) Refresh(ctx context.Context) (*model.Snapshot, []model.Change, 
 	}
 
 	snap := Assemble(Input{
-		Config: e.cfg, Tickets: tickets, Entered: enteredAt, FieldID: e.fieldID,
+		Config: e.cfg, Tickets: tickets, Entered: enteredAt, Replied: replied, FieldID: e.fieldID,
 		StatusName: e.statusName, Me: e.me, BrowseURL: e.src.BrowseURL, Now: e.now(),
 	})
 	snap.Warnings = append(append([]string{}, e.notes...), snap.Warnings...)
@@ -232,6 +253,30 @@ func (e *Engine) Refresh(ctx context.Context) (*model.Snapshot, []model.Change, 
 	changes := Diff(e.last.Load(), snap)
 	e.last.Store(snap)
 	return snap, changes, nil
+}
+
+// readReply learns whether the requester wrote last on a ticket, asking Jira
+// only when the ticket changed since the last look. A requester who is also
+// the assignee is not waiting on anyone. Only a refused sign-in or a rate
+// limit stops the refresh; any other failure is tried again next time.
+func (e *Engine) readReply(ctx context.Context, t model.Ticket) error {
+	if c, ok := e.replies[t.Key]; ok && c.updated.Equal(t.Updated) {
+		return nil
+	}
+	author, at, ok, err := e.src.LastPublicComment(ctx, t.Key)
+	var limited *jira.RateLimitError
+	switch {
+	case errors.Is(err, jira.ErrUnauthorized) || errors.As(err, &limited) || ctx.Err() != nil:
+		return err
+	case err != nil:
+		return nil
+	}
+	r := reply{updated: t.Updated}
+	if ok && author != "" && author == t.ReporterID && t.ReporterID != t.AssigneeID {
+		r.at = &at
+	}
+	e.replies[t.Key] = r
+	return nil
 }
 
 // toTicket reads the fields the centre uses out of a search hit.
@@ -266,7 +311,7 @@ func toTicket(is jira.Issue) model.Ticket {
 	obj("assignee")
 	t.AssigneeID, t.Assignee = named.AccountID, named.DisplayName
 	obj("reporter")
-	t.Reporter = named.DisplayName
+	t.Reporter, t.ReporterID = named.DisplayName, named.AccountID
 
 	for id, raw := range is.Fields {
 		if strings.HasPrefix(id, "customfield_") {

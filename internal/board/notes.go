@@ -10,7 +10,7 @@ import (
 // Note is one thing worth telling the user about.
 type Note struct {
 	Key   string `json:"key"`  // the ticket it is about ("" for a summary)
-	Kind  string `json:"kind"` // "approval" | "new" | "arrive" | "mine" | "assigned" | "summary"
+	Kind  string `json:"kind"` // "approval" | "reply" | "new" | "arrive" | "mine" | "assigned" | "summary"
 	Title string `json:"title"`
 	Body  string `json:"body"`
 }
@@ -58,6 +58,8 @@ func Notes(snap *model.Snapshot, changes []model.Change, skip map[string]bool) [
 			if b.Mine { // only the assignee changed
 				rest = append(rest, Note{Key: b.Key, Kind: "assigned", Title: "나에게 배정됨 · " + z.Name, Body: body})
 			}
+		case c.Kind == "reply" && (b.Mine || b.AssigneeID == ""):
+			first = append(first, Note{Key: b.Key, Kind: "reply", Title: "요청자 답변 · " + b.Reporter, Body: body})
 		case c.Kind == "moved" && b.Mine:
 			rest = append(rest, Note{Key: b.Key, Kind: "mine", Title: "내 상자 이동 · " + z.Name, Body: body})
 		case c.Kind == "moved" && z.Kind == config.KindWork:
@@ -72,7 +74,7 @@ func Notes(snap *model.Snapshot, changes []model.Change, skip map[string]bool) [
 func Fold(notes []Note) []Note {
 	var out, rest []Note
 	for _, n := range notes {
-		if n.Kind == "approval" {
+		if n.Kind == "approval" || n.Kind == "reply" {
 			out = append(out, n)
 		} else {
 			rest = append(rest, n)

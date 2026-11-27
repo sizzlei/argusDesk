@@ -18,6 +18,7 @@ type Input struct {
 	Config     *config.Config
 	Tickets    map[string][]model.Ticket // space id -> tickets
 	Entered    map[string]time.Time      // ticket key -> when it entered its current status
+	Replied    map[string]time.Time      // ticket key -> when the requester wrote last, awaiting an answer
 	FieldID    map[string]string         // field name -> Jira field id
 	StatusName map[string]string         // status id -> name (for route cells)
 	Me         string                    // account id of the signed-in user
@@ -97,6 +98,9 @@ func Assemble(in Input) *model.Snapshot {
 				if wf, ok := sp.Workflows[typ.Workflow]; ok {
 					b.Path = route(&wf, t.StatusID, in.StatusName)
 				}
+			}
+			if at, ok := in.Replied[t.Key]; ok {
+				b.Reply = &at
 			}
 			var entered *time.Time
 			if at, ok := in.Entered[t.Key]; ok {
@@ -222,6 +226,11 @@ func Diff(prev, next *model.Snapshot) []model.Change {
 			changes = append(changes, model.Change{Kind: "approval", Key: b.Key, Space: b.Space, ToZone: b.Zone})
 		case o.Zone != b.Zone || o.Space != b.Space || o.AssigneeID != b.AssigneeID:
 			changes = append(changes, model.Change{Kind: "moved", Key: b.Key, Space: b.Space, FromZone: o.Zone, ToZone: b.Zone})
+		case b.Reply != nil && (o.Reply == nil || b.Reply.After(*o.Reply)):
+			// the requester wrote again
+			changes = append(changes, model.Change{Kind: "reply", Key: b.Key, Space: b.Space, ToZone: b.Zone})
+		case (o.Reply != nil) != (b.Reply != nil):
+			changes = append(changes, model.Change{Kind: "updated", Key: b.Key, Space: b.Space, ToZone: b.Zone})
 		case o.Stale != b.Stale || o.Priority != b.Priority || o.Summary != b.Summary || o.StatusID != b.StatusID || o.Note != b.Note:
 			changes = append(changes, model.Change{Kind: "updated", Key: b.Key, Space: b.Space, ToZone: b.Zone})
 		}

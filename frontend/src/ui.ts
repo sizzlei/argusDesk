@@ -161,6 +161,26 @@ export function confirmAction(title: string, detail: string, okLabel: string, da
   });
 }
 
+/** Asks which of a few ways to go. Resolves to the chosen value, or null when called off. */
+export function chooseAction(title: string, detail: string, options: { label: string; value: string }[]): Promise<string | null> {
+  return new Promise((resolve) => {
+    const dlg = h('dialog', { class: 'confirm' });
+    const done = (v: string | null) => {
+      dlg.close();
+      dlg.remove();
+      resolve(v);
+    };
+    dlg.append(
+      h('h3', {}, title),
+      h('p', {}, detail),
+      h('div', { class: 'buttons' }, h('button', { onclick: () => done(null) }, '취소'), ...options.map((o) => h('button', { class: 'primary', onclick: () => done(o.value) }, o.label))),
+    );
+    dlg.addEventListener('cancel', (e) => (e.preventDefault(), done(null)));
+    document.body.append(dlg);
+    dlg.showModal();
+  });
+}
+
 /**
  * Shows where the app stands and what it did lately, to read or to copy for
  * whoever looks after the app. `read` fetches the text.
