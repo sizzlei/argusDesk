@@ -176,7 +176,8 @@ export function codeBlock(pre: HTMLElement) {
 }
 
 /** Asks before something is changed in Jira. Resolves true when confirmed. */
-export function confirmAction(title: string, detail: string, okLabel: string, danger = false): Promise<boolean> {
+/** `careful`: the cursor starts on 취소, so a double click or Enter by habit does not say yes. */
+export function confirmAction(title: string, detail: string, okLabel: string, danger = false, careful = false): Promise<boolean> {
   return new Promise((resolve) => {
     const dlg = h('dialog', { class: 'confirm' });
     const done = (v: boolean) => {
@@ -185,15 +186,12 @@ export function confirmAction(title: string, detail: string, okLabel: string, da
       resolve(v);
     };
     const ok = h('button', { class: danger ? 'primary danger' : 'primary', onclick: () => done(true) }, okLabel);
-    dlg.append(
-      h('h3', {}, title),
-      h('p', {}, detail),
-      h('div', { class: 'buttons' }, h('button', { onclick: () => done(false) }, '취소'), ok),
-    );
+    const no = h('button', { onclick: () => done(false) }, '취소');
+    dlg.append(h('h3', {}, title), h('p', {}, detail), h('div', { class: 'buttons' }, no, ok));
     dlg.addEventListener('cancel', (e) => (e.preventDefault(), done(false)));
     document.body.append(dlg);
     dlg.showModal();
-    ok.focus();
+    (careful ? no : ok).focus();
   });
 }
 

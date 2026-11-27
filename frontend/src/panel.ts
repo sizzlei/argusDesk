@@ -185,8 +185,16 @@ function schedule(w: Win, a: TicketActions | undefined, redraw: () => void, back
     input.addEventListener('change', changed);
     changed();
     if (input.value === f.value) fieldDrafts.delete(key);
-    ok.addEventListener('click', () => {
+    ok.addEventListener('click', async () => {
       const value = input.value;
+      const when = value ? value.replace('T', ' ') : '';
+      // Saving the schedule tells the requester a date: asked once more, so a stray click does not.
+      const ask = then
+        ? await confirmAction('배포 일정 확정', `${b.key}의 운영 배포 일정을 ${when}(으)로 확정합니다. Jira에 바로 저장되고 요청자에게도 확정된 일정으로 보입니다.`, '확정', false, true)
+        : confirmed && f === deploy
+        ? await confirmAction('확정된 배포 일정 변경', `${b.key}의 확정된 운영 배포 일정을 ${shown(f)}에서 ${when || '없음'}(으)로 바꿉니다.`, '변경', false, true)
+        : true;
+      if (!ask) return;
       const done = then ? `운영 배포 일정을 ${value.replace('T', ' ')}(으)로 확정했습니다.` : value ? `${nameOf(f)}${eul(nameOf(f))} ${value.replace('T', ' ')}(으)로 바꿨습니다.` : `${nameOf(f)}${eul(nameOf(f))} 비웠습니다.`;
       void act(
         w,
@@ -210,14 +218,31 @@ function schedule(w: Win, a: TicketActions | undefined, redraw: () => void, back
     box.addEventListener('change', () => {
       if (box.checked) {
         // ticked: now the date can be chosen; nothing is saved yet
-        confirming.add(b.key);
-        if (!deploy) void act(w, '배포 일정을 확정했습니다.', () => backend.setTicketField(b.key, confirm.id, confirm.kind, '', yes()), redraw);
-        else redraw();
+        if (deploy) {
+          confirming.add(b.key);
+          redraw();
+          return;
+        }
+        // no date to choose: ticking saves at once, so it is asked first
+        void confirmAction('배포 일정 확정', `${b.key}의 배포 일정을 확정으로 바꿉니다. Jira에 바로 저장됩니다.`, '확정', false, true).then((go) => {
+          if (!go) return void (box.checked = false);
+          void act(w, '배포 일정을 확정했습니다.', () => backend.setTicketField(b.key, confirm.id, confirm.kind, '', yes()), redraw);
+        });
       } else if (pending) {
         confirming.delete(b.key); // changed my mind before saving
         redraw();
       } else {
-        void act(w, '운영 배포 일정을 미정으로 돌렸습니다.', () => backend.setTicketField(b.key, confirm.id, confirm.kind, '', no()), redraw);
+        // un-ticking a settled schedule: asked first, the box stays ticked until it is
+        box.checked = true;
+        void confirmAction(
+          '배포 일정 확정 해제',
+          `${b.key}의 운영 배포 일정을 미정으로 돌립니다.${deploy?.value ? ` 확정돼 있던 일시(${shown(deploy)})는 그대로 남습니다.` : ''}`,
+          '미정으로',
+          true,
+          true,
+        ).then((go) => {
+          if (go) void act(w, '운영 배포 일정을 미정으로 돌렸습니다.', () => backend.setTicketField(b.key, confirm.id, confirm.kind, '', no()), redraw);
+        });
       }
     });
     rows.push(
