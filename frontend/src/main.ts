@@ -642,6 +642,7 @@ async function boot() {
       toggleNotices(true);
       hud();
     } else if (what === 'brief') showBriefing(snap, game?.away ?? [], visit, true);
+    else if (what === 'deploys:mine' || what === 'deploys:all') openDeploys(what === 'deploys:mine');
   });
   void backend.serverFeed().then(fed, () => {});
   backend.onError((err) => {

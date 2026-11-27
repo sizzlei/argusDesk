@@ -6,6 +6,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/sizzlei/argusDesk/internal/board"
 	"github.com/sizzlei/argusDesk/internal/model"
@@ -37,6 +38,8 @@ type tray struct {
 	mu        sync.Mutex
 	approvals *application.MenuItem
 	replies   *application.MenuItem
+	deployMe  *application.MenuItem
+	deployAll *application.MenuItem
 	menu      *application.Menu
 	quitting  bool
 }
@@ -56,6 +59,8 @@ func startTray(app *application.App, win *application.WebviewWindow, svc *App) *
 	m.AddSeparator()
 	tr.approvals = m.Add("내 승인 대기 0").OnClick(func(*application.Context) { tr.show("notices") })
 	tr.replies = m.Add("요청자 답변 0").OnClick(func(*application.Context) { tr.show("brief") })
+	tr.deployMe = m.Add("오늘 내 배포 0").OnClick(func(*application.Context) { tr.show("deploys:mine") })
+	tr.deployAll = m.Add("오늘 전체 배포 0").OnClick(func(*application.Context) { tr.show("deploys:all") })
 	m.Add("출근 브리핑").OnClick(func(*application.Context) { tr.show("brief") })
 	m.Add("지금 새로 고침").OnClick(func(*application.Context) { go svc.Refresh() })
 	m.AddSeparator()
@@ -120,16 +125,25 @@ func (tr *tray) status(snap *model.Snapshot) {
 			replies++
 		}
 	}
+	mine, all := deploysToday(snap, time.Now())
 	tr.mu.Lock()
 	defer tr.mu.Unlock()
 	tr.approvals.SetLabel(fmt.Sprintf("내 승인 대기 %d", approvals))
 	tr.replies.SetLabel(fmt.Sprintf("요청자 답변 %d", replies))
+	tr.deployMe.SetLabel(fmt.Sprintf("오늘 내 배포 %d", mine))
+	tr.deployAll.SetLabel(fmt.Sprintf("오늘 전체 배포 %d", all))
+	tr.deployMe.SetEnabled(mine > 0)
+	tr.deployAll.SetEnabled(all > 0)
 	tr.menu.Update()
-	label := ""
+	// Next to the icon: what waits for me, then my deployments of the day.
+	var label []string
 	if n := approvals + replies; n > 0 {
-		label = fmt.Sprint(n)
+		label = append(label, fmt.Sprint(n))
 	}
-	tr.t.SetLabel(label)
+	if mine > 0 {
+		label = append(label, fmt.Sprintf("배포 %d", mine))
+	}
+	tr.t.SetLabel(strings.Join(label, " · "))
 	tip := []string{"ArgusDesk"}
 	if approvals > 0 {
 		tip = append(tip, fmt.Sprintf("내 승인 대기 %d", approvals))
@@ -137,7 +151,49 @@ func (tr *tray) status(snap *model.Snapshot) {
 	if replies > 0 {
 		tip = append(tip, fmt.Sprintf("요청자 답변 %d", replies))
 	}
+	if all > 0 {
+		tip = append(tip, fmt.Sprintf("오늘 배포 %d (내 것 %d)", all, mine))
+	}
 	tr.t.SetTooltip(strings.Join(tip, " · "))
+}
+
+// deploysToday counts the production deployments set for today that are not
+// done yet: mine, and the whole team's. A date counts for the whole day; a
+// date-time counts on its day in local time. The same rule as the screen's.
+func deploysToday(snap *model.Snapshot, now time.Time) (mine, all int) {
+	closed := map[string]bool{}
+	for _, sp := range snap.Spaces {
+		for _, z := range sp.Zones {
+			if z.Kind == "done" || z.Kind == "returned" {
+				closed[sp.ID+"/"+z.ID] = true
+			}
+		}
+	}
+	today := now.Format("2006-01-02")
+	for _, b := range snap.Boxes {
+		if closed[b.Space+"/"+b.Zone] || deployDay(b.Deploy, now.Location()) != today {
+			continue
+		}
+		all++
+		if b.Mine {
+			mine++
+		}
+	}
+	return mine, all
+}
+
+// deployDay is the local day of a deployment field's value ("" when there is none).
+func deployDay(v string, loc *time.Location) string {
+	v = strings.TrimSpace(v)
+	if len(v) == len("2006-01-02") {
+		return v
+	}
+	for _, layout := range []string{"2006-01-02T15:04:05.000-0700", "2006-01-02T15:04:05-0700", time.RFC3339Nano, "2006-01-02T15:04:05.000Z07:00"} {
+		if t, err := time.Parse(layout, v); err == nil {
+			return t.In(loc).Format("2006-01-02")
+		}
+	}
+	return ""
 }
 
 // boardNote is one notification of the app's own.
