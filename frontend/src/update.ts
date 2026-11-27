@@ -6,8 +6,33 @@ import type { Backend } from './backend';
 import type { Release } from './types';
 import { errText, h, toast } from './ui';
 
-const CHECK_INTERVAL = 6 * 60 * 60 * 1000;
+// GitHub is asked at most once an hour. The clock is looked at every ten
+// minutes and whenever the window comes back, so a computer that slept still
+// checks soon after it wakes.
+const CHECK_INTERVAL = 60 * 60 * 1000;
+const TICK = 10 * 60 * 1000;
 let busy = false;
+let found: { release: Release; supported: boolean } | null = null; // a newer version, told once
+const changed = () => window.dispatchEvent(new Event('argusdesk:update'));
+
+/** The newer version found, for the top bar ("" = none). */
+export function pendingUpdate() {
+  return installed ? { version: installed.version, ready: true } : found ? { version: found.release.version, ready: false } : null;
+}
+
+/** What the top bar's update mark does: offer the update again. */
+export function offerUpdate() {
+  if (installed) return ready(installed);
+  if (found) announce(found.release, found.supported);
+}
+
+function announce(r: Release, supported: boolean) {
+  toast(`새 버전 v${r.version}이 있습니다 (현재 v${current}).`, 'info', [
+    { label: '릴리스 노트', run: () => showNotes(r) },
+    supported ? { label: '지금 업데이트', run: () => void install(r) } : { label: '내려받기 페이지', run: () => backend.openUrl(r.url) },
+  ]);
+}
+let current = '';
 let installed: Release | null = null;
 let progress: HTMLElement | null = null;
 let backend: Backend;
@@ -16,7 +41,10 @@ export function initUpdates(b: Backend) {
   backend = b;
   backend.onUpdateProgress((done, total) => showProgress(done, total));
   void checkForUpdates(false);
-  setInterval(() => void checkForUpdates(false), CHECK_INTERVAL);
+  setInterval(() => void checkForUpdates(false), TICK);
+  const back = () => document.visibilityState === 'visible' && void checkForUpdates(false);
+  document.addEventListener('visibilitychange', back);
+  window.addEventListener('focus', back);
   void backend.notesToShow().then((tag) => {
     if (tag) void backend.releaseNotes(tag).then(showNotes, () => {});
   });
@@ -32,16 +60,16 @@ export async function checkForUpdates(manual: boolean) {
   try {
     const info = await backend.checkUpdate();
     const r = info.release;
+    current = info.current;
     if (!info.available) {
       if (manual) toast(`최신 버전입니다 (v${info.current}).`);
       return;
     }
-    toast(`새 버전 v${r.version}이 있습니다 (현재 v${info.current}).`, 'info', [
-      { label: '릴리스 노트', run: () => showNotes(r) },
-      info.supported
-        ? { label: '지금 업데이트', run: () => void install(r) }
-        : { label: '내려받기 페이지', run: () => backend.openUrl(r.url) },
-    ]);
+    // Said once per version: after that the mark in the top bar keeps it in view.
+    const fresh = found?.release.version !== r.version;
+    found = { release: r, supported: info.supported };
+    if (fresh || manual) announce(r, info.supported);
+    if (fresh) changed();
   } catch (e) {
     if (manual) toast(errText(e), 'error');
   } finally {
@@ -56,6 +84,7 @@ async function install(r: Release) {
   try {
     await backend.installUpdate(r.tag);
     installed = r;
+    changed();
     ready(r);
   } catch (e) {
     toast(`업데이트 실패: ${errText(e)}`, 'error', [{ label: '내려받기 페이지', run: () => backend.openUrl(r.url) }]);

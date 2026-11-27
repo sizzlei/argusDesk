@@ -3146,3 +3146,13 @@ dialog.diag pre {
 .notice.server.read {
   opacity: 0.55;
 }
+
+/* A newer version is out: kept in view after its notice is gone */
+#hud .update-chip {
+  border: 0;
+  cursor: pointer;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font: inherit;
+  font-size: 12px;
+}

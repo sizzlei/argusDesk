@@ -5,6 +5,7 @@ import { keyLabel } from './keys';
 import type { Backend } from './backend';
 import { avatarIcon, lookOf } from './avatars';
 import { gameChip, renderGame } from './game';
+import { offerUpdate, pendingUpdate } from './update';
 import type { AppState, GameStats, Snapshot } from './types';
 import { clock, fill, h, toast } from './ui';
 import { type Filter, type Scope, extraCount } from './view';
@@ -134,6 +135,12 @@ export function renderHud(state: AppState, snap: Snapshot | null, space: number,
       h('strong', { title: snap?.name ?? state.configName ?? '' }, 'Argus Desk'),
       h('span', { class: 'quiet ver', title: state.configFileVersion ? `Argus가 배포한 설정 버전 ${state.configVersion} (파일 안의 버전 ${state.configFileVersion})` : '설정 버전' }, state.configVersion || '?'),
       backend.mock ? h('span', { class: 'chip' }, '가짜 데이터') : null,
+      (() => {
+        const u = pendingUpdate();
+        return u
+          ? h('button', { class: 'chip update-chip', title: u.ready ? `v${u.version}을 설치했습니다. 눌러서 다시 시작` : `새 버전 v${u.version}이 있습니다. 눌러서 업데이트`, onclick: offerUpdate }, u.ready ? '다시 시작해 적용' : `업데이트 v${u.version}`)
+          : null;
+      })(),
       state.usingLastGood ? h('span', { class: 'chip warn', title: state.configError }, '이전 설정으로 실행 중') : null,
       gameChip(hooks.game, hooks.gameOpen, hooks.toggleGame),
     ),

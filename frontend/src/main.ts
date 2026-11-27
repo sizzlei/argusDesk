@@ -480,6 +480,7 @@ async function boot() {
     const wait = window.setInterval(() => snap && (window.clearInterval(wait), greet()), 1000);
   }
   score(await backend.gameStats().catch(() => null));
+  window.addEventListener('argusdesk:update', () => hud());
   initUpdates(backend);
 }
 
