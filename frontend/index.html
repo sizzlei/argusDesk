@@ -7,6 +7,15 @@
     <link rel="stylesheet" href="./src/style.css" />
   </head>
   <body>
+    <!-- Shown from the first paint until the centre has something to show. -->
+    <div id="loading" role="status" aria-live="polite">
+      <div class="loading-card">
+        <svg class="loading-box" viewBox="0 0 64 64" aria-hidden="true"><path d="M32 14 54 24.5 32 35 10 24.5Z" fill="#edc68d"/><path d="M10 24.5 32 35V56L10 45.5Z" fill="#dcab69"/><path d="M54 24.5 32 35V56L54 45.5Z" fill="#bd8a49"/><path d="M28 15.9 50 26.4 44 29.3 22 18.8Z" fill="#f8e7c9"/><text x="21" y="47" font-family="system-ui, sans-serif" font-size="9" font-weight="800" fill="#1f2a44" transform="skewY(25) translate(0 -10)">AD</text></svg>
+        <strong>Argus Desk</strong>
+        <p id="loading-text">센터 문을 여는 중</p>
+        <span class="loading-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+      </div>
+    </div>
     <div id="app">
       <header id="hud"></header>
       <main id="stage">

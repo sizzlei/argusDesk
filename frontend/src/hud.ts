@@ -68,7 +68,10 @@ const TIRED = ['여유', '피곤', '소진'];
  * names: the picture is enough among four people. Mine comes first, with a bar.
  */
 function team(snap: Snapshot | null, game: GameStats | null, hooks: HudHooks) {
-  if (!snap || !game) return null;
+  if (!snap) return null;
+  // Before the season's figures are in, the avatars still stand here (strength unknown).
+  const known = !!game;
+  game ??= { away: [], fatigue: {}, avatars: {}, myFatigue: 0 } as unknown as GameStats;
   const seen = new Set<string>();
   const people = snap.members.filter((m) => !seen.has(m.id) && seen.add(m.id)).sort((a, b) => Number(b.me) - Number(a.me));
   if (!people.length) return null;
@@ -87,8 +90,8 @@ function team(snap: Snapshot | null, game: GameStats | null, hooks: HudHooks) {
           'button',
           { class: cls, role: 'listitem', 'aria-expanded': String(hooks.profileOpen), 'aria-controls': 'profile', 'aria-label': `내 상태 · 피로도 ${game.myFatigue}% 남음 (${state})`, title: `피로도 ${game.myFatigue}% 남음 · ${state} · 눌러서 내 상태 보기`, onclick: hooks.toggleProfile },
           icon,
-          h('span', { class: 'meter' }, h('i', { style: `width:${Math.min(100, game.myFatigue)}%` })),
-          h('span', { class: 'pct' }, `${game.myFatigue}%`),
+          h('span', { class: 'meter' }, h('i', { style: `width:${known ? Math.min(100, game.myFatigue) : 0}%` })),
+          h('span', { class: 'pct' }, known ? `${game.myFatigue}%` : '…'),
         );
       }
       // A teammate's avatar lights up their boxes: the tape on a box has the colour of its holder's clothes.

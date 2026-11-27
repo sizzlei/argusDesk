@@ -15,6 +15,7 @@ import { checkForUpdates, initUpdates } from './update';
 import { showBriefing, watchPresence } from './briefing';
 import { renderQuests, updateQuests } from './quests';
 import { readDust } from './dust';
+import { loading } from './loading';
 import { deployPopupDue, deploysToday } from './deploy';
 import { WEATHER_NAME, setWeatherOn, weatherAt, weatherOn } from './weather';
 import { openAvatarPicker, openVacation, cancelVacation } from './vacation';
@@ -488,6 +489,7 @@ async function boot() {
     if (!next) return;
     const fresh = news(game, next);
     game = next;
+    loading(state, !!snap, true, false);
     quests();
     setStrength(next.myFatigue);
     scene.setTeam(next.fatigue ?? {}, next.away ?? [], next.avatars ?? {});
@@ -525,6 +527,7 @@ async function boot() {
     if (problem) toast(state.configError, 'error');
     else if (reloaded) toast(`설정 ${state.configVersion}을 읽었습니다.`);
     const blocked = renderSetup(state, backend, apply);
+    loading(state, !!snap, !!game, blocked);
     if (blocked) {
       snap = null;
       closeTickets();
@@ -544,6 +547,7 @@ async function boot() {
     draw(ev.changes);
     syncTickets(ev.snapshot, backend);
     addNotes(ev.notes, ev.snapshot.fetchedAt);
+    loading(state, true, !!game, false);
     quests();
     // the first view of a day with deployments: the morning card, which leads with them
     // (counted as shown when a briefing is already up: it has them too)
@@ -596,6 +600,7 @@ async function boot() {
     draw([]);
     hud();
     legend();
+    loading(state, true, !!game, false);
   }
   // The first time the centre opens on this computer, a guide shows the way round.
   const greet = () => !tourSeen() && !tourRunning() && snap && !document.querySelector('#setup:not([hidden])') && window.setTimeout(tour, 900);
