@@ -16,10 +16,13 @@ export function deployToday(b: Box, now = new Date()): string | null {
   return `${String(t.getHours()).padStart(2, '0')}:${String(t.getMinutes()).padStart(2, '0')}`;
 }
 
-/** Today's deployments, earliest first (those without an hour last). */
+/** Today's deployments still to be done, earliest first (those without an hour last). */
 export function deploysToday(snap: Snapshot | null): { box: Box; at: string }[] {
   if (!snap) return [];
+  // what is already done (or sent back) has nothing left to deploy
+  const closed = new Set(snap.spaces.flatMap((sp) => sp.zones.filter((z) => z.kind === 'done' || z.kind === 'returned').map((z) => `${sp.id}/${z.id}`)));
   return snap.boxes
+    .filter((box) => !closed.has(`${box.space}/${box.zone}`))
     .map((box) => ({ box, at: deployToday(box) }))
     .filter((d): d is { box: Box; at: string } => d.at !== null)
     .sort((a, b) => (a.at || '99') .localeCompare(b.at || '99'));

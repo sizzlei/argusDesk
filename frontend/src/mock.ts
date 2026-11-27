@@ -265,7 +265,7 @@ export function mockBackend(): Backend {
   let now = Date.now();
   const boxes = seed(now);
   // some work goes to production today, at an hour or just on the day
-  boxes.filter((b) => b.zone === 'work' || b.zone === 'approval').filter((_, i) => i % 4 === 0).forEach((b, i) => {
+  boxes.filter((b) => b.zone === 'work' || b.zone === 'approval' || b.zone === 'dock').filter((_, i) => i % 4 === 0).forEach((b, i) => {
     const d = new Date(now);
     b.deploy = i % 3 === 2 ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` : new Date(new Date(now).setHours(14 + i, 0, 0, 0)).toISOString();
   });
