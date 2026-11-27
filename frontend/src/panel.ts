@@ -832,6 +832,13 @@ export interface TicketHooks {
   onClose(key: string): void;
 }
 
+/** The highest a window may go: just under the top bar, which it never covers. */
+function topLimit() {
+  const bar = document.getElementById('hud')?.getBoundingClientRect();
+  const host = document.getElementById('windows')?.getBoundingClientRect();
+  return bar && host && bar.height ? Math.round(bar.bottom - host.top + 10) : 74;
+}
+
 /** How wide the icon rail on that side is (0 when there is none). */
 function railWidth(side: 'left' | 'right') {
   return document.getElementById(`rail-${side}`)?.getBoundingClientRect().width ?? 0;
@@ -877,9 +884,9 @@ function setMax(w: Win, on: boolean) {
     w.max = { left: st.left, top: st.top, w: st.width, h: st.height };
     const left = railWidth('left') + 24;
     st.left = `${left}px`;
-    st.top = '74px';
+    st.top = `${topLimit()}px`;
     st.width = `${host.clientWidth - left - railWidth('right') - 24}px`;
-    st.height = `${host.clientHeight - 74 - 12}px`;
+    st.height = `${host.clientHeight - topLimit() - 12}px`;
   } else if (w.max) {
     ({ left: st.left, top: st.top, w: st.width, h: st.height } = w.max);
     w.max = null;
@@ -913,7 +920,7 @@ function front(w: Win, hooks: TicketHooks) {
   const host = w.el.parentElement;
   if (host && (w.el.offsetLeft > host.clientWidth - 120 || w.el.offsetTop > host.clientHeight - 60 || w.el.offsetLeft + w.el.offsetWidth < 120)) {
     w.el.style.left = `${Math.max(railWidth('left') + 24, host.clientWidth - w.el.offsetWidth - railWidth('right') - 24)}px`;
-    w.el.style.top = '74px';
+    w.el.style.top = `${topLimit()}px`;
   }
   wins.forEach((o) => o.el.classList.toggle('front', o === w));
   hooks.onFocus(w.key);
@@ -967,9 +974,9 @@ export function openTicket(b: Box, snap: Snapshot, backend: Backend, hooks: Tick
   const kept = keptSize();
   const width = Math.max(380, Math.min(kept?.w ?? 860, room));
   el.style.width = `${width}px`;
-  if (kept) el.style.height = `${Math.max(240, Math.min(kept.h, host.clientHeight - 74 - n * 30 - 12))}px`;
+  if (kept) el.style.height = `${Math.max(240, Math.min(kept.h, host.clientHeight - topLimit() - n * 30 - 12))}px`;
   el.style.left = `${Math.max(railWidth('left') + 24, host.clientWidth - width - right - n * 32)}px`;
-  el.style.top = `${74 + n * 30}px`;
+  el.style.top = `${topLimit() + n * 30}px`;
 
   shut.addEventListener('click', () => close(win, hooks));
   // Minimised, a window is just its title bar: small, and still movable.
@@ -1004,7 +1011,7 @@ export function openTicket(b: Box, snap: Snapshot, backend: Backend, hooks: Tick
           l = start.l + start.w - w;
         }
         if (d.includes('n')) {
-          ht = Math.max(MIN_H, Math.min(start.h - dy, start.t + start.h));
+          ht = Math.max(MIN_H, Math.min(start.h - dy, start.t + start.h - topLimit()));
           t = start.t + start.h - ht;
         }
         el.style.left = `${l}px`;
@@ -1059,7 +1066,7 @@ export function openTicket(b: Box, snap: Snapshot, backend: Backend, hooks: Tick
     head.setPointerCapture(e.pointerId);
     const move = (m: PointerEvent) => {
       el.style.left = `${Math.min(host.clientWidth - 80, Math.max(80 - el.offsetWidth, m.clientX - sx))}px`;
-      el.style.top = `${Math.min(host.clientHeight - 40, Math.max(0, m.clientY - sy))}px`;
+      el.style.top = `${Math.min(host.clientHeight - 40, Math.max(topLimit(), m.clientY - sy))}px`;
     };
     const stop = () => {
       head.removeEventListener('pointermove', move);
