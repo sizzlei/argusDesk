@@ -4,7 +4,9 @@
 
 import type { Backend } from './backend';
 import type { Release } from './types';
-import { errText, h, toast } from './ui';
+import { dateTime, errText, h, toast } from './ui';
+import { renderNotes } from './notes';
+import { sanitize } from './sanitize';
 
 // GitHub is asked at most once an hour. The clock is looked at every ten
 // minutes and whenever the window comes back, so a computer that slept still
@@ -112,17 +114,20 @@ function showProgress(done: number, total: number) {
 }
 
 function showNotes(r: Release) {
-  // Release notes come from this project's own repository; they are shown as
-  // plain text so nothing in them is ever run.
-  const body = r.notes || new DOMParser().parseFromString(r.notesHtml, 'text/html').body.textContent || '';
+  // Release notes come from this project's own repository. The Markdown is
+  // drawn as headings and lists; the HTML of the release feed (used when the
+  // API is not available) only through the same sanitiser as ticket text.
+  const body = r.notes ? renderNotes(r.notes) : h('div', { class: 'release-notes rich' }, sanitize(r.notesHtml || ''));
   const dialog = h(
     'dialog',
     { class: 'notes' },
-    h('h2', {}, r.name || `v${r.version}`),
-    h('pre', {}, body.trim() || '릴리스 노트가 없습니다.'),
-    h('button', { class: 'primary', onclick: () => dialog.close() }, '닫기'),
+    h('p', { class: 'quiet' }, `ArgusDesk v${r.version}${r.published ? ` · ${dateTime(r.published)}` : ''}`),
+    h('h2', {}, r.name && r.name !== r.tag ? r.name : `v${r.version}에서 바뀐 것`),
+    body,
+    h('div', { class: 'act-row' }, h('button', { class: 'primary', onclick: () => dialog.close() }, '닫기')),
   );
   dialog.addEventListener('close', () => dialog.remove());
   document.body.append(dialog);
   dialog.showModal();
+  dialog.querySelector<HTMLButtonElement>('.act-row button')?.focus();
 }
