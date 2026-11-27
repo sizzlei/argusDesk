@@ -3575,3 +3575,14 @@ button.deploy-btn .n {
     display: none;
   }
 }
+
+/* the code button sits at the left of the comment actions */
+.comment-box .code-btn {
+  margin-right: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+}
+
+.comment-box textarea {
+  tab-size: 2;
+}

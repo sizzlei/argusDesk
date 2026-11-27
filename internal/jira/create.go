@@ -286,20 +286,34 @@ var bullet = regexp.MustCompile(`^(\s*)[-*•◦]\s+(.*)$`)
 
 // inline turns one line into text nodes: **bold** is the only mark.
 func inline(line string) []any {
-	parts := strings.Split(line, "**")
-	if len(parts)%2 == 0 { // an unclosed ** is just text
-		parts = []string{line}
+	// `code` first: nothing inside it is read as anything else
+	spans := strings.Split(line, "`")
+	if len(spans)%2 == 0 { // an unclosed ` is just text
+		spans = []string{line}
 	}
 	out := []any{}
-	for i, p := range parts {
-		if p == "" {
+	for si, span := range spans {
+		if span == "" {
 			continue
 		}
-		n := map[string]any{"type": "text", "text": p}
-		if i%2 == 1 {
-			n["marks"] = []any{map[string]any{"type": "strong"}}
+		if si%2 == 1 {
+			out = append(out, map[string]any{"type": "text", "text": span, "marks": []any{map[string]any{"type": "code"}}})
+			continue
 		}
-		out = append(out, n)
+		parts := strings.Split(span, "**")
+		if len(parts)%2 == 0 { // an unclosed ** is just text
+			parts = []string{span}
+		}
+		for i, p := range parts {
+			if p == "" {
+				continue
+			}
+			n := map[string]any{"type": "text", "text": p}
+			if i%2 == 1 {
+				n["marks"] = []any{map[string]any{"type": "strong"}}
+			}
+			out = append(out, n)
+		}
 	}
 	return out
 }

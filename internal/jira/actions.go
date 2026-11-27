@@ -222,45 +222,116 @@ const (
 // holds "@" and the name of one of the people mentioned, Jira is told who is
 // meant, so that person is notified as with a mention written in Jira.
 func (c *Client) AddComment(ctx context.Context, key, text, mode string, mentioned []Person) error {
-	lines := strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n")
 	switch mode {
 	case CommentInternal, CommentPublic:
-		// The service desk API takes wiki text, where a mention is [~accountid:…].
-		for i, line := range lines {
-			var b strings.Builder
-			for _, part := range splitMentions(line, mentioned) {
-				if part.who != nil {
-					b.WriteString("[~accountid:" + part.who.ID + "]")
-				} else {
-					b.WriteString(part.text)
-				}
-			}
-			lines[i] = b.String()
-		}
-		body := map[string]any{"body": strings.Join(lines, "\n"), "public": mode == CommentPublic}
+		body := map[string]any{"body": wikiText(text, mentioned), "public": mode == CommentPublic}
 		return c.do(ctx, http.MethodPost, "/rest/servicedeskapi/request/"+url.PathEscape(key)+"/comment", body, nil)
 	case CommentPlain:
-		// The platform API takes a document: one paragraph per line of text.
-		paragraphs := []any{}
-		for _, line := range lines {
-			p := map[string]any{"type": "paragraph"}
-			var content []any
-			for _, part := range splitMentions(line, mentioned) {
-				if part.who != nil {
-					content = append(content, map[string]any{"type": "mention", "attrs": map[string]any{"id": part.who.ID, "text": "@" + part.who.Name}})
-				} else {
-					content = append(content, map[string]any{"type": "text", "text": part.text})
-				}
-			}
-			if len(content) > 0 {
-				p["content"] = content
-			}
-			paragraphs = append(paragraphs, p)
-		}
-		body := map[string]any{"body": map[string]any{"type": "doc", "version": 1, "content": paragraphs}}
-		return c.do(ctx, http.MethodPost, "/rest/api/3/issue/"+url.PathEscape(key)+"/comment", body, nil)
+		// The platform API takes a document, written the way ticket bodies are
+		// (code blocks, lists, bold), with the mentions put in.
+		doc := adf(text)
+		withMentions(doc, mentioned)
+		return c.do(ctx, http.MethodPost, "/rest/api/3/issue/"+url.PathEscape(key)+"/comment", map[string]any{"body": doc}, nil)
 	}
 	return errors.New("알 수 없는 댓글 종류: " + mode)
+}
+
+// withMentions turns "@Name" in the text nodes of a document into mention
+// nodes, outside code (a code block, or text marked as code).
+func withMentions(node map[string]any, people []Person) {
+	if len(people) == 0 || node["type"] == "codeBlock" {
+		return
+	}
+	content, ok := node["content"].([]any)
+	if !ok {
+		return
+	}
+	out := make([]any, 0, len(content))
+	for _, c := range content {
+		n, ok := c.(map[string]any)
+		if !ok {
+			out = append(out, c)
+			continue
+		}
+		text, isText := n["text"].(string)
+		if n["type"] != "text" || !isText || n["marks"] != nil {
+			withMentions(n, people)
+			out = append(out, n)
+			continue
+		}
+		for _, part := range splitMentions(text, people) {
+			if part.who != nil {
+				out = append(out, map[string]any{"type": "mention", "attrs": map[string]any{"id": part.who.ID, "text": "@" + part.who.Name}})
+			} else {
+				out = append(out, map[string]any{"type": "text", "text": part.text})
+			}
+		}
+	}
+	node["content"] = out
+}
+
+// wikiText writes a comment in the wiki markup the service desk API takes:
+// ``` fences become {code}, `code` becomes {{code}}, **bold** *bold*, "- "
+// points "* ", and mentions [~accountid:…]. Code is left exactly as typed.
+func wikiText(text string, people []Person) string {
+	lines := strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n")
+	var out []string
+	inCode := false
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "```") {
+			if inCode {
+				out = append(out, "{code}")
+			} else if lang := strings.TrimSpace(strings.TrimPrefix(trimmed, "```")); lang != "" {
+				out = append(out, "{code:"+lang+"}")
+			} else {
+				out = append(out, "{code}")
+			}
+			inCode = !inCode
+			continue
+		}
+		if inCode {
+			out = append(out, line)
+			continue
+		}
+		if m := bullet.FindStringSubmatch(line); m != nil {
+			depth := len(strings.ReplaceAll(m[1], "\t", "  "))/2 + 1
+			line = strings.Repeat("*", depth) + " " + m[2]
+		}
+		var b strings.Builder
+		spans := strings.Split(line, "`")
+		if len(spans)%2 == 0 {
+			spans = []string{line}
+		}
+		for si, span := range spans {
+			if si%2 == 1 {
+				b.WriteString("{{" + span + "}}")
+				continue
+			}
+			parts := strings.Split(span, "**")
+			if len(parts)%2 == 0 {
+				parts = []string{span}
+			}
+			for i, p := range parts {
+				if i%2 == 1 {
+					b.WriteString("*" + p + "*")
+					continue
+				}
+				for _, part := range splitMentions(p, people) {
+					if part.who != nil {
+						b.WriteString("[~accountid:" + part.who.ID + "]")
+					} else {
+						b.WriteString(part.text)
+					}
+				}
+			}
+		}
+		out = append(out, b.String())
+	}
+	if inCode {
+		out = append(out, "{code}") // an unclosed fence closes at the end
+	}
+	return strings.Join(out, "\n")
 }
 
 // mentionPart is a piece of a line: plain text, or one person mentioned.

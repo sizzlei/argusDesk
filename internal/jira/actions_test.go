@@ -146,3 +146,26 @@ func TestSplitMentions(t *testing.T) {
 		t.Fatalf("got %+v", got)
 	}
 }
+
+func TestCommentCode(t *testing.T) {
+	people := []Person{{ID: "a1", Name: "김하늘"}}
+	text := "@김하늘 확인 부탁드립니다. `idx_a` **먼저**\n```sql\nSELECT '@김하늘' FROM t;\n```\n- 하나\n  - 둘"
+	wiki := wikiText(text, people)
+	want := "[~accountid:a1] 확인 부탁드립니다. {{idx_a}} *먼저*\n{code:sql}\nSELECT '@김하늘' FROM t;\n{code}\n* 하나\n** 둘"
+	if wiki != want {
+		t.Fatalf("wiki =\n%s\nwant\n%s", wiki, want)
+	}
+
+	doc := adf(text)
+	withMentions(doc, people)
+	b, _ := json.Marshal(doc)
+	s := string(b)
+	for _, must := range []string{`"type":"mention"`, `"type":"codeBlock"`, `"language":"sql"`, `"type":"code"`, `SELECT '@김하늘' FROM t;`} {
+		if !strings.Contains(s, must) {
+			t.Fatalf("doc lacks %s: %s", must, s)
+		}
+	}
+	if strings.Count(s, `"type":"mention"`) != 1 {
+		t.Fatalf("a mention inside code was turned into one: %s", s)
+	}
+}

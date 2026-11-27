@@ -612,8 +612,13 @@ export function mockBackend(): Backend {
       await pause();
       await pause();
       const b = find(key);
-      const body = document.createElement('p');
-      body.textContent = text;
+      // the prototype draws ``` fences as code, as Jira would
+      const body = document.createElement('div');
+      text.split(/^```\w*\n?/m).forEach((part, i) => {
+        const el = document.createElement(i % 2 ? 'pre' : 'p');
+        el.textContent = part.replace(/\n?```\s*$/, '');
+        if (el.textContent) body.append(el);
+      });
       for (const p of mentioned) body.innerHTML = body.innerHTML.split(`@${p.name}`).join(`<a class="user-hover" href="#">@${p.name}</a>`);
       written.set(key, [...(written.get(key) ?? []), { author: '김하늘', created: new Date(now).toISOString(), bodyHtml: body.outerHTML, internal: mode === 'internal' }]);
       b.updated = new Date(now + ++stamp).toISOString();

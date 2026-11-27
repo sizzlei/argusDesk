@@ -349,7 +349,7 @@ function renderActions(w: Win, snap: Snapshot, backend: Backend) {
   const draft = drafts.get(b.key) ?? { text: '', isPublic: true, who: [] };
   const old = w.text;
   const focused = old && document.activeElement === old ? [old.selectionStart, old.selectionEnd] : null;
-  const text = h('textarea', { class: 'comment-text', rows: '3', placeholder: '댓글 쓰기 · @으로 멘션', 'aria-label': `${b.key} 댓글`, disabled: off });
+  const text = h('textarea', { class: 'comment-text', rows: '3', placeholder: '댓글 쓰기 · @으로 멘션 · ```로 코드 블록', 'aria-label': `${b.key} 댓글`, disabled: off });
   w.text = text;
   text.value = draft.text;
   const send = h('button', { class: 'primary' });
@@ -406,7 +406,35 @@ function renderActions(w: Win, snap: Snapshot, backend: Backend) {
         : null,
   );
   // Writing a comment happens where the comments are read: at the top of that list.
-  w.commentBox = h('div', { class: 'comment-box' }, text, h('div', { class: 'act-row' }, desk ? audience : null, send));
+  // A code block around what is selected (or an empty one at the cursor), as ``` fences.
+  const code = h('button', { type: 'button', class: 'code-btn', title: '코드 블록 넣기 (선택한 글을 감쌉니다)', disabled: off }, '</> 코드');
+  code.addEventListener('mousedown', (e) => e.preventDefault()); // the text area keeps its cursor and selection
+  code.addEventListener('click', () => {
+    const [a, b] = [text.selectionStart, text.selectionEnd];
+    const v = text.value;
+    const before = a > 0 && v[a - 1] !== '\n' ? '\n' : '';
+    const inner = v.slice(a, b);
+    // with nothing selected an empty line is left between the fences, for the cursor
+    const body = inner ? inner.replace(/\n?$/, '\n') : '\n';
+    const block = `${before}\`\`\`\n${body}\`\`\`\n`;
+    text.value = v.slice(0, a) + block + v.slice(b);
+    const at = a + before.length + 4 + (inner ? body.length + 4 : 0);
+    text.focus();
+    text.setSelectionRange(at, at);
+    keep();
+  });
+  // Tab inside a code block indents instead of leaving the box.
+  text.addEventListener('keydown', (e) => {
+    if (e.key !== 'Tab' || e.shiftKey || e.isComposing) return;
+    const fences = (text.value.slice(0, text.selectionStart).match(/^\s*```/gm) ?? []).length;
+    if (fences % 2 === 0) return;
+    e.preventDefault();
+    const [a, b] = [text.selectionStart, text.selectionEnd];
+    text.value = text.value.slice(0, a) + '  ' + text.value.slice(b);
+    text.setSelectionRange(a + 2, a + 2);
+    keep();
+  });
+  w.commentBox = h('div', { class: 'comment-box' }, text, h('div', { class: 'act-row' }, code, desk ? audience : null, send));
   mentions(text, w.commentBox, draft.who, (q) => backend.findPeople(q), keep);
   w.detailEl?.querySelector('.comment-slot')?.replaceChildren(w.commentBox);
   if (focused) {
