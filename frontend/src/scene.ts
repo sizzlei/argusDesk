@@ -9,6 +9,9 @@ import { Application, Container, Graphics, Polygon, Sprite as PixiSprite, type T
 import { lookOf } from './avatars';
 import type { Away, Box, Change, Member, Snapshot, SpaceView, ZoneView } from './types';
 import type { Dust } from './dust';
+import { seasonItems, yardSlot } from './growth';
+import { deployToday } from './deploy';
+import { paving, pet, yardThing } from './scene/yard';
 import type { Weather } from './weather';
 import { TW, TH, ZW, ZH, COL_GAP, ROW_GAP, ATRIUM_GAP, grid, COLS, PAD, WALL_H, STOREY, iso, DESK_EXTRA, rowY, roomOrigin } from './scene/grid';
 import { INK, QUIET, ACCENT, FLOOR, AGE, shade, ageStep, shortAge, shortName } from './scene/palette';
@@ -114,6 +117,12 @@ export class Scene {
   private bench: { sign: Container; y: number; gx: number; gy: number } | null = null; // the packing bench and its sign, which bobs
   private shows = new Container(); // short shows over the room: a box being packed
   private acts: { g: Container; ms: number; life: number; step(t: number, g: Container): void }[] = [];
+  // what the centre has grown this season, and the things that are landing just now
+  private growth = { level: 0, year: new Date().getFullYear() };
+  private landing = new Map<string, number>(); // thing → when its fall started on the scene's clock (-1 = not yet)
+  private drops: { g: Container; id: string; at: number; x: number; y: number }[] = [];
+  private pets: { g: Graphics; a: { x: number; y: number }; b: { x: number; y: number }; phase: number }[] = [];
+  private truckGx = -1; // where the truck stands on the grid (-1 = no truck on this floor)
   /** How the team server says it is doing: the server room's lamps show it. */
   system: '' | 'ok' | 'warn' | 'fail' = '';
   /** The room follows the hour: dim in the evening and at night. Off: always day. */
@@ -354,6 +363,121 @@ export class Scene {
       if (f.x > width + 90) [f.x, f.y] = [-40, Math.random() * height];
       f.sp.position.set(f.x, f.y);
     }
+  }
+
+  /**
+   * Takes the centre's level and season. `fresh`: things that came with a
+   * level just reached, which drop into place.
+   */
+  setGrowth(level: number, year: number, fresh: string[] = []) {
+    fresh.forEach((id) => this.landing.set(id, -1));
+    if (level === this.growth.level && year === this.growth.year && !fresh.length) return;
+    this.growth = { level, year };
+    if (this.snap) this.update(this.snap, []);
+  }
+
+  private has(id: string) {
+    return seasonItems(this.growth.year).some((i) => i.id === id && this.growth.level >= i.level);
+  }
+
+  /** Words that rise and fade: in window coordinates, from (x, y). */
+  private float(text: string, x: number, y: number, colour = ACCENT, size = 15) {
+    const t = label(text, size, colour, '700');
+    t.anchor.set(0.5);
+    const g = new Container();
+    const back = new Graphics().roundRect(-t.width / 2 - 8, -t.height / 2 - 4, t.width + 16, t.height + 8, 10).fill({ color: 0xffffff, alpha: 0.92 });
+    g.addChild(back, t);
+    g.position.set(x, y);
+    this.show(g, 1500, (k, c) => {
+      c.y = y - 46 * easeInOut(Math.min(1, k * 1.4));
+      c.alpha = k < 0.75 ? 1 : (1 - k) / 0.25;
+      c.scale.set(k < 0.12 ? 0.6 + (k / 0.12) * 0.5 : 1.1 - Math.min(0.1, (k - 0.12) * 0.5));
+    }, this.fx);
+  }
+
+  /** Experience just earned: rises from my avatar (or the top of the window when I am not on this floor). */
+  gain(text: string) {
+    const me = this.mine?.who;
+    const at = me ? this.world.toGlobal({ x: me.x, y: me.y - 70 }) : { x: this.app.screen.width / 2, y: 110 };
+    this.float(text, at.x, at.y);
+  }
+
+  /** Several boxes of mine in a row: a combo in the middle of the window. */
+  combo(n: number) {
+    if (CALM) return;
+    const { width, height } = this.app.screen;
+    this.float(`콤보 ×${n}`, width / 2, height * 0.32, 0xe8590c, 22 + Math.min(10, n * 2));
+    this.burst(width / 2, height * 0.32, 14 + n * 4, 1.1);
+  }
+
+  /** A finished box rides to the truck on the head of whoever held it. */
+  private carryOut(s: Sprite, who: string) {
+    const person_ = new Graphics();
+    person(person_, lookOf(who, this.looks), who === this.me.id, 0);
+    s.legs = [{ x0: s.root.x, y0: s.root.y, x1: s.tx, y1: s.ty, z0: 1e7, z1: 1e7, arc: 0, air: false, dur: 1700, t: 0 }];
+    const root = s.root;
+    this.show(person_, 1800, (k, c) => {
+      if (root.destroyed) return void (c.alpha = 0);
+      const step = Math.abs(Math.sin(k * Math.PI * 9)) * 2.5; // walking
+      c.position.set(root.x, root.y + 46 - step);
+      c.zIndex = 1e7 - 1;
+      c.alpha = k > 0.85 ? (1 - k) / 0.15 : Math.min(1, k * 8);
+    }, this.things);
+  }
+
+  /** Today's deployment, done: a rocket lifts off from the dock with the ticket's number. */
+  private rocket(key: string, x: number, y: number) {
+    if (CALM) return;
+    const from = this.truck ? { x: this.truck.x, y: this.truck.y - 30 } : { x, y };
+    const start = this.world.toGlobal(from);
+    const g = new Container();
+    const body = new Graphics();
+    body.poly([0, -34, 8, -20, 8, 6, -8, 6, -8, -20]).fill(0xf2f4f8).stroke({ width: 1.5, color: 0x9aa3b5 });
+    body.circle(0, -14, 4).fill(0x4c8df6);
+    body.poly([-8, -2, -15, 10, -8, 6]).fill(0xe5484d);
+    body.poly([8, -2, 15, 10, 8, 6]).fill(0xe5484d);
+    const flame = new Graphics().poly([-6, 7, 0, 28, 6, 7]).fill(0xffb020);
+    const tag = label(`${key} 배포 완료`, 12, 0xffffff, '700');
+    const pill = new Graphics().roundRect(-tag.width / 2 - 8, 0, tag.width + 16, 22, 11).fill(0x7048e8);
+    tag.position.set(-tag.width / 2, (22 - tag.height) / 2);
+    const plate = new Container();
+    plate.addChild(pill, tag);
+    plate.position.set(0, -64);
+    g.addChild(flame, body, plate);
+    g.position.set(start.x, start.y);
+    let smoke = 0;
+    this.show(g, 2600, (k, c) => {
+      const lift = k < 0.15 ? 0 : (k - 0.15) ** 2 * 900; // a short wait, then off it goes, faster and faster
+      c.position.set(start.x + Math.sin(k * 20) * (k < 0.15 ? 1.2 : 0), start.y - lift);
+      flame.scale.set(1, 0.7 + Math.abs(Math.sin(k * 60)) * 0.6 + (k > 0.15 ? 0.5 : 0));
+      plate.alpha = k < 0.7 ? 1 : (1 - k) / 0.3;
+      c.alpha = k > 0.85 ? (1 - k) / 0.15 : 1;
+      if (k > 0.15 && k * 30 > smoke) {
+        smoke++;
+        this.burst(c.x, c.y + 20, 3, 0.4);
+      }
+    }, this.fx);
+    setTimeout(() => this.burst(start.x, start.y, 24, 1.3), 350);
+  }
+
+  /** Old boxes swept out of a room: its dust monster flinches and loses a little. */
+  private flinch(key: string, n: number) {
+    const at = this.dustAt.get(key);
+    if (!at || CALM) return;
+    const g = at.g;
+    const base = { x: g.scale.x, y: g.scale.y };
+    this.show(new Container(), 900, (k) => {
+      if (g.destroyed) return;
+      const shake = Math.sin(k * Math.PI * 10) * (1 - k);
+      g.rotation = shake * 0.12;
+      g.scale.set(base.x * (1 - 0.18 * Math.sin(k * Math.PI)), base.y * (1 - 0.1 * Math.sin(k * Math.PI)));
+      if (k >= 1) {
+        g.rotation = 0;
+        g.scale.set(base.x, base.y);
+      }
+    });
+    const p = this.world.toGlobal({ x: at.x, y: at.y - 90 });
+    this.float(`먼지 괴물 -${n}`, p.x, p.y, 0x6f6b76, 13);
   }
 
   /** Takes the dust monsters of the whole centre. */
@@ -665,6 +789,13 @@ export class Scene {
 
   /** Redraws the building for a new snapshot; changes drive the animations. */
   update(snap: Snapshot, changes: Change[], hidden: ReadonlySet<string> = this.hidden) {
+    // old boxes that leave their room hurt the monster that lives on them
+    const hits = new Map<string, number>();
+    for (const c of changes) {
+      if (c.kind !== 'moved' && c.kind !== 'removed') continue;
+      const was = this.sprites.get(c.key)?.box;
+      if (was?.stale && was.zone !== snap.boxes.find((b) => b.key === c.key)?.zone) hits.set(`${was.space}/${was.zone}`, (hits.get(`${was.space}/${was.zone}`) ?? 0) + 1);
+    }
     this.snap = snap;
     this.hidden = hidden;
     if (this.space < 0) {
@@ -704,6 +835,9 @@ export class Scene {
     );
     const depth = rowY(rows - 1) + grid.rowDepths[rows - 1];
     this.truck = null;
+    this.truckGx = -1;
+    this.pets = [];
+    this.drops = []; // drawn again below: a fall under way goes on where it was
     this.people = [];
     this.rooms = [];
     this.mine = null;
@@ -806,6 +940,10 @@ export class Scene {
         const e = iso(o.gx + ZW, o.gy + j);
         floor.moveTo(s.x, s.y).lineTo(e.x, e.y).stroke({ width: 1, color: shade(FLOOR[zone.kind], 0.5), alpha: 0.1 });
       }
+      // renovated: a checker of new tiles over every room
+      if (this.has('floor'))
+        for (let i = 0; i < ZW; i++)
+          for (let j = 0; j < o.d; j++) if ((i + j) % 2 === 0) floor.poly(floorPoly(o.gx + i, o.gy + j, 1, 1)).fill({ color: shade(FLOOR[zone.kind], 0.35), alpha: 0.09 });
       this.ground.addChild(floor);
 
       // Where the team writes its own tickets, the first waiting room's counter is the packing bench.
@@ -817,6 +955,7 @@ export class Scene {
         const tg = prop(o.gx + 4, o.gy + o.d + 2, (g) => truck(g, o.gx + 3.2, o.gy + o.d + PAD + 0.5));
         const c = iso(o.gx + 3.2 + 0.95, o.gy + o.d + PAD + 0.5 + 0.55); // middle of the cargo box
         this.truck = { g: tg, x: c.x, y: c.y };
+        this.truckGx = o.gx + 3.2;
       }
 
       this.sign(zone, o.gx, o.gy);
@@ -978,6 +1117,22 @@ export class Scene {
         this.plate('휴게실', o.gx + ZW / 2, o.gy + 0.15);
       }
     }
+    hits.forEach((n, key) => this.flinch(key, n));
+    // a production deployment set for today, just done: a rocket goes up from the dock
+    for (const c of changes) {
+      const b = c.kind === 'moved' ? boxes.find((x) => x.key === c.key) : undefined;
+      if (b && space.zones.find((z) => z.id === b.zone)?.kind === 'done' && deployToday(b) !== null) {
+        const sp = this.sprites.get(b.key);
+        this.rocket(b.key, sp?.tx ?? 0, sp?.ty ?? 0);
+      }
+    }
+    // the front yard, on the ground floor: what the centre has grown this season
+    if (snap.spaces.indexOf(space) === 0) this.yard(width, depth, prop);
+    // the season's LEDs: the server room's lamps take new colours
+    if (this.has('led')) {
+      const leds = this.growth.year % 2 === 0 ? [0xff5d5d, 0xffb84d, 0xf5e15b, 0x5fd38a, 0x4cb8ff, 0xa77bff] : [0xb18cff, 0x8c6bff, 0xd38cff, 0x6f7dff];
+      this.lamps.forEach((l, i) => (l.colour = leds[i % leds.length]));
+    }
     // lamps blink on their own layer, above everything in the rooms: each drawn once, then only tinted
     this.lampLayer.removeChildren().forEach((c) => c.destroy());
     for (const l of this.lamps) {
@@ -1004,7 +1159,10 @@ export class Scene {
         s.exit = 'truck';
         s.tx = this.truck.x + (Math.random() - 0.5) * 14;
         s.ty = this.truck.y - 30;
-        this.hop(s, 620, 60);
+        // whoever held it carries it out to the truck on their head; nobody: it hops there
+        const who = s.box.assigneeId && !resting.has(s.box.assigneeId) ? s.box.assigneeId : '';
+        if (who) this.carryOut(s, who);
+        else this.hop(s, 620, 60);
         loaded = true;
       }
     });
@@ -1017,7 +1175,9 @@ export class Scene {
     }
     if (this.selected && !alive.has(this.selected)) this.mark('');
 
-    const corners = [iso(-PAD, -PAD), iso(width + PAD, -PAD), iso(width + PAD, depth + PAD + 2.4), iso(-PAD, depth + PAD + 2.4)];
+    // the front: room for the truck, and for the yard when the centre has grown one
+    const front = depth + PAD + (snap.spaces.indexOf(space) === 0 && seasonItems(this.growth.year).some((i) => this.has(i.id) && (i.kind === 'yard' || i.kind === 'pet')) ? 3.0 : 2.4);
+    const corners = [iso(-PAD, -PAD), iso(width + PAD, -PAD), iso(width + PAD, front), iso(-PAD, front)];
     const xs = corners.map((c) => c.x);
     const ys = corners.map((c) => c.y);
     this.bounds = { x: Math.min(...xs), y: Math.min(...ys) - WALL_H - 46, w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys) + WALL_H + 60 + snap.spaces.indexOf(space) * STOREY };
@@ -1137,6 +1297,58 @@ export class Scene {
   }
 
   /** The name plate of a room that holds no tickets: lighter than a room's sign. */
+  /** The front yard: a paved strip before the building, with the season's things along it. */
+  private yard(width: number, depth: number, prop: (gx: number, gy: number, draw: (g: Graphics) => void, bias?: number) => Graphics) {
+    const items = seasonItems(this.growth.year).filter((i) => this.growth.level >= i.level && (i.kind === 'yard' || i.kind === 'pet'));
+    if (!items.length) return;
+    const y0 = depth + PAD + 0.45;
+    const pave = new Graphics();
+    paving(pave, -PAD, y0, width + PAD * 2, 2.4);
+    this.ground.addChild(pave);
+    const gy = y0 + 1.35;
+    // places along the strip, leaving the truck its room (and the floor's name plate at the left corner)
+    const slots: number[] = [];
+    for (let gx = 3.6; gx < width - 0.6; gx += 2.6) {
+      if (this.truckGx >= 0 && gx + 1.0 > this.truckGx - 0.5 && gx - 1.0 < this.truckGx + 3.4) continue;
+      slots.push(gx);
+    }
+    for (const it of items) {
+      if (it.kind === 'pet') {
+        const g = new Graphics();
+        pet(g, it.id === 'dog' ? 'dog' : 'cat');
+        g.label = 'prop';
+        this.things.addChild(g);
+        this.pets.push({ g, a: iso(slots[0] ?? 2, gy + 0.55), b: iso(slots[slots.length - 1] ?? width - 2, gy + 0.55), phase: Math.random() * 10 });
+        continue;
+      }
+      const gx = slots[yardSlot(it.id, this.growth.year)];
+      if (gx === undefined) continue; // no room left on this floor's front
+      let words: ReturnType<typeof yardThing> = null;
+      const g = prop(gx, gy, (pg) => (words = yardThing(pg, it.id, gx, gy)));
+      let board: Container | null = null;
+      if (words) {
+        const w = words as { text: string; colour: number; neon?: boolean };
+        // the words on the board's front face, slanted with it
+        const t = label(w.text, 10, w.colour, '700');
+        t.anchor.set(0.5);
+        t.skew.set(0, Math.atan2(TH, TW));
+        const p = iso(gx, gy + 0.12);
+        t.position.set(p.x, p.y - 39);
+        board = t;
+        this.signs.addChild(t);
+      }
+      const start = this.landing.get(it.id);
+      if (start !== undefined && !CALM) {
+        // just arrived: it falls into place (and keeps falling through a redraw)
+        const at = start < 0 ? this.clock : start;
+        this.landing.set(it.id, at);
+        const p = iso(gx, gy);
+        this.drops.push({ g, id: it.id, at, x: p.x, y: p.y });
+        if (board) this.drops.push({ g: board, id: '', at, x: p.x, y: p.y });
+      }
+    }
+  }
+
   plate(text: string, gx: number, gy: number) {
     const p = iso(gx, gy);
     const t = label(text, 13, INK, '700');
@@ -1344,6 +1556,36 @@ export class Scene {
       } else a.step(a.ms / a.life, a.g);
     }
     const T = this.clock / 1000;
+
+    // the season's new things fall into the yard and bounce once
+    for (let i = this.drops.length - 1; i >= 0; i--) {
+      const d = this.drops[i];
+      const t = Math.min(1, (this.clock - d.at) / 900);
+      if (d.g.destroyed) {
+        this.drops.splice(i, 1);
+        continue;
+      }
+      d.g.y = t < 0.7 ? -260 * (1 - (t / 0.7) ** 2) : -Math.sin(((t - 0.7) / 0.3) * Math.PI) * 14;
+      if (t >= 1) {
+        d.g.y = 0;
+        this.drops.splice(i, 1);
+        if (d.id) {
+          this.landing.delete(d.id);
+          const w = this.world.toGlobal({ x: d.x, y: d.y - 20 });
+          this.burst(w.x, w.y, 18, 1);
+        }
+      }
+    }
+    // the yard's animal strolls from one end to the other, stopping now and then
+    for (const p of this.pets) {
+      const cycle = 46; // seconds there and back
+      const u = ((T + p.phase) % cycle) / cycle;
+      const leg = u < 0.5 ? u * 2 : 2 - u * 2; // 0 → 1 → 0
+      const k = Math.min(1, Math.max(0, (leg - 0.08) / 0.84)); // a rest at each end
+      p.g.position.set(p.a.x + (p.b.x - p.a.x) * k, p.a.y + (p.b.y - p.a.y) * k - (k > 0 && k < 1 ? Math.abs(Math.sin(T * 9)) * 1.5 : 0));
+      p.g.scale.x = u < 0.5 ? 1 : -1;
+      p.g.zIndex = 1e6;
+    }
 
     this.sprites.forEach((s, key) => {
       const r = s.root;

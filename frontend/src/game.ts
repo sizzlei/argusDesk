@@ -1,6 +1,7 @@
 // The game: levels and badges worked out from finished tickets. The team's
 // total and the user's own numbers are shown; nobody else's are.
 
+import { nextItem, seasonItems, seasonYear } from './growth';
 import type { Badge, GameStats, Tally } from './types';
 import { fill, h } from './ui';
 
@@ -85,6 +86,32 @@ export function gameChip(stats: GameStats | null, open: boolean, toggle: () => v
   );
 }
 
+/** What the centre has grown this season, and what is still to come. */
+function dex(stats: GameStats) {
+  const year = seasonYear(stats.since);
+  const level = stats.team.level;
+  const items = seasonItems(year);
+  const have = items.filter((i) => level >= i.level).length;
+  const next = nextItem(level, year);
+  return [
+    h('h3', {}, `센터 도감 · ${year} 시즌 ${have}/${items.length}`),
+    h('p', { class: 'quiet dex-note' }, next ? `다음: 센터 Lv.${next.level}에 ${next.name}` : '이번 시즌의 것을 모두 모았습니다. 새 시즌에는 새것이 옵니다.'),
+    h(
+      'ul',
+      { class: 'badges dex' },
+      ...items.map((i) => {
+        const on = level >= i.level;
+        return h(
+          'li',
+          { class: on ? 'earned' : 'locked', title: on ? i.desc : `센터 Lv.${i.level}에 열립니다` },
+          h('span', { class: 'name' }, on ? i.name : '???'),
+          h('span', { class: 'quiet' }, on ? i.desc : `센터 Lv.${i.level}`),
+        );
+      }),
+    ),
+  ];
+}
+
 /** The panel behind the chip. */
 export function renderGame(stats: GameStats | null, open: boolean, close: () => void) {
   const el = document.getElementById('game')!;
@@ -107,5 +134,6 @@ export function renderGame(stats: GameStats | null, open: boolean, close: () => 
     h('ul', { class: 'badges' }, ...mine.map(badge)),
     h('h3', {}, `팀 배지 ${team.filter((b) => b.earned).length}/${team.length}`),
     h('ul', { class: 'badges' }, ...team.map(badge)),
+    ...dex(stats),
   );
 }

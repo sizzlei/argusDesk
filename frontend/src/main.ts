@@ -13,6 +13,7 @@ import { renderSetup } from './setup';
 import type { AppState, Box, Change, GameStats, Snapshot } from './types';
 import { checkForUpdates, initUpdates } from './update';
 import { showBriefing, watchPresence } from './briefing';
+import { arrived, seasonYear } from './growth';
 import { questTally, questsOpen, renderQuests, toggleQuests, updateQuests } from './quests';
 import { icon, initRailTips } from './rail';
 import { readDust } from './dust';
@@ -122,6 +123,7 @@ async function boot() {
   });
   scene.setMe(state.meId, state.me);
   await scene.init();
+  if (backend.mock) (window as unknown as { scene: Scene }).scene = scene; // the prototype: effects can be tried from the console
   // The weather outside, by the season; it turns every three hours.
   const sky = () => scene.setWeather(weatherOn() ? weatherAt() : 'clear');
   sky();
@@ -548,7 +550,16 @@ async function boot() {
   const score = (next: GameStats | null) => {
     if (!next) return;
     const fresh = news(game, next);
+    const prev = game;
     game = next;
+    // The centre grows with its level: what a level just reached brings drops into the yard.
+    const forcedYear = backend.mock ? Number(new URLSearchParams(location.search).get('season-year')) : NaN;
+    const year = forcedYear > 0 ? forcedYear : seasonYear(next.since);
+    const level = growthLevel(next.team.level);
+    const brought = prev && seasonYear(prev.since) === year ? arrived(growthLevel(prev.team.level), level, year) : [];
+    scene.setGrowth(level, year, brought.map((i) => i.id));
+    // my own work, just counted: the experience it earned rises from my avatar
+    if (prev && next.me.xp > prev.me.xp && seasonYear(prev.since) === year) scene.gain(`+${next.me.xp - prev.me.xp} XP`);
     loading(state, !!snap, true, false);
     quests();
     setStrength(next.myFatigue);
@@ -557,7 +568,7 @@ async function boot() {
     // Everything won at once is said once, with one celebration.
     const won = [
       fresh.myLevel ? `레벨 업! 나 Lv.${fresh.myLevel}` : '',
-      fresh.teamLevel ? `센터 레벨 업! Lv.${fresh.teamLevel}` : '',
+      fresh.teamLevel ? `센터 레벨 업! Lv.${fresh.teamLevel}${brought.length ? ` · 새로 생김: ${brought.map((i) => i.name).join(', ')}` : ''}` : '',
       fresh.badges.length === 1 ? `배지 획득: ${fresh.badges[0].name} · ${fresh.badges[0].desc}` : fresh.badges.length ? `배지 ${fresh.badges.length}개 획득: ${fresh.badges.map((b) => b.name).join(', ')}` : '',
     ].filter(Boolean);
     if (won.length) {
@@ -566,6 +577,11 @@ async function boot() {
     }
   };
   const fail = (e: unknown) => void toast(errText(e), 'error');
+  /** The centre level the yard shows: `?growth=N` sets it in the prototype, to look at. */
+  function growthLevel(level: number) {
+    const forced = backend.mock ? Number(new URLSearchParams(location.search).get('growth')) : NaN;
+    return forced > 0 ? forced : level;
+  }
 
   /** Takes a new app state: shows a setup page if something is missing. */
   function argusLogin() {
@@ -594,7 +610,20 @@ async function boot() {
     hud();
   }
 
+  // when my boxes were finished, for combos: three or more within ten minutes
+  let finishedAt: number[] = [];
   backend.onBoard((ev) => {
+    const before = snap;
+    const doneZone = (space: string, zone: string | undefined) => ev.snapshot.spaces.find((sp) => sp.id === space)?.zones.find((z) => z.id === zone)?.kind === 'done';
+    const mineDone = ev.changes.filter((c) => {
+      const was = before?.boxes.find((b) => b.key === c.key);
+      return c.kind === 'moved' && !!was?.mine && doneZone(was.space, c.toZone);
+    }).length;
+    if (mineDone) {
+      const now = Date.now();
+      finishedAt = [...finishedAt.filter((t) => now - t < 10 * 60_000), ...Array<number>(mineDone).fill(now)];
+      if (finishedAt.length >= 3) setTimeout(() => scene.combo(finishedAt.length), 900);
+    }
     snap = ev.snapshot;
     lastError = '';
     // dust monsters, from the whole centre; one swept away goes up in a puff
