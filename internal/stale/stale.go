@@ -95,11 +95,29 @@ func parseValue(s string, loc *time.Location) *time.Time {
 	return nil
 }
 
-// checked reports whether a checkbox field has any option ticked. Jira sends
-// null for none and an array of options otherwise.
+// checked reports whether a "settled" field says yes. A checkbox field is
+// yes when any option is ticked; a radio or select field holds one option,
+// which says yes unless its name says no ("배포 일정 미정", "N", "아니오").
 func checked(raw json.RawMessage) bool {
 	s := strings.TrimSpace(string(raw))
 	if s == "" || s == "null" || s == "[]" || s == "false" {
+		return false
+	}
+	var one struct {
+		Value string `json:"value"`
+	}
+	if json.Unmarshal(raw, &one) == nil && one.Value != "" {
+		return !jira.SaysNo(one.Value)
+	}
+	var many []struct {
+		Value string `json:"value"`
+	}
+	if json.Unmarshal(raw, &many) == nil {
+		for _, o := range many {
+			if !jira.SaysNo(o.Value) {
+				return true
+			}
+		}
 		return false
 	}
 	return true

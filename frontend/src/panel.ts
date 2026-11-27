@@ -159,9 +159,12 @@ function schedule(w: Win, a: TicketActions | undefined, redraw: () => void, back
   const fields = a?.fields ?? [];
   if (!fields.length && !a?.fieldsError) return [];
   const b = w.box;
-  const confirm = fields.find((f) => f.role === 'confirm' && f.editable && (f.kind === 'checkbox' || f.kind === 'option') && f.options.length);
+  const confirm = fields.find((f) => f.role === 'confirm' && f.editable && (f.kind === 'checkbox' || f.kind === 'option') && f.yes);
   const deploy = fields.find((f) => f.role === 'deploy');
-  const confirmed = !!confirm?.chosen.length;
+  // settled only when the option that says yes is the one chosen ("배포 일정 미정" is chosen too, and says no)
+  const confirmed = !!confirm && confirm.chosen.includes(confirm.yes);
+  const yes = () => [confirm!.yes];
+  const no = () => (confirm!.kind === 'option' && confirm!.no ? [confirm!.no] : []);
   const pending = !!confirm && !confirmed && confirming.has(b.key);
   const gated = !!confirm && !!deploy; // the date waits for the box
 
@@ -212,13 +215,13 @@ function schedule(w: Win, a: TicketActions | undefined, redraw: () => void, back
       if (box.checked) {
         // ticked: now the date can be chosen; nothing is saved yet
         confirming.add(b.key);
-        if (!deploy) void act(w, '배포 일정을 확정했습니다.', () => backend.setTicketField(b.key, confirm.id, confirm.kind, '', [confirm.options[0].id]), redraw);
+        if (!deploy) void act(w, '배포 일정을 확정했습니다.', () => backend.setTicketField(b.key, confirm.id, confirm.kind, '', yes()), redraw);
         else redraw();
       } else if (pending) {
         confirming.delete(b.key); // changed my mind before saving
         redraw();
       } else {
-        void act(w, '운영 배포 일정 확정을 해제했습니다.', () => backend.setTicketField(b.key, confirm.id, confirm.kind, '', []), redraw);
+        void act(w, '운영 배포 일정을 미정으로 돌렸습니다.', () => backend.setTicketField(b.key, confirm.id, confirm.kind, '', no()), redraw);
       }
     });
     rows.push(
@@ -237,7 +240,7 @@ function schedule(w: Win, a: TicketActions | undefined, redraw: () => void, back
     } else if (gated && f === deploy && !confirmed && !pending) {
       rows.push(readOnly(f, '확정하면 고를 수 있습니다'));
     } else if (gated && f === deploy && pending) {
-      rows.push(dateRow(f, '확정 저장', () => backend.setTicketField(b.key, confirm!.id, confirm!.kind, '', [confirm!.options[0].id])));
+      rows.push(dateRow(f, '확정 저장', () => backend.setTicketField(b.key, confirm!.id, confirm!.kind, '', yes())));
     } else {
       rows.push(dateRow(f, '저장'));
     }

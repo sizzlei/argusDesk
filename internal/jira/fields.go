@@ -11,6 +11,21 @@ import (
 	"time"
 )
 
+// SaysNo tells an option that means "not yet" or "no" from one that means
+// yes, by its name: "배포 일정 미정", "미확정", "N", "No", "아니오", "해당 없음".
+func SaysNo(name string) bool {
+	n := strings.ToLower(strings.TrimSpace(name))
+	if n == "n" || n == "no" || n == "false" || n == "x" {
+		return true
+	}
+	for _, w := range []string{"미정", "미확정", "미완료", "아니", "해당 없음", "해당없음", "없음", "보류", "not ", "none"} {
+		if strings.Contains(n, w) {
+			return true
+		}
+	}
+	return false
+}
+
 // EditField is one field of a ticket the team may change from its window,
 // with what it holds now.
 type EditField struct {
@@ -25,6 +40,10 @@ type EditField struct {
 	// "deploy" (when it goes to production), "date" (another date of the
 	// schedule) or "confirm" (the box that says the deployment date is settled).
 	Role string `json:"role"`
+	// For a yes-or-no field: the option that says yes, the one that says no
+	// ("" when there is none, as in a checkbox: then clearing it says no).
+	Yes string `json:"yes"`
+	No  string `json:"no"`
 }
 
 // EditFields reads the given fields of a ticket: whether this user may edit
@@ -117,6 +136,16 @@ func (c *Client) EditFields(ctx context.Context, key string, ids []string, loc *
 		}
 		if json.Unmarshal(raw, &one) == nil && one.ID != "" {
 			f.Chosen = []string{one.ID}
+		}
+		for _, o := range f.Options {
+			switch {
+			case SaysNo(o.Name):
+				if f.No == "" {
+					f.No = o.ID
+				}
+			case f.Yes == "":
+				f.Yes = o.ID
+			}
 		}
 		out = append(out, f)
 	}

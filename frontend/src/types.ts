@@ -276,6 +276,8 @@ export interface EditField {
   chosen: string[]; // option ids ticked
   editable: boolean;
   role: 'deploy' | 'date' | 'confirm' | ''; // what it means to the centre
+  yes: string; // a yes-or-no field: the option that says yes ("배포 일정 확정")
+  no: string; // the one that says no ("배포 일정 미정"); "" = clearing says no
 }
 
 /** What a person, or the whole team, has done in the season. */

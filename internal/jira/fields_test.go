@@ -18,9 +18,10 @@ func TestEditFieldsAndSetField(t *testing.T) {
 		case strings.HasSuffix(r.URL.Path, "/editmeta"):
 			_, _ = io.WriteString(w, `{"fields":{
 				"customfield_1":{"name":"배포 일시","schema":{"type":"datetime"}},
-				"customfield_2":{"name":"배포 확정","schema":{"type":"array","items":"option"},"allowedValues":[{"id":"9","value":"확정"}]}}}`)
+				"customfield_2":{"name":"배포 확정","schema":{"type":"array","items":"option"},"allowedValues":[{"id":"9","value":"확정"}]},
+				"customfield_3":{"name":"확정 여부","schema":{"type":"option"},"allowedValues":[{"id":"34927","value":"배포 일정 확정"},{"id":"34928","value":"배포 일정 미정"}]}}}`)
 		case r.Method == http.MethodGet:
-			_, _ = io.WriteString(w, `{"fields":{"customfield_1":"2026-11-27T14:30:00.000+0900","customfield_2":null,"duedate":"2026-11-28"},
+			_, _ = io.WriteString(w, `{"fields":{"customfield_1":"2026-11-27T14:30:00.000+0900","customfield_2":null,"customfield_3":{"id":"34928","value":"배포 일정 미정"},"duedate":"2026-11-28"},
 				"names":{"customfield_1":"배포 일시","customfield_2":"배포 확정","duedate":"기한"}}`)
 		case r.Method == http.MethodPut:
 			b, _ := io.ReadAll(r.Body)
@@ -29,7 +30,7 @@ func TestEditFieldsAndSetField(t *testing.T) {
 		}
 	})
 	ctx := context.Background()
-	got, err := c.EditFields(ctx, "A-1", []string{"customfield_1", "customfield_2", "duedate"}, seoul)
+	got, err := c.EditFields(ctx, "A-1", []string{"customfield_1", "customfield_2", "duedate", "customfield_3"}, seoul)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -41,6 +42,13 @@ func TestEditFieldsAndSetField(t *testing.T) {
 	}
 	if got[2].Editable || got[2].Value != "2026-11-28" || got[2].Name != "기한" {
 		t.Errorf("not on the edit screen = %+v", got[2])
+	}
+
+	if r := got[3]; r.Kind != "option" || r.Yes != "34927" || r.No != "34928" || len(r.Chosen) != 1 || r.Chosen[0] != "34928" {
+		t.Errorf("radio = %+v", r)
+	}
+	if got[1].Yes != "9" || got[1].No != "" {
+		t.Errorf("checkbox yes/no = %q %q", got[1].Yes, got[1].No)
 	}
 
 	if err := c.SetField(ctx, "A-1", "customfield_1", "datetime", "2026-11-28T09:00", nil, seoul); err != nil {

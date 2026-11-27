@@ -524,15 +524,15 @@ export function mockBackend(): Backend {
           : [];
       // the schedule, as the settings name it: a date-time, and (for some types) whether it is settled
       const local = (v?: string) => (v && v.length > 10 ? new Date(v).toLocaleString('sv-SE').slice(0, 16).replace(' ', 'T') : v ?? '');
-      const fields: EditField[] = [{ id: 'customfield_1', name: 'DT_작업완료요청일시', kind: 'datetime', options: [], value: local(b.deploy), chosen: [], editable: true, role: 'deploy' }];
-      if (b.type.includes('스키마')) fields.push({ id: 'customfield_2', name: 'DT_EDD_운영배포일정확정여부', kind: 'checkbox', options: [{ id: '9', name: '확정' }], value: '', chosen: settled.has(key) ? ['9'] : [], editable: true, role: 'confirm' });
+      const fields: EditField[] = [{ id: 'customfield_1', name: 'DT_작업완료요청일시', kind: 'datetime', options: [], value: local(b.deploy), chosen: [], editable: true, role: 'deploy', yes: '', no: '' }];
+      if (b.type.includes('스키마')) fields.push({ id: 'customfield_2', name: 'DT_EDD_운영배포일정확정여부', kind: 'option', options: [{ id: '34927', name: '배포 일정 확정' }, { id: '34928', name: '배포 일정 미정' }], value: '', chosen: [settled.has(key) ? '34927' : '34928'], editable: true, role: 'confirm', yes: '34927', no: '34928' });
       return { key, transitions: transitions.map((t) => ({ ...t, toZone: zoneOfStatus(t.toId) })), approvals, serviceDesk: b.space === 'requests', approvalsError: '', fields };
     },
     setTicketField: async (key, id, _kind, value, chosen) => {
       await pause();
       const b = find(key);
       if (id === 'customfield_1') b.deploy = value ? new Date(value).toISOString() : undefined;
-      if (id === 'customfield_2') chosen.length ? settled.add(key) : settled.delete(key);
+      if (id === 'customfield_2') chosen.includes('34927') ? settled.add(key) : settled.delete(key);
       b.updated = new Date(now + ++stamp).toISOString();
       publish([{ kind: 'updated', key }]);
     },

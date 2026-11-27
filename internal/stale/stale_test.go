@@ -113,3 +113,19 @@ func TestZoneWithoutRule(t *testing.T) {
 		t.Errorf("a zone without a rule never ages: %+v", r)
 	}
 }
+
+func TestSettledField(t *testing.T) {
+	for raw, want := range map[string]bool{
+		`null`:                      false,
+		`[]`:                        false,
+		`[{"id":"9","value":"확정"}]`: true,
+		`{"id":"34927","value":"배포 일정 확정"}`: true,
+		`{"id":"34928","value":"배포 일정 미정"}`: false,
+		`{"id":"1","value":"N"}`:            false,
+		`[{"id":"1","value":"해당 없음"}]`:      false,
+	} {
+		if got := checked(json.RawMessage(raw)); got != want {
+			t.Errorf("checked(%s) = %v, want %v", raw, got, want)
+		}
+	}
+}
