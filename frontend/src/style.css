@@ -3106,3 +3106,43 @@ dialog.diag pre {
   background: var(--accent, #3b5bdb);
   color: #fff;
 }
+
+/* Argus notices: unread ones summed up by severity, read ones folded away */
+.sev-tally {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 6px;
+}
+
+.tally-sev {
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  background: var(--line);
+}
+
+.tally-sev.crit {
+  background: #fde2e1;
+  color: #b42318;
+}
+
+.tally-sev.warn {
+  background: #fdf0d5;
+  color: #93590b;
+}
+
+.notice-more {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 4px 0 10px;
+}
+
+.notice-more:empty {
+  display: none;
+}
+
+.notice.server.read {
+  opacity: 0.55;
+}

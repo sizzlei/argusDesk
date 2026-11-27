@@ -4,6 +4,23 @@
 import type { Backend } from './backend';
 import type { TicketFile, AppState, Away, Badge, BoardEvent, Box, Change, CreateForm, GameStats, Member, Note, PathStep, ServerFeed, Snapshot, Tally, Vacation, ZoneView } from './types';
 
+// Made-up Argus notices, with times fixed when the page loads.
+const T0 = Math.floor(Date.now() / 3600000) * 3600000; // the same on a reload
+const mockNotices: ServerFeed['notices'] = [
+  { id: 1, category: '자동 백업 이상', severity: 'crit', title: 'orders-db 자동 백업 이상', target: 'prod orders-db', url: 'https://argus.example.com/databases/1', changed: new Date(T0 - 37 * 60000).toISOString(), due: '' },
+  { id: 2, category: '용량 경고', severity: 'warn', title: 'stats-db 용량 경고', target: 'prod stats-db', url: 'https://argus.example.com/databases/2', changed: new Date(T0 - 74 * 60000).toISOString(), due: '' },
+  { id: 3, category: '용량 경고', severity: 'warn', title: 'member-db 용량 경고', target: 'prod member-db', url: 'https://argus.example.com/databases/3', changed: new Date(T0 - 111 * 60000).toISOString(), due: '' },
+  { id: 4, category: '유지관리 예정', severity: 'info', title: 'pay-db 유지관리 예정', target: 'prod pay-db', url: 'https://argus.example.com/databases/4', changed: new Date(T0 - 148 * 60000).toISOString(), due: '' },
+  { id: 5, category: '유지관리 예정', severity: 'info', title: 'search-db 유지관리 예정', target: 'prod search-db', url: 'https://argus.example.com/databases/5', changed: new Date(T0 - 185 * 60000).toISOString(), due: '' },
+  { id: 6, category: '유지관리 예정', severity: 'info', title: 'coupon-db 유지관리 예정', target: 'prod coupon-db', url: 'https://argus.example.com/databases/6', changed: new Date(T0 - 222 * 60000).toISOString(), due: '' },
+  { id: 7, category: '용량 경고', severity: 'warn', title: 'delivery-db 용량 경고', target: 'prod delivery-db', url: 'https://argus.example.com/databases/7', changed: new Date(T0 - 259 * 60000).toISOString(), due: '' },
+  { id: 8, category: '유지관리 예정', severity: 'info', title: 'review-db 유지관리 예정', target: 'prod review-db', url: 'https://argus.example.com/databases/8', changed: new Date(T0 - 296 * 60000).toISOString(), due: '' },
+  { id: 9, category: '유지관리 예정', severity: 'info', title: 'event-db 유지관리 예정', target: 'prod event-db', url: 'https://argus.example.com/databases/9', changed: new Date(T0 - 333 * 60000).toISOString(), due: '' },
+  { id: 10, category: '복구 완료', severity: 'good', title: 'point-db 복구 완료', target: 'prod point-db', url: 'https://argus.example.com/databases/10', changed: new Date(T0 - 370 * 60000).toISOString(), due: '' },
+  { id: 11, category: '유지관리 예정', severity: 'info', title: 'stock-db 유지관리 예정', target: 'prod stock-db', url: 'https://argus.example.com/databases/11', changed: new Date(T0 - 407 * 60000).toISOString(), due: '' },
+  { id: 12, category: '유지관리 예정', severity: 'info', title: 'cart-db 유지관리 예정', target: 'prod cart-db', url: 'https://argus.example.com/databases/12', changed: new Date(T0 - 444 * 60000).toISOString(), due: '' },
+];
+
 const HOUR = 3600_000;
 
 const zones: Omit<ZoneView, 'count' | 'staleCount'>[] = [
@@ -417,13 +434,10 @@ export function mockBackend(): Backend {
       return state;
     },
     onServer: () => {},
-    // made-up notices from a team server, to show where they appear
+    // made-up notices from a team server, to show where they appear (fixed times: read ones stay read)
     serverFeed: async (): Promise<ServerFeed> => ({
-      notices: [
-        { id: 1, category: '자동 백업 이상', severity: 'crit', title: 'orders-db 자동 백업 지연', target: 'prod orders-db', url: 'https://argus.example.com/databases/1', changed: new Date(Date.now() - 40 * 60000).toISOString(), due: '' },
-        { id: 2, category: '유지관리 예정', severity: 'warn', title: 'stats-db 유지관리 예정', target: 'prod stats-db', url: 'https://argus.example.com/databases/2', changed: new Date(Date.now() - 5 * HOUR).toISOString(), due: new Date(Date.now() + 40 * HOUR).toISOString() },
-      ],
-      total: 2,
+      notices: mockNotices,
+      total: mockNotices.length,
       system: 'warn',
       systemUrl: 'https://argus.example.com/system-status',
       allUrl: 'https://argus.example.com/notifications',
