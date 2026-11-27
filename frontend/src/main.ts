@@ -287,11 +287,12 @@ async function boot() {
     ];
   };
   /** Opens a window for every ticket that goes to production today. */
-  const openDeploys = () => {
+  const openDeploys = (mine: boolean) => {
     if (!snap) return;
-    const list = deploysToday(snap);
+    const list = deploysToday(snap, mine);
+    const what = mine ? '내 오늘 배포' : '팀 전체 오늘 배포';
     list.slice(0, 6).forEach((d) => openTicket(d.box, snap!, backend, tickets));
-    toast(list.length > 6 ? `오늘 배포 ${list.length}건 중 6건을 열었습니다. 창은 6개까지 열립니다.` : `오늘 배포 ${list.length}건을 열었습니다.`);
+    toast(list.length > 6 ? `${what} ${list.length}건 중 6건을 열었습니다. 창은 6개까지 열립니다.` : `${what} ${list.length}건을 열었습니다.`);
   };
 
   /** Moves the day's quests along; a quest done, or the whole day, is celebrated. */
@@ -359,7 +360,7 @@ async function boot() {
       },
       search: openFinder,
       unassigned: unassigned(snap),
-      deploys: { count: deploysToday(snap).length, open: () => openDeploys() },
+      deploys: { mine: deploysToday(snap, true).length, all: deploysToday(snap).length, open: (mine) => openDeploys(mine) },
       notices: {
         ...noticeCount(snap),
         open: noticesOpen(),

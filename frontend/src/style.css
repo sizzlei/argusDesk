@@ -3570,8 +3570,16 @@ button.deploy-btn .n {
   }
 }
 
-@media (max-width: 1520px) {
-  #hud .tools .when {
+@media (max-width: 1640px) {
+  #hud .tools .when,
+  #hud .tools button.refresh .txt {
+    display: none;
+  }
+}
+
+@media (max-width: 1500px) {
+  #hud .deploy .deploy-btn .my,
+  #hud .team .member.me .pct {
     display: none;
   }
 }
@@ -3778,4 +3786,31 @@ button.deploy-btn .n {
 #profile .away-note {
   margin: 0 0 4px;
   font-size: 12px;
+}
+
+/* mine and the whole team's: two halves of one control */
+#hud .deploy {
+  display: inline-flex;
+}
+
+#hud .deploy .deploy-btn:first-child {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+#hud .deploy .deploy-btn.all {
+  margin-left: -1px;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  color: var(--ink);
+  font-weight: 500;
+}
+
+#hud .deploy .deploy-btn.all .n {
+  background: color-mix(in srgb, #7048e8 55%, #fff);
+}
+
+#hud .deploy .deploy-btn:disabled {
+  opacity: 0.55;
+  cursor: default;
 }

@@ -16,22 +16,25 @@ export function deployToday(b: Box, now = new Date()): string | null {
   return `${String(t.getHours()).padStart(2, '0')}:${String(t.getMinutes()).padStart(2, '0')}`;
 }
 
-/** Today's deployments still to be done, earliest first (those without an hour last). */
-export function deploysToday(snap: Snapshot | null): { box: Box; at: string }[] {
+/**
+ * Today's deployments still to be done, earliest first (those without an hour
+ * last). `mine`: only those I hold.
+ */
+export function deploysToday(snap: Snapshot | null, mine = false): { box: Box; at: string }[] {
   if (!snap) return [];
   // what is already done (or sent back) has nothing left to deploy
   const closed = new Set(snap.spaces.flatMap((sp) => sp.zones.filter((z) => z.kind === 'done' || z.kind === 'returned').map((z) => `${sp.id}/${z.id}`)));
   return snap.boxes
-    .filter((box) => !closed.has(`${box.space}/${box.zone}`))
+    .filter((box) => !closed.has(`${box.space}/${box.zone}`) && (!mine || box.mine))
     .map((box) => ({ box, at: deployToday(box) }))
     .filter((d): d is { box: Box; at: string } => d.at !== null)
     .sort((a, b) => (a.at || '99') .localeCompare(b.at || '99'));
 }
 
 const SHOWN = 'argusdesk.deployDay';
-/** True once a day: the first time it is asked on a day with deployments. */
+/** True once a day: the first time it is asked on a day with deployments of mine. */
 export function deployPopupDue(snap: Snapshot | null): boolean {
-  if (!deploysToday(snap).length) return false;
+  if (!deploysToday(snap, true).length) return false; // only mine bring the card up
   const today = dayOf(new Date());
   try {
     if (localStorage.getItem(SHOWN) === today) return false;

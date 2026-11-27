@@ -11,7 +11,7 @@ const SEEN_KEY = 'argusdesk.seenAt'; // when this window was last in view
 const GAP = 2 * 60 * 60 * 1000; // away this long: there is something to tell
 const MAX_ROWS = 6;
 // the tiles at the top are narrow: shorter names there
-const SHORT: Record<string, string> = { deploy: '오늘 배포', approval: '승인 대기', reply: '요청자 답변', new: '새 상자', moved: '내 상자 변화', stale: '묵은 상자' };
+const SHORT: Record<string, string> = { deploy: '내 오늘 배포', approval: '승인 대기', reply: '요청자 답변', new: '새 상자', moved: '내 상자 변화', stale: '묵은 상자' };
 
 let seenAt = read();
 let since = seenAt; // the absence the next briefing covers
@@ -66,10 +66,12 @@ export function showBriefing(snap: Snapshot | null, away: Away[], go: (box: Box)
   const at = (iso?: string) => (iso ? Date.parse(iso) : 0);
   const boxes = snap.boxes;
   const isNew = (b: Box) => at(b.created) > from;
-  const deploys = deploysToday(snap);
+  // my deployments; the team's are a button away in the top bar
+  const deploys = deploysToday(snap, true);
+  const teamDeploys = deploysToday(snap).length;
   const when = new Map(deploys.map((d) => [d.box.key, d.at]));
   const sections: [string, string, Box[]][] = [
-    ['deploy', '오늘 운영 배포', deploys.map((d) => d.box)],
+    ['deploy', teamDeploys > deploys.length ? `내 오늘 운영 배포 (팀 전체 ${teamDeploys}건)` : '내 오늘 운영 배포', deploys.map((d) => d.box)],
     ['approval', '내 승인 대기', boxes.filter((b) => b.myApproval)],
     ['reply', '요청자 답변', boxes.filter((b) => b.reply && (b.mine || !b.assigneeId))],
     ['new', '새로 들어온 상자', boxes.filter(isNew).sort((a, b) => at(b.created) - at(a.created))],
