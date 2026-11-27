@@ -76,6 +76,7 @@ type Prefs struct {
 	Site            string `json:"site"`            // Jira site last signed in to
 	Email           string `json:"email"`           // Jira e-mail last signed in with
 	LastUpdateCheck int64  `json:"lastUpdateCheck"` // unix ms
+	TrayTold        bool   `json:"trayTold"`        // told once that closing the window leaves the app in the tray
 	NotesShownFor   string `json:"notesShownFor"`   // version whose release notes were shown
 	NotifyOff       bool   `json:"notifyOff"`       // the user turned notifications off
 	VacationFrom    string `json:"vacationFrom"`    // own holiday as last saved from here, "2026-12-01"; shown until the team server has answered

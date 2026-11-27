@@ -18,6 +18,8 @@ export interface Backend {
   onServer(cb: (state: AppState) => void): void;
   serverFeed(): Promise<ServerFeed | null>;
   onFeed(cb: (feed: ServerFeed) => void): void;
+  /** The tray menu asks to open something: "notices" or "brief". */
+  onTray(cb: (what: string) => void): void;
   setNotify(on: boolean): Promise<AppState>;
   snapshot(): Promise<Snapshot | null>;
   refresh(): Promise<void>;
@@ -76,6 +78,7 @@ async function real(): Promise<Backend> {
     onServer: (cb) => void Events.On('server:state', (ev: { data: AppState }) => cb(ev.data)),
     serverFeed: () => call('ServerFeed'),
     onFeed: (cb) => void Events.On('server:feed', (ev: { data: ServerFeed }) => cb(ev.data)),
+    onTray: (cb) => void Events.On('tray:open', (ev: { data: string }) => cb(ev.data)),
     setNotify: (on) => call('SetNotify', on),
     snapshot: () => call('Snapshot'),
     refresh: () => call('Refresh'),

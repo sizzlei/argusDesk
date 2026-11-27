@@ -35,16 +35,20 @@ interface Step {
   /** The step is done by itself when this turns true. */
   until?(): boolean;
   next?: string;
+  /** The tour version that brought this step: someone who saw an older tour is shown the newer steps. */
+  since?: number;
 }
 
 const STORE = 'argusdesk.tour';
+/** Raise when steps are added (and mark them with `since`), so they are shown to those who saw the tour before. */
+const VERSION = 2;
 const key = (a: Parameters<typeof keyLabel>[0]) => keyLabel(a) || '단축키 없음';
 
 const steps = (): Step[] => [
   { title: '센터에 오신 걸 환영합니다', text: '여기는 팀의 Jira 티켓이 상자로 도착하는 곳입니다. 1분이면 한 바퀴 돕니다.', next: '둘러보기' },
   {
     title: '상자 하나가 티켓 하나',
-    text: '송장 띠의 색은 유형, 상자의 색은 얼마나 오래 머물렀는지입니다. 붉을수록 묵은 상자예요. 아무 상자나 눌러 보세요.',
+    text: '송장 띠의 색은 유형, 상자의 색은 얼마나 오래 머물렀는지입니다. 붉을수록 묵은 상자예요. 아무 상자나 눌러 보세요. 누르면 내 아바타도 그 방으로 걸어갑니다.',
     at: { room: 'box' },
     until: () => !!document.querySelector('#windows .tw'),
   },
@@ -54,6 +58,18 @@ const steps = (): Step[] => [
     at: '#windows .tw',
     enter: () => !!document.querySelector('#windows .tw'),
   },
+  {
+    title: '끌어다 놓기',
+    text: '상자를 끌어 다른 방에 놓으면 그 상태로 옮기고, 작업장의 책상 줄에 놓으면 그 사람에게 배정합니다. 놓기 전에 한 번 확인하니 안심하고 끌어 보세요.',
+    at: { room: 'box' },
+    enter: (host) => void host.closeWindows(),
+    since: 2,
+  },
+  {
+    title: '요청자 답변',
+    text: '상자 위에 "요청자 답변" 말풍선이 뜨면 요청자가 마지막으로 댓글을 단 것입니다. 공개 댓글로 답하면 말풍선이 사라집니다.',
+    since: 2,
+  },
   // the window opened two steps ago would stand in front of what comes next
   { title: '층', text: '층마다 Jira 프로젝트가 하나씩 있습니다. 지하 숙소에는 휴가 중인 사람이 쉬고 있어요.', at: '#floors', enter: (host) => void host.closeWindows() },
   {
@@ -62,19 +78,42 @@ const steps = (): Step[] => [
     at: { room: 'bench' },
     enter: (host) => host.toWritingFloor(),
   },
-  { title: '골라 보기', text: `전체, 내 작업, 미배정으로 좁혀 봅니다. 찾는 상자가 있으면 ${key('search')}로 바로 갑니다.`, at: '#hud .scope', enter: (host) => void host.toFirstFloor() },
-  { title: '알림', text: '내 승인을 기다리는 상자와 Argus가 보낸 알림이 여기에 모입니다.', at: '#hud .bell' },
+  {
+    title: '골라 보기',
+    text: `전체, 내 작업, 미배정으로 좁혀 봅니다. ${key('mine')}을 누를 때마다 차례로 바뀌고, 찾는 상자가 있으면 ${key('search')}로 바로 갑니다.`,
+    at: '#hud .scope',
+    enter: (host) => void host.toFirstFloor(),
+    since: 2,
+  },
+  { title: '알림', text: '내 승인을 기다리는 상자와 Argus가 보낸 알림이 여기에 모입니다. 읽은 Argus 알림은 접혀 들어갑니다.', at: '#hud .bell' },
+  {
+    title: '출근 브리핑',
+    text: '두 시간 넘게 자리를 비웠다 돌아오면, 그사이 들어온 상자와 내 승인 대기, 요청자 답변을 한 장으로 정리해 드립니다. 내 상태에서 언제든 다시 볼 수 있어요.',
+    since: 2,
+  },
   { title: '내 상태', text: '내 아바타를 누르면 피로도와 가진 작업이 보입니다. 휴가 등록, 아바타, 단축키 설정도 여기에 있어요. 피로도가 0이 되면 그 주에는 상자를 더 가져올 수 없습니다.', at: '#hud .team .member.me, #hud [aria-controls="profile"]' },
   { title: '기록', text: '끝낸 작업은 경험치와 배지로 쌓입니다. 센터 레벨은 팀이 함께 올립니다.', at: '#hud .game-chip' },
+  {
+    title: '창을 닫아도',
+    text: '창을 닫아도 센터는 메뉴 막대(Windows는 작업 표시줄 알림 영역)의 상자 아이콘으로 계속 돌며 알림을 보냅니다. 아이콘 옆 숫자는 내 승인 대기와 요청자 답변의 수입니다. 끄려면 아이콘 메뉴의 "종료"를 고릅니다.',
+    since: 2,
+  },
   { title: '준비 끝', text: '이제 센터를 맡깁니다. 이 안내는 내 상태에서 다시 볼 수 있습니다.', next: '시작하기' },
 ];
 
-export function tourSeen() {
+/** The version of the tour seen on this computer (0 = never; "done" was the first). */
+function seenVersion(): number {
   try {
-    return localStorage.getItem(STORE) === 'done';
+    const v = localStorage.getItem(STORE);
+    return v === 'done' ? 1 : Number(v?.replace(/^v/, '')) || 0;
   } catch {
-    return true; // nowhere to remember it: do not show it on every start
+    return VERSION; // nowhere to remember it: do not show it on every start
   }
+}
+
+/** Whether the latest tour, or what is new in it, has been seen here. */
+export function tourSeen() {
+  return seenVersion() >= VERSION;
 }
 
 let running = false;
@@ -88,11 +127,23 @@ function guide() {
   return el;
 }
 
-/** Plays the tour. `done` is told when it ends, finished or skipped. */
-export function startTour(host: TourHost, done: () => void = () => {}) {
+/**
+ * Plays the tour. `done` is told when it ends, finished or skipped. Someone
+ * who saw an older tour is shown only what is new, unless `full`.
+ */
+export function startTour(host: TourHost, done: () => void = () => {}, full = false) {
   if (running) return;
   running = true;
-  const list = steps();
+  const seen = seenVersion();
+  const all = steps();
+  const list: Step[] =
+    !full && seen > 0 && seen < VERSION
+      ? [
+          { title: '새로 생긴 것이 있어요', text: '지난번 둘러보기 이후에 생긴 것만 짧게 보여 드릴게요.', next: '보기' },
+          ...all.filter((s) => (s.since ?? 1) > seen),
+          { title: '여기까지입니다', text: '처음부터 다시 보려면 내 상태의 "둘러보기 다시 보기"를 누르세요.', next: '닫기' },
+        ]
+      : all;
   let at = 0;
   const hole = h('div', { class: 'tour-hole' });
   const title = h('strong', {});
@@ -143,7 +194,7 @@ export function startTour(host: TourHost, done: () => void = () => {}) {
     window.removeEventListener('resize', place);
     root.remove();
     try {
-      localStorage.setItem(STORE, 'done');
+      localStorage.setItem(STORE, `v${VERSION}`);
     } catch {
       // it will be offered again next time
     }

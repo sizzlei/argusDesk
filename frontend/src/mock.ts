@@ -446,6 +446,7 @@ export function mockBackend(): Backend {
       allUrl: 'https://argus.example.com/notifications',
     }),
     onFeed: () => {},
+    onTray: () => {},
     setNotify: async (on) => {
       state.notify = on;
       return state;

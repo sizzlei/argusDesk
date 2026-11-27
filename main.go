@@ -52,12 +52,13 @@ func main() {
 			Handler: fresh(application.AssetFileServerFS(assets)),
 		},
 		Mac: application.MacOptions{
-			ApplicationShouldTerminateAfterLastWindowClosed: true,
+			// The window is only hidden when closed: the app stays in the menu bar.
+			ApplicationShouldTerminateAfterLastWindowClosed: false,
 		},
 	})
 	svc.app = app
 
-	app.Window.NewWithOptions(application.WebviewWindowOptions{
+	win := app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title:            "ArgusDesk",
 		Width:            1280,
 		Height:           800,
@@ -66,6 +67,8 @@ func main() {
 		BackgroundColour: application.NewRGB(237, 240, 244),
 		URL:              "/",
 	})
+
+	svc.tray = startTray(app, win, svc)
 
 	if err := app.Run(); err != nil {
 		log.Fatal(err)

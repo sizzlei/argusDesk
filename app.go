@@ -58,6 +58,7 @@ type App struct {
 	srv serverState // the optional team server
 
 	notify notifier
+	tray   *tray // the menu bar / notification area icon (nil in tests)
 
 	gameStats *game.Stats
 	// The season's finished tickets, kept between reads (see seasonDones).
@@ -588,6 +589,7 @@ func (a *App) startPolling() {
 					notes = []board.Note{}
 				}
 				a.app.Event.Emit(evSnapshot, BoardEvent{Snapshot: snap, Changes: changes, Notes: notes})
+				a.tray.status(snap)
 				a.mu.Lock()
 				wanted := !a.prefs.NotifyOff
 				a.mu.Unlock()
@@ -1063,6 +1065,10 @@ func (a *App) RestartApp() error {
 	}
 	if err := a.restart(); err != nil {
 		return fmt.Errorf("새 버전을 시작할 수 없습니다: %w", err)
+	}
+	if a.tray != nil {
+		a.tray.quit() // through the tray, so closing the window is not taken for hiding it
+		return nil
 	}
 	a.app.Quit()
 	return nil

@@ -240,7 +240,7 @@ async function boot() {
       !!state.server && { label: 'Argus 연결 끊기', run: () => void backend.forgetServer().then(apply, fail) },
       { label: scene.hours ? '시간대 조명 끄기' : '시간대 조명 켜기', run: () => setHours(!scene.hours), note: '저녁과 밤에 센터 조명이 어두워집니다' },
       { label: '출근 브리핑 보기', run: () => showBriefing(snap, game?.away ?? [], visit, true), note: '내 승인 대기, 요청자 답변, 새로 들어온 상자, 내 묵은 상자' },
-      { label: '둘러보기 다시 보기', run: () => tour() },
+      { label: '둘러보기 다시 보기', run: () => tour(true) },
       { label: '단축키 설정', run: () => openKeySettings(), note: `송장 쓰기 ${keyLabel('write') || '없음'} · 상자 찾기 ${keyLabel('search') || '없음'} · Esc 창 닫기` },
       { label: '진단 정보', run: () => void openDiagnostics(() => backend.diagnostics()) },
       { label: '업데이트 확인', run: () => void checkForUpdates(true) },
@@ -318,7 +318,7 @@ async function boot() {
   };
   let legendOpen = false;
   /** Plays the tour of the centre. */
-  const tour = () => {
+  const tour = (full = false) => {
     if (!snap || tourRunning()) return;
     only('');
     gameOpen = false;
@@ -343,7 +343,7 @@ async function boot() {
       toFirstFloor: () => to(home),
       closeWindows: () => closeTickets(tickets),
       celebrate: () => scene.celebrate(),
-    });
+    }, () => {}, full);
   };
   const floor = (step: number) => {
     if (!snap) return;
@@ -525,6 +525,14 @@ async function boot() {
     hud();
   };
   backend.onFeed(fed);
+  // From the tray menu: the notices, or the briefing.
+  backend.onTray((what) => {
+    if (what === 'notices') {
+      only('notices');
+      toggleNotices(true);
+      hud();
+    } else if (what === 'brief') showBriefing(snap, game?.away ?? [], visit, true);
+  });
   void backend.serverFeed().then(fed, () => {});
   backend.onError((err) => {
     lastError = err.message;
@@ -552,7 +560,7 @@ async function boot() {
   initUpdates(backend);
   // Back after a long absence: what happened meanwhile, once the centre is in view.
   watchPresence(() => {
-    const ready = () => snap && !tourRunning() && !document.querySelector('#setup:not([hidden])');
+    const ready = () => snap && tourSeen() && !tourRunning() && !document.querySelector('#setup:not([hidden])');
     const show = () => showBriefing(snap, game?.away ?? [], visit);
     if (ready()) return show();
     const wait = window.setInterval(() => ready() && (window.clearInterval(wait), show()), 1000);
