@@ -9,13 +9,15 @@ export interface Who {
 
 /**
  * Lets people be picked with "@" in a text area. `host` is the box around
- * the text area, where the list is shown. Whoever is picked is added to
+ * the text area. The list floats over the page, not inside the box: a ticket
+ * window would cut it off at its edge. It opens below the text area when
+ * there is room, otherwise above it. Whoever is picked is added to
  * `picked`: the text then says "@" and the name, and Jira is told who is meant
  * when the comment is sent.
  */
 export function mentions(text: HTMLTextAreaElement, host: HTMLElement, picked: Who[], find: (query: string) => Promise<Who[]>, changed: () => void) {
+  void host;
   const list = h('ul', { class: 'mention-list', role: 'listbox', 'aria-label': '멘션할 사람', hidden: true });
-  host.append(list);
   let found: Who[] = [];
   let at = -1; // where the "@" being written is
   let on = 0; // the row the keys are on
@@ -25,6 +27,7 @@ export function mentions(text: HTMLTextAreaElement, host: HTMLElement, picked: W
   const close = () => {
     at = -1;
     list.hidden = true;
+    list.remove();
     window.clearTimeout(timer);
     asked++;
   };
@@ -42,8 +45,20 @@ export function mentions(text: HTMLTextAreaElement, host: HTMLElement, picked: W
             return row;
           })),
     );
-    list.style.top = `${text.offsetTop + text.offsetHeight + 2}px`;
+    if (!list.isConnected) document.body.append(list);
     list.hidden = false;
+    place();
+  };
+  // Next to the text area, inside the screen: below it, or above when below is short.
+  const place = () => {
+    const r = text.getBoundingClientRect();
+    const hgt = list.offsetHeight;
+    const below = window.innerHeight - r.bottom - 8;
+    const up = below < hgt && r.top - 8 > below;
+    list.style.top = up ? `${Math.max(8, r.top - hgt - 4)}px` : `${r.bottom + 4}px`;
+    list.style.left = `${Math.max(8, Math.min(r.left, window.innerWidth - list.offsetWidth - 8))}px`;
+    list.style.maxWidth = `${Math.max(200, r.width)}px`;
+    list.classList.toggle('up', up);
   };
   const pick = (p: Who) => {
     const end = text.selectionStart;
