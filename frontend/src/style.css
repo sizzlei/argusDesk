@@ -3156,3 +3156,73 @@ dialog.diag pre {
   font: inherit;
   font-size: 12px;
 }
+
+/* Room counters: see-through so the building shows behind them, solid
+   under the pointer, and foldable down to one total. */
+#hud .zones {
+  background: color-mix(in srgb, var(--surface) 55%, transparent);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  transition: background 0.15s ease, box-shadow 0.15s ease;
+}
+
+#hud .zones:hover,
+#hud .zones:focus-within {
+  background: color-mix(in srgb, var(--surface) 94%, transparent);
+}
+
+#hud .zones li:not(.fold) {
+  background: color-mix(in srgb, var(--paper) 65%, transparent);
+}
+
+#hud .zones .fold {
+  padding: 0;
+  background: none;
+}
+
+#hud .zones .fold button {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 3px 8px;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  color: var(--quiet);
+  font: inherit;
+  cursor: pointer;
+}
+
+#hud .zones .fold button:hover {
+  background: var(--paper);
+  color: var(--ink);
+}
+
+#hud .zones .fold .ico {
+  display: inline-block;
+  transform: rotate(90deg);
+  transition: transform 0.15s ease;
+}
+
+#hud .zones .fold .sum {
+  display: none;
+}
+
+#hud .zones.min li:not(.fold) {
+  display: none;
+}
+
+#hud .zones.min .fold .ico {
+  transform: rotate(-90deg);
+}
+
+#hud .zones.min .fold .sum {
+  display: inline-flex;
+  gap: 5px;
+  align-items: baseline;
+  color: var(--ink);
+}
+
+#hud .zones.min .fold .sum em {
+  font-style: normal;
+}

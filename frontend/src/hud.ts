@@ -49,6 +49,16 @@ export const SERVER_NEEDS: Record<string, string> = {
   site: '서버에 Jira 사이트 주소가 정해져 있지 않습니다. 서버 관리자에게 알려 주세요.',
 };
 
+// The room counters at the bottom can be folded to one line; kept between starts.
+const ZONES_KEY = 'argusdesk.zones';
+let zonesMin = (() => {
+  try {
+    return localStorage.getItem(ZONES_KEY) === 'min';
+  } catch {
+    return false;
+  }
+})();
+
 const TIRED = ['여유', '피곤', '소진'];
 
 /**
@@ -148,7 +158,32 @@ export function renderHud(state: AppState, snap: Snapshot | null, space: number,
     ),
     h(
       'ul',
-      { class: 'zones', 'aria-label': '구역별 상자 수' },
+      { class: `zones${zonesMin ? ' min' : ''}`, 'aria-label': '구역별 상자 수' },
+      h(
+        'li',
+        { class: 'fold' },
+        h(
+          'button',
+          {
+            'aria-expanded': String(!zonesMin),
+            title: zonesMin ? '구역별 상자 수 펼치기' : '구역별 상자 수 접기',
+            onclick: (e: Event) => {
+              zonesMin = !zonesMin;
+              try {
+                localStorage.setItem(ZONES_KEY, zonesMin ? 'min' : '');
+              } catch {
+                /* kept for this run only */
+              }
+              const list = (e.currentTarget as HTMLElement).closest('ul')!;
+              list.classList.toggle('min', zonesMin);
+              (e.currentTarget as HTMLElement).setAttribute('aria-expanded', String(!zonesMin));
+              (e.currentTarget as HTMLElement).title = zonesMin ? '구역별 상자 수 펼치기' : '구역별 상자 수 접기';
+            },
+          },
+          h('span', { class: 'ico', 'aria-hidden': 'true' }, '›'),
+          h('span', { class: 'sum' }, `상자 ${zones.reduce((n, z) => n + z.count, 0)}`, zones.some((z) => z.staleCount) ? h('em', { title: '묵은 상자' }, String(zones.reduce((n, z) => n + (z.staleCount || 0), 0))) : null),
+        ),
+      ),
       ...zones.map((z) =>
         h(
           'li',
