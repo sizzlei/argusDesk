@@ -292,7 +292,7 @@ function renderRails(snap: Snapshot | null, hooks: HudHooks) {
           'div',
           { class: 'deploy', role: 'group', 'aria-label': '오늘 운영 배포' },
           railButton(
-            'rocket',
+            'truck',
             hooks.deploys.mine ? `오늘 내 배포 ${hooks.deploys.mine}건 모두 열기` : '오늘 배포할 내 티켓이 없습니다',
             { class: 'ib deploy-btn', disabled: !hooks.deploys.mine, onclick: () => hooks.deploys.open(true) },
             hooks.deploys.mine ? String(hooks.deploys.mine) : null,

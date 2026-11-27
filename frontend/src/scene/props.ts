@@ -364,10 +364,11 @@ export function lamp(g: Graphics, gx: number, gy: number) {
 }
 
 /** A delivery truck parked outside the dock. */
-export function truck(g: Graphics, gx: number, gy: number) {
+export function truck(g: Graphics, gx: number, gy: number, cab = ACCENT, stripe = 0) {
   shadow(g, gx, gy, 2.9, 1.1);
   block(g, gx, gy, 1.9, 1.1, 34, 0xf7f9fc, 8); // cargo
-  block(g, gx + 1.95, gy + 0.05, 0.85, 1.0, 24, ACCENT, 8); // cab
+  if (stripe) block(g, gx - 0.01, gy - 0.01, 1.92, 1.12, 6, stripe, 24); // the express line's band
+  block(g, gx + 1.95, gy + 0.05, 0.85, 1.0, 24, cab, 8); // cab
   block(g, gx + 2.45, gy + 0.1, 0.36, 0.9, 10, 0xbfd3f7, 20); // windscreen
   for (const wx of [0.35, 1.35, 2.3]) {
     const p = iso(gx + wx, gy + 1.1);

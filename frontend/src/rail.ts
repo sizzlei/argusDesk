@@ -9,7 +9,7 @@ const PATHS: Record<string, string> = {
   mine: '<circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/>',
   unassigned: '<path d="M12 3 21 8v8l-9 5-9-5V8z"/><path d="m3 8 9 5 9-5M12 13v8" stroke-dasharray="2 2.5"/>',
   filter: '<path d="M3 5h18l-7 8v6l-4 2v-8z"/>',
-  rocket: '<path d="M12 15l-3-3c1.5-5 5-8.5 10-9-.5 5-4 8.5-9 10z"/><path d="M9 12l-4 1 2-4h4M12 15l-1 4 4-2v-4"/><circle cx="15" cy="9" r="1.4"/>',
+  truck: '<path d="M2 6h12v10H2z"/><path d="M14 9h4.5L22 12.5V16h-8"/><circle cx="6.5" cy="17.5" r="1.9"/><circle cx="17.5" cy="17.5" r="1.9"/>',
   bell: '<path d="M6 16V11a6 6 0 1 1 12 0v5l2 2H4z"/><path d="M10 20a2 2 0 0 0 4 0"/>',
   flag: '<path d="M5 21V4M5 4h11l-2 4 2 4H5"/>',
   trophy: '<path d="M8 4h8v5a4 4 0 0 1-8 0z"/><path d="M8 6H4a3 3 0 0 0 4 4M16 6h4a3 3 0 0 1-4 4M12 13v4M8 21h8M9 17h6"/>',
