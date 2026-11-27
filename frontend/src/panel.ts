@@ -27,6 +27,7 @@ interface Win {
   cancelEl: HTMLElement | null; // top of the window: where a request is cancelled
   claimEl: HTMLElement | null; // top of the window: taking a box nobody holds
   min: boolean; // minimised: shrunk to its title bar, still where it was put
+  max: { left: string; top: string; w: string; h: string } | null; // filling the room: where it was before
   size: { w: string; h: string }; // its size before it was minimised
   text: HTMLTextAreaElement | null; // the comment box's text area
   commentBox: HTMLElement | null; // built with the actions, shown with the comments
@@ -458,7 +459,7 @@ function renderActions(w: Win, snap: Snapshot, backend: Backend) {
   const draft = drafts.get(b.key) ?? { text: '', isPublic: true, who: [] };
   const old = w.text;
   const focused = old && document.activeElement === old ? [old.selectionStart, old.selectionEnd] : null;
-  const text = h('textarea', { class: 'comment-text', rows: '3', placeholder: '댓글 쓰기 · @으로 멘션 · ```로 코드 블록', 'aria-label': `${b.key} 댓글`, disabled: off });
+  const text = h('textarea', { class: 'comment-text', rows: '2', placeholder: '댓글 쓰기 · @으로 멘션 · ```로 코드 블록', 'aria-label': `${b.key} 댓글`, disabled: off });
   w.text = text;
   text.value = draft.text;
   const send = h('button', { class: 'primary' });
@@ -738,7 +739,7 @@ function draw(w: Win, snap: Snapshot, backend: Backend) {
   w.talkEl = h('div', { class: 'tw-talk' });
   w.actionsEl = h('section', { class: 'tw-actions' });
   w.cancelEl = h('span', { class: 'tw-cancel' });
-  w.claimEl = h('div', { class: 'tw-claim', hidden: !!b.assigneeId });
+  w.claimEl = null; // the assign button sits with the actions; the pill line says "미배정"
   // Minimised, the title bar shows the type as a colour only, then the number and the summary.
   w.el.querySelector('.tw-title')!.replaceChildren(
     h('span', { class: `tag tag-${b.tag || 'gray'}`, title: b.type }, h('span', { class: 'tag-name' }, b.type)),
@@ -759,7 +760,6 @@ function draw(w: Win, snap: Snapshot, backend: Backend) {
     ),
     h('h2', {}, b.summary),
     pills(b, zone?.name),
-    w.claimEl,
   );
   const read = h(
     'div',
@@ -810,6 +810,7 @@ function pills(b: Box, zone: string | undefined) {
     { class: 'tw-pills' },
     h('span', { class: 'pill status', title: zone ? `구역: ${zone}` : undefined }, b.status),
     zone ? h('span', { class: 'pill' }, zone) : null,
+    b.assigneeId ? null : h('span', { class: 'pill loose', title: '담당자가 없는 상자입니다. 처리에서 나에게 배정할 수 있습니다' }, '미배정'),
     b.stale ? h('span', { class: 'pill stale', title: '오래 머문 상자입니다' }, '묵음') : null,
     b.urgent ? h('span', { class: 'pill urgent' }, '긴급') : null,
     b.reply ? h('span', { class: 'pill reply', title: dateTime(b.reply) }, '요청자 답변') : null,
@@ -836,9 +837,60 @@ function railWidth(side: 'left' | 'right') {
   return document.getElementById(`rail-${side}`)?.getBoundingClientRect().width ?? 0;
 }
 
+const MIN_W = 380;
+const MIN_H = 240;
+const SIZE_KEY = 'argusdesk.ticketSize';
+
+/** The size a window was last resized to: new windows open at it. */
+function keptSize(): { w: number; h: number } | null {
+  try {
+    const v = JSON.parse(localStorage.getItem(SIZE_KEY) ?? 'null') as { w?: unknown; h?: unknown } | null;
+    return v && typeof v.w === 'number' && typeof v.h === 'number' ? { w: v.w, h: v.h } : null;
+  } catch {
+    return null;
+  }
+}
+
+function keepSize(w: number, h: number) {
+  try {
+    localStorage.setItem(SIZE_KEY, JSON.stringify({ w: Math.round(w), h: Math.round(h) }));
+  } catch {
+    // kept for this run's windows only
+  }
+}
+
+function markMax(w: Win) {
+  w.el.classList.toggle('maxed', !!w.max);
+  const grow = w.el.querySelector<HTMLElement>('.grow')!;
+  grow.textContent = w.max ? '❐' : '□';
+  grow.title = w.max ? '원래 크기로 (제목 두 번 클릭)' : '크게 보기 (제목 두 번 클릭)';
+  grow.setAttribute('aria-label', `${w.key} 창 ${w.max ? '원래 크기로' : '크게 보기'}`);
+}
+
+/** Fills the room between the rails with a window, or puts it back where it was. */
+function setMax(w: Win, on: boolean) {
+  const host = w.el.parentElement;
+  if (!host || on === !!w.max) return;
+  if (w.min) setMin(w, false);
+  const st = w.el.style;
+  if (on) {
+    w.max = { left: st.left, top: st.top, w: st.width, h: st.height };
+    const left = railWidth('left') + 24;
+    st.left = `${left}px`;
+    st.top = '74px';
+    st.width = `${host.clientWidth - left - railWidth('right') - 24}px`;
+    st.height = `${host.clientHeight - 74 - 12}px`;
+  } else if (w.max) {
+    ({ left: st.left, top: st.top, w: st.width, h: st.height } = w.max);
+    w.max = null;
+  }
+  markMax(w);
+}
+
 /** Shrinks a window to its title bar, or opens it out again at the size it had. */
 function setMin(w: Win, min: boolean) {
   if (w.min === min) return;
+  if (min && w.max) setMax(w, false);
   w.min = min;
   if (min) {
     w.size = { w: w.el.style.width, h: w.el.style.height };
@@ -897,11 +949,13 @@ export function openTicket(b: Box, snap: Snapshot, backend: Backend, hooks: Tick
   const title = h('div', { class: 'tw-title' });
   const shut = h('button', { class: 'close', 'aria-label': `${b.key} 창 닫기` }, '×');
   const fold = h('button', { class: 'close fold', 'aria-label': `${b.key} 창 최소화`, title: '최소화' }, '–');
-  const head = h('header', { class: 'tw-head' }, title, h('span', { class: 'tw-buttons' }, fold, shut));
+  const grow = h('button', { class: 'close grow', 'aria-label': `${b.key} 창 크게 보기`, title: '크게 보기 (제목 두 번 클릭)' }, '□');
+  const head = h('header', { class: 'tw-head' }, title, h('span', { class: 'tw-buttons' }, fold, grow, shut));
   const body = h('div', { class: 'tw-body' });
   const foot = h('footer', { class: 'tw-foot' }, h('div', { class: 'comment-slot' }));
-  const el = h('section', { class: 'tw', role: 'dialog', 'aria-label': `${b.key} ${b.summary}` }, head, body, foot);
-  const win: Win = { key: b.key, box: b, el, body, actionsEl: null, detailEl: null, talkEl: null, cancelEl: null, claimEl: null, min: false, size: { w: '', h: '' }, text: null, commentBox: null, busy: false, commenting: false, attach: false, sending: 0, pending: null };
+  const edges = ['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw'].map((d) => h('div', { class: `tw-edge ${d}`, 'data-edge': d, 'aria-hidden': 'true' }));
+  const el = h('section', { class: 'tw', role: 'dialog', 'aria-label': `${b.key} ${b.summary}` }, head, body, foot, ...edges);
+  const win: Win = { key: b.key, box: b, el, body, actionsEl: null, detailEl: null, talkEl: null, cancelEl: null, claimEl: null, min: false, max: null, size: { w: '', h: '' }, text: null, commentBox: null, busy: false, commenting: false, attach: false, sending: 0, pending: null };
   w = win;
   wins.set(b.key, win);
 
@@ -910,17 +964,66 @@ export function openTicket(b: Box, snap: Snapshot, backend: Backend, hooks: Tick
   // Wide enough for two columns when the screen allows, left of the right rail.
   const right = railWidth('right') + 24;
   const room = host.clientWidth - right - railWidth('left') - 36;
-  const width = Math.max(360, Math.min(860, room));
+  const kept = keptSize();
+  const width = Math.max(380, Math.min(kept?.w ?? 860, room));
   el.style.width = `${width}px`;
+  if (kept) el.style.height = `${Math.max(240, Math.min(kept.h, host.clientHeight - 74 - n * 30 - 12))}px`;
   el.style.left = `${Math.max(railWidth('left') + 24, host.clientWidth - width - right - n * 32)}px`;
   el.style.top = `${74 + n * 30}px`;
 
   shut.addEventListener('click', () => close(win, hooks));
   // Minimised, a window is just its title bar: small, and still movable.
   fold.addEventListener('click', () => setMin(win, !win.min));
+  // Bigger: the window fills the room between the rails; again, back where it was.
+  grow.addEventListener('click', () => setMax(win, !win.max));
   head.addEventListener('dblclick', (e) => {
-    if (!(e.target as HTMLElement).closest('button')) setMin(win, !win.min);
+    if (!(e.target as HTMLElement).closest('button')) setMax(win, !win.max);
   });
+  // Any edge or corner resizes the window; the size is kept for the next ones.
+  edges.forEach((edge) =>
+    edge.addEventListener('pointerdown', (e) => {
+      if (win.min) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const d = edge.dataset.edge!;
+      const start = { x: e.clientX, y: e.clientY, l: el.offsetLeft, t: el.offsetTop, w: el.offsetWidth, h: el.offsetHeight };
+      edge.setPointerCapture(e.pointerId);
+      el.classList.add('sizing');
+      if (win.max) {
+        win.max = null;
+        markMax(win);
+      }
+      const move = (m: PointerEvent) => {
+        const dx = m.clientX - start.x;
+        const dy = m.clientY - start.y;
+        let { l, t, w, h: ht } = start;
+        if (d.includes('e')) w = Math.min(host.clientWidth - l - 4, start.w + dx);
+        if (d.includes('s')) ht = Math.min(host.clientHeight - t - 4, start.h + dy);
+        if (d.includes('w')) {
+          w = Math.max(MIN_W, Math.min(start.w - dx, start.l + start.w - 4));
+          l = start.l + start.w - w;
+        }
+        if (d.includes('n')) {
+          ht = Math.max(MIN_H, Math.min(start.h - dy, start.t + start.h));
+          t = start.t + start.h - ht;
+        }
+        el.style.left = `${l}px`;
+        el.style.top = `${t}px`;
+        el.style.width = `${Math.max(MIN_W, w)}px`;
+        el.style.height = `${Math.max(MIN_H, ht)}px`;
+      };
+      const stop = () => {
+        edge.removeEventListener('pointermove', move);
+        edge.removeEventListener('pointerup', stop);
+        edge.removeEventListener('pointercancel', stop);
+        el.classList.remove('sizing');
+        keepSize(el.offsetWidth, el.offsetHeight);
+      };
+      edge.addEventListener('pointermove', move);
+      edge.addEventListener('pointerup', stop);
+      edge.addEventListener('pointercancel', stop);
+    }),
+  );
   el.addEventListener(
     'pointerdown',
     (e) => {
@@ -950,7 +1053,7 @@ export function openTicket(b: Box, snap: Snapshot, backend: Backend, hooks: Tick
   });
   // drag by the title bar, kept inside the window of the app
   head.addEventListener('pointerdown', (e) => {
-    if ((e.target as HTMLElement).closest('button')) return;
+    if ((e.target as HTMLElement).closest('button') || win.max) return;
     const sx = e.clientX - el.offsetLeft;
     const sy = e.clientY - el.offsetTop;
     head.setPointerCapture(e.pointerId);

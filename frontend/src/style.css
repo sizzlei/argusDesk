@@ -4486,3 +4486,133 @@ button.deploy-btn .n {
   margin: 8px 0 0;
   padding: 4px 6px 4px 10px;
 }
+
+/* ---- ticket windows: resized from any edge, made big, smaller answer box ---- */
+
+.tw {
+  resize: none;
+}
+
+.tw-edge {
+  position: absolute;
+  z-index: 2;
+}
+
+.tw-edge.n,
+.tw-edge.s {
+  right: 10px;
+  left: 10px;
+  height: 7px;
+  cursor: ns-resize;
+}
+
+.tw-edge.n {
+  top: 0;
+}
+
+.tw-edge.s {
+  bottom: 0;
+}
+
+.tw-edge.e,
+.tw-edge.w {
+  top: 10px;
+  bottom: 10px;
+  width: 7px;
+  cursor: ew-resize;
+}
+
+.tw-edge.e {
+  right: 0;
+}
+
+.tw-edge.w {
+  left: 0;
+}
+
+.tw-edge.ne,
+.tw-edge.nw,
+.tw-edge.se,
+.tw-edge.sw {
+  width: 14px;
+  height: 14px;
+}
+
+.tw-edge.ne {
+  top: 0;
+  right: 0;
+  cursor: nesw-resize;
+}
+
+.tw-edge.sw {
+  bottom: 0;
+  left: 0;
+  cursor: nesw-resize;
+}
+
+.tw-edge.nw {
+  top: 0;
+  left: 0;
+  cursor: nwse-resize;
+}
+
+.tw-edge.se {
+  right: 0;
+  bottom: 0;
+  cursor: nwse-resize;
+}
+
+/* a grip in the corner, so it is seen that the window can be pulled */
+.tw-edge.se::after {
+  content: '';
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid #aab3c5;
+  border-bottom: 2px solid #aab3c5;
+  border-radius: 0 0 3px;
+}
+
+.tw.mini .tw-edge,
+.tw.maxed .tw-edge {
+  display: none;
+}
+
+.tw.sizing,
+.tw.sizing * {
+  user-select: none;
+}
+
+.tw.maxed .tw-head {
+  cursor: default;
+}
+
+.tw-buttons .grow {
+  font-size: 14px;
+}
+
+.tw-pills .pill.loose {
+  border-color: #e2c26b;
+  background: #fff8dc;
+  color: #7a5b00;
+}
+
+/* the answer box: two lines, taller while it is written in */
+.tw-foot .comment-box textarea {
+  min-height: 44px;
+  height: 44px;
+  transition: height 0.15s ease;
+}
+
+.tw-foot .comment-box textarea:focus,
+.tw-foot .comment-box textarea:not(:placeholder-shown) {
+  height: 120px;
+}
+
+/* long code in what is read scrolls in itself, so the column can be read past it */
+.tw-read .code pre {
+  max-height: 320px;
+  overflow: auto;
+}

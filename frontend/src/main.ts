@@ -74,6 +74,11 @@ async function boot() {
   };
 
   const tooltip = document.getElementById('tooltip')!;
+  // The name of a box is for the room only: over a window, a panel or a rail it goes away
+  // (the room does not hear the pointer leave a box when something lies over it).
+  document.addEventListener('pointerover', (e) => {
+    if (!(e.target instanceof HTMLCanvasElement)) tooltip.hidden = true;
+  });
   // Ticket windows float over the room. The window in front marks its box.
   const tickets = {
     onFocus: (key: string) => scene.mark(key),
@@ -470,7 +475,7 @@ async function boot() {
     },
     () => hud(),
   );
-  // Esc shuts what is open, one thing at a time: a panel, the record, then the ticket window in front.
+  // Esc shuts what is open, one thing at a time: a panel, the quests, the record, the legend, then the ticket window in front.
   // Dialogs and the search shut themselves; in a text box, the first Esc only leaves the box.
   window.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape' || e.isComposing || e.defaultPrevented) return;
@@ -479,6 +484,9 @@ async function boot() {
     if (t instanceof HTMLElement && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return void t.blur();
     if (noticesOpen() || filtersOpen() || profileOpen() || settingsOpen()) {
       only('');
+      hud();
+    } else if (questsOpen()) {
+      toggleQuests(false);
       hud();
     } else if (gameOpen) {
       gameOpen = false;
