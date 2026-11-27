@@ -47,12 +47,16 @@ const JiraKeyPage = "/desk/my"
 var (
 	ErrDisabled     = errors.New("서버에서 ArgusDesk 연동이 꺼져 있습니다")
 	ErrUnauthorized = errors.New("Argus 로그인이 필요합니다")
-	ErrForbidden    = errors.New("ArgusDesk는 서버 관리자만 쓸 수 있습니다. 이 계정에는 권한이 없습니다")
-	ErrLocked       = errors.New("서버 계정이 잠겨 있습니다. 서버에 로그인해 잠금을 풀어 주세요")
-	ErrNoSite       = errors.New("서버에 Jira 사이트 주소가 정해져 있지 않습니다. 서버 관리자에게 알려 주세요")
-	ErrBusy         = errors.New("요청이 너무 잦습니다. 잠시 뒤 다시 시도해 주세요")
-	ErrNotFound     = errors.New("서버에 아직 등록된 것이 없습니다")
-	ErrConflict     = errors.New("이미 다른 사람이 등록한 값입니다")
+	// ErrRenew: the sign-in could not be renewed (no answer, or a server
+	// error). The kept sign-in stays, so trying again may work, but the
+	// quickest way on is to sign in again.
+	ErrRenew     = errors.New("Argus 로그인을 이어가지 못했습니다")
+	ErrForbidden = errors.New("ArgusDesk는 서버 관리자만 쓸 수 있습니다. 이 계정에는 권한이 없습니다")
+	ErrLocked    = errors.New("서버 계정이 잠겨 있습니다. 서버에 로그인해 잠금을 풀어 주세요")
+	ErrNoSite    = errors.New("서버에 Jira 사이트 주소가 정해져 있지 않습니다. 서버 관리자에게 알려 주세요")
+	ErrBusy      = errors.New("요청이 너무 잦습니다. 잠시 뒤 다시 시도해 주세요")
+	ErrNotFound  = errors.New("서버에 아직 등록된 것이 없습니다")
+	ErrConflict  = errors.New("이미 다른 사람이 등록한 값입니다")
 )
 
 // CleanBase checks and tidies the server address the user typed. Only https

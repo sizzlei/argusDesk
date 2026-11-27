@@ -308,6 +308,14 @@ func (a *App) syncServer(force bool) {
 		switch {
 		case errors.Is(err, argus.ErrUnauthorized):
 			need = needLogin
+		case errors.Is(err, argus.ErrRenew):
+			// Usually a sign-in the server let lapse without saying so: signing
+			// in again is offered rather than waiting on the server.
+			a.note("Argus 로그인 갱신 실패: %v", err)
+			a.mu.Lock()
+			a.srv.needs, a.srv.problem = needLogin, "Argus 로그인이 만료된 것 같습니다. 다시 로그인해 주세요."
+			a.mu.Unlock()
+			return true
 		case errors.Is(err, argus.ErrForbidden):
 			need = needForbidden
 		case errors.Is(err, argus.ErrDisabled):

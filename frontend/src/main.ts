@@ -181,10 +181,7 @@ async function boot() {
       !!state.server &&
         state.serverNeeds === 'login' && {
           label: 'Argus에 다시 로그인',
-          run: () => {
-            toast('브라우저에서 Argus에 로그인해 주세요.');
-            void backend.connectServer(state.server).then(apply, fail);
-          },
+          run: () => argusLogin(),
         },
       !!state.server && { label: 'Argus 연결 끊기', run: () => void backend.forgetServer().then(apply, fail) },
       { label: scene.hours ? '시간대 조명 끄기' : '시간대 조명 켜기', run: () => setHours(!scene.hours), note: '저녁과 밤에 센터 조명이 어두워집니다' },
@@ -215,6 +212,7 @@ async function boot() {
     );
     renderHud(state, shown, space, lastError, backend, {
       refresh: () => void backend.refresh(),
+      argusLogin: () => argusLogin(),
       profileOpen: profileOpen(),
       toggleProfile: () => {
         const next = !profileOpen();
@@ -410,11 +408,19 @@ async function boot() {
   const fail = (e: unknown) => void toast(errText(e), 'error');
 
   /** Takes a new app state: shows a setup page if something is missing. */
+  function argusLogin() {
+    toast('브라우저에서 Argus에 로그인해 주세요.');
+    void backend.connectServer(state.server).then(apply, fail);
+  }
+
   function apply(next: AppState) {
+    // A sign-in that ran out while the centre is open: offered at once, once.
+    const lapsed = next.server && next.serverNeeds === 'login' && state.serverNeeds !== 'login' && state.signedIn && next.signedIn;
     const reloaded = next.configVersion !== state.configVersion && state.configLoaded;
     // A problem with the settings is told when it appears, not again with every later state.
     const problem = next.configLoaded && next.configError && next.configError !== state.configError;
     state = next;
+    if (lapsed) toast('Argus 로그인이 끝났습니다. 다시 로그인하면 Argus 알림과 설정을 계속 받습니다.', 'error', [{ label: '로그인', run: argusLogin }]);
     if (problem) toast(state.configError, 'error');
     else if (reloaded) toast(`설정 ${state.configVersion}을 읽었습니다.`);
     const blocked = renderSetup(state, backend, apply);

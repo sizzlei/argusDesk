@@ -12,6 +12,8 @@ import { type Filter, type Scope, extraCount } from './view';
 
 export interface HudHooks {
   refresh(): void;
+  /** Signs in to Argus again, in the browser. */
+  argusLogin(): void;
   profileOpen: boolean;
   toggleProfile(): void;
   spot: string; // the teammate whose boxes are lit ("" = everyone's)
@@ -38,7 +40,7 @@ const SCOPES: [Scope, string, string][] = [
 
 /** Why the team server is not in step, in words. */
 export const SERVER_NEEDS: Record<string, string> = {
-  login: 'Argus 로그인이 끝났습니다. 메뉴에서 다시 로그인해 주세요. 그동안은 마지막으로 받은 설정으로 동작합니다.',
+  login: 'Argus 로그인이 끝났습니다. 상단의 "Argus 로그인"을 눌러 다시 로그인해 주세요. 그동안은 마지막으로 받은 설정으로 동작합니다.',
   jira: 'Argus에 Jira 토큰이 등록되어 있지 않습니다. Argus 상단 아바타 메뉴 › 나의 ArgusDesk에서 등록해 주세요.',
   config: 'Argus에 아직 설정이 올라와 있지 않습니다.',
   forbidden: 'ArgusDesk는 서버 관리자만 쓸 수 있습니다. 이 계정에는 권한이 없습니다.',
@@ -185,7 +187,9 @@ export function renderHud(state: AppState, snap: Snapshot | null, space: number,
         : null,
       strip,
       lastError ? h('span', { class: 'chip warn', title: lastError }, '갱신 실패') : null,
-      state.server && (state.serverNeeds || state.serverProblem)
+      state.server && state.serverNeeds === 'login'
+        ? h('button', { class: 'chip warn', title: 'Argus 로그인이 끝났습니다. 눌러서 브라우저에서 다시 로그인합니다.', onclick: hooks.argusLogin }, 'Argus 로그인')
+        : state.server && (state.serverNeeds || state.serverProblem)
         ? h(
             'button',
             { class: 'chip warn', title: 'Argus와 맞추지 못했습니다. 눌러서 내용을 봅니다.', onclick: () => toast(SERVER_NEEDS[state.serverNeeds] ?? state.serverProblem, 'error') },

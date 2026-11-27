@@ -17,7 +17,7 @@
         PackageDisplayName="ArgusDesk"
         PublisherName="CN=sizzlei"
         PublisherDisplayName="sizzlei"
-        Version="1.0.6.0"
+        Version="1.0.7.0"
         PackageDescription="Jira service desk as a fulfilment centre">
         <Capabilities>
             <Capability Name="runFullTrust" />

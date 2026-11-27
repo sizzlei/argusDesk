@@ -139,7 +139,7 @@ function serverPage(host: HTMLElement, state: AppState, backend: Backend, done: 
       'Argus에 로그인',
       h('p', {}, '이 주소의 Argus에 로그인합니다. 주소가 맞는지 확인하세요.'),
       state.server && state.serverProblem ? h('p', { class: 'error' }, state.serverProblem) : null,
-      h('button', { class: 'primary', onclick: signIn }, '브라우저에서 로그인'),
+      h('div', { class: 'row' }, h('button', { class: 'primary', onclick: signIn }, '브라우저에서 로그인'), state.server && state.serverProblem ? h('button', { onclick: () => void backend.syncServer().then(done, fail) }, '다시 시도') : null),
     );
     return true;
   }

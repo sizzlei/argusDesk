@@ -287,3 +287,20 @@ func TestExpiredSignInIsForgotten(t *testing.T) {
 		t.Error("the dead token was not dropped")
 	}
 }
+
+func TestRenewWithoutAnswerAsksForSignIn(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadGateway)
+	}))
+	defer srv.Close()
+	lost := false
+	stale := &Token{Access: "a", Refresh: "r", Expires: time.Now().Add(-time.Minute)}
+	c := New(srv.URL, DefaultEndpoints(), stale, func(t *Token) { lost = t == nil })
+	_, err := c.Me(context.Background())
+	if !errors.Is(err, ErrRenew) || errors.Is(err, ErrUnauthorized) {
+		t.Fatalf("err = %v", err)
+	}
+	if lost {
+		t.Fatal("the kept sign-in was thrown away")
+	}
+}

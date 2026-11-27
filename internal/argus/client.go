@@ -55,8 +55,9 @@ func (c *Client) access(ctx context.Context, force bool) (string, error) {
 			if c.saved != nil {
 				c.saved(nil)
 			}
+			return "", err
 		}
-		return "", err
+		return "", fmt.Errorf("%w: %w", ErrRenew, err)
 	}
 	c.token = next
 	if c.saved != nil {
