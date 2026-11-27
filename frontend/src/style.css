@@ -3058,18 +3058,21 @@ ul.files button.file:disabled {
   }
 }
 
-@media (max-width: 1160px) {
+/* With the tools on the rails the top bar has room: teammates stay until the window is really narrow. */
+@media (max-width: 760px) {
   /* teammates give way; my own state stays */
   #hud .team .member:not(.me) {
     display: none;
   }
+}
 
-  #hud .title .chip:not(.warn) {
+@media (max-width: 900px) {
+  #hud .title .chip:not(.warn):not(.update-chip) {
     display: none;
   }
 }
 
-@media (max-width: 1040px) {
+@media (max-width: 820px) {
   #hud .game-chip .lv.team {
     display: none;
   }
@@ -3577,8 +3580,7 @@ button.deploy-btn .n {
   }
 }
 
-@media (max-width: 1500px) {
-  #hud .deploy .deploy-btn .my,
+@media (max-width: 900px) {
   #hud .team .member.me .pct {
     display: none;
   }
@@ -4459,7 +4461,7 @@ button.deploy-btn .n {
 }
 
 /* the time of the last reading stays in the bar while there is room */
-@media (min-width: 1161px) {
+@media (min-width: 901px) {
   #hud .tools .when {
     display: inline;
   }

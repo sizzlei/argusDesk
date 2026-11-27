@@ -263,7 +263,7 @@ export class Scene {
     this.veil = new Graphics().rect(0, 0, 1, 1).fill(veil[0]);
     this.veil.alpha = veil[1];
     this.sky.addChild(this.veil);
-    const n = { clear: 0, cloudy: 0, snow: 230, rain: 280, wind: 80, leaves: 70, blossom: 80 }[w];
+    const n = { clear: 0, cloudy: 0, snow: 230, rain: 280, wind: 28, leaves: 70, blossom: 80 }[w];
     const { width, height } = this.app.screen;
     for (let i = 0; i < n; i++) {
       const f = { x: Math.random() * width, y: Math.random() * height, v: 0.6 + Math.random() * 0.8, s: 0.6 + Math.random() * 0.9, ph: Math.random() * 6.3, sp: new PixiSprite(this.flakeTexture(w, i)) };
@@ -294,7 +294,7 @@ export class Scene {
         g.moveTo(0, 0).lineTo(5, -22).stroke({ width: 1.5, color: 0x6f8fbf, alpha: 0.7 });
         break;
       case 'gust':
-        g.moveTo(0, 0).quadraticCurveTo(-30, -4, -60, 2).stroke({ width: 1.8, color: 0x9fb0c8, alpha: 0.6 });
+        g.moveTo(0, 0).quadraticCurveTo(-30, -4, -60, 2).stroke({ width: 1.4, color: 0x9fb0c8, alpha: 0.35 });
         break;
       case 'bit':
         g.rect(0, 0, 4, 3).fill({ color: 0x8a7f70, alpha: 0.85 });
@@ -332,9 +332,11 @@ export class Scene {
           f.x -= (90 + f.v * 40) * dt;
           break;
         case 'wind':
-          f.x += (480 + f.v * 380) * dt;
-          f.y += Math.sin(T * 2 + f.ph) * 10 * dt;
+          // a light breeze: slow streaks that come and go, not a gale
+          f.x += (70 + f.v * 50) * dt;
+          f.y += Math.sin(T * 0.8 + f.ph) * 5 * dt;
           f.sp.scale.x = (30 + f.s * 50) / 60;
+          f.sp.alpha = 0.25 + 0.75 * Math.max(0, Math.sin(T * 0.5 + f.ph));
           break;
         case 'leaves':
         case 'blossom': {
