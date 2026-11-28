@@ -55,8 +55,9 @@ type App struct {
 	diary       diary           // what the app did lately (see diary.go)
 	kick        chan struct{}
 
-	srv  serverState // the optional team server
-	pres presence    // where the user stands, and the team (through the server)
+	srv  serverState  // the optional team server
+	pres presence     // where the user stands, and the team (through the server)
+	wx   weatherState // the weather outside, read from the internet
 
 	notify notifier
 	tray   *tray // the menu bar / notification area icon (nil in tests)
@@ -122,6 +123,7 @@ func (a *App) ServiceStartup(ctx context.Context, options application.ServiceOpt
 	a.notify.log = a.note
 	a.notify.start(ctx, options)
 	a.kick = make(chan struct{}, 1)
+	go a.watchWeather(ctx)
 	a.prefs, _ = secret.LoadPrefs()
 	a.note("시작: 버전 %s", Version)
 	if a.prefs.Server == "" {

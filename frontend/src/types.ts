@@ -110,6 +110,14 @@ export interface Member {
   me: boolean;
 }
 
+/** The real weather outside, read by the backend (kind "" = none yet, or it could not be read). */
+export interface WeatherNow {
+  kind: '' | 'clear' | 'cloudy' | 'snow' | 'rain' | 'wind' | 'leaves' | 'blossom';
+  temp: number;
+  place: string;
+  at: string;
+}
+
 /** Where a teammate stands now, as the team server last heard it. */
 export interface TeamSpot {
   id: string; // Jira account id

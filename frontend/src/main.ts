@@ -10,7 +10,7 @@ import { closeFront, closeTickets, onAnswered, openTicket, openTickets, setStren
 import { AGE, Scene, TAGS } from './scene';
 import { type ProfileAction, profileOpen, renderProfile, toggleProfile } from './profile';
 import { renderSetup } from './setup';
-import type { Presence, AppState, Box, Change, GameStats, Snapshot } from './types';
+import type { Presence, WeatherNow, AppState, Box, Change, GameStats, Snapshot } from './types';
 import { checkForUpdates, initUpdates } from './update';
 import { showBriefing, watchPresence } from './briefing';
 import { arrived, seasonYear } from './growth';
@@ -132,10 +132,20 @@ async function boot() {
   scene.setMe(state.meId, state.me);
   await scene.init();
   if (backend.mock) (window as unknown as { scene: Scene }).scene = scene; // the prototype: effects can be tried from the console
-  // The weather outside, by the season; it turns every three hours.
-  const sky = () => scene.setWeather(weatherOn() ? weatherAt() : 'clear');
+  // The weather outside: the real one of the team's city when it could be read
+  // in the last two hours, else one made up by the season. `?weather=` forces one.
+  let real: WeatherNow = { kind: '', temp: 0, place: '', at: '' };
+  const fresh = () => !!real.kind && Date.now() - Date.parse(real.at) < 2 * 3600_000 && !new URLSearchParams(location.search).get('weather');
+  const outside = () => (fresh() ? (real.kind as Exclude<WeatherNow['kind'], ''>) : weatherAt());
+  const sky = () => scene.setWeather(weatherOn() ? outside() : 'clear');
   sky();
   window.setInterval(sky, 10 * 60_000);
+  const takeWeather = (w: WeatherNow) => {
+    real = w;
+    sky();
+  };
+  backend.onWeather(takeWeather);
+  void backend.weather().then(takeWeather, () => {});
   onAnswered((key, approve) => scene.stamp(key, approve));
   // The room dims in the evening; whoever would rather not has it switched off, on this computer.
   const HOURS = 'argusdesk.hours';
@@ -275,7 +285,9 @@ async function boot() {
               setWeatherOn(!weatherOn());
               sky();
             },
-            note: `지금 창밖: ${WEATHER_NAME[weatherAt()]} · 계절에 따라 눈, 비, 바람, 낙엽이 지나갑니다`,
+            note: fresh()
+              ? `지금 창밖: ${WEATHER_NAME[outside()]} · ${real.place} 실제 날씨 ${Math.round(real.temp)}°C (30분마다 갱신)`
+              : `지금 창밖: ${WEATHER_NAME[outside()]} · 실제 날씨를 못 읽어 계절 날씨로 보여 줍니다`,
           },
           { label: scene.hours ? '시간대 조명 끄기' : '시간대 조명 켜기', run: () => setHours(!scene.hours), note: '저녁과 밤에 센터 조명이 어두워집니다' },
           { label: '단축키 설정', run: () => openKeySettings(), note: `송장 쓰기 ${keyLabel('write') || '없음'} · 상자 찾기 ${keyLabel('search') || '없음'} · Esc 창 닫기` },

@@ -1,7 +1,8 @@
-// The weather outside the centre: made up, by the season. From November to
-// February it may snow, rain or blow; spring has blossom, autumn falling
-// leaves. It changes every three hours and is the same for the whole team
-// at the same time (it is worked out from the date, not fetched anywhere).
+// The weather outside the centre. The real one when the backend could read it
+// (main.ts); otherwise one made up by the season: from November to February it
+// may snow, rain or blow; spring has blossom, autumn falling leaves. The made-up
+// one changes every three hours and is the same for the whole team at the same
+// time (it is worked out from the date).
 
 export type Weather = 'clear' | 'cloudy' | 'snow' | 'rain' | 'wind' | 'leaves' | 'blossom';
 

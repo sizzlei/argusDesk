@@ -474,6 +474,9 @@ export function mockBackend(): Backend {
     onFeed: () => {},
     onTray: () => {},
     // presence: teammates wander between rooms now and then; one has the app closed
+    // no real weather in the prototype: the season's made-up one is shown
+    weather: async () => ({ kind: '', temp: 0, place: '', at: '' }),
+    onWeather: () => {},
     setPresence: () => {},
     teamPresence: async () => ({ on: true, members: wander(Date.now()) }),
     onPresence: (cb) => {

@@ -4,7 +4,7 @@
 // In mock mode (npm run dev:mock) the same interface is served by mock.ts
 // with made-up data, so the screen runs in a plain browser.
 
-import type { AppState, BoardError, BoardEvent, CreateForm, GameStats, Presence, Release, ServerFeed, Snapshot, TicketActions, TicketDetail, UpdateInfo, Vacation } from './types';
+import type { AppState, BoardError, BoardEvent, CreateForm, GameStats, Presence, Release, WeatherNow, ServerFeed, Snapshot, TicketActions, TicketDetail, UpdateInfo, Vacation } from './types';
 
 export interface Backend {
   mock: boolean;
@@ -22,6 +22,9 @@ export interface Backend {
   setPresence(space: string, zone: string, box: string): void;
   teamPresence(): Promise<Presence>;
   onPresence(cb: (p: Presence) => void): void;
+  /** The real weather outside (read every half hour). */
+  weather(): Promise<WeatherNow>;
+  onWeather(cb: (w: WeatherNow) => void): void;
   /** The tray menu asks to open something: "notices" or "brief". */
   onTray(cb: (what: string) => void): void;
   setNotify(on: boolean): Promise<AppState>;
@@ -87,6 +90,8 @@ async function real(): Promise<Backend> {
     onTray: (cb) => void Events.On('tray:open', (ev: { data: string }) => cb(ev.data)),
     setPresence: (space, zone, box) => void call('SetPresence', space, zone, box).catch(() => {}),
     teamPresence: () => call('TeamPresence'),
+    weather: () => call('Weather'),
+    onWeather: (cb) => void Events.On('weather:now', (ev: { data: WeatherNow }) => cb(ev.data)),
     onPresence: (cb) => void Events.On('server:presence', (ev: { data: Presence }) => cb(ev.data)),
     setNotify: (on) => call('SetNotify', on),
     snapshot: () => call('Snapshot'),
