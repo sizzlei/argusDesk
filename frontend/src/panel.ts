@@ -42,6 +42,25 @@ interface Win {
 }
 
 const wins = new Map<string, Win>();
+
+// Teammates looking at a ticket right now (from the team server's presence), by key.
+let viewers = new Map<string, string[]>();
+
+/** Takes who is looking at which ticket, and says so in the open windows. */
+export function setViewers(next: Map<string, string[]>) {
+  viewers = next;
+  wins.forEach((w) => paintViewers(w));
+}
+
+/** The "○○ 님도 보는 중" pill of a window: shown while teammates have the same ticket open. */
+function paintViewers(w: Win) {
+  const el = w.el.querySelector<HTMLElement>('.pill.viewers');
+  if (!el) return;
+  const names = viewers.get(w.key) ?? [];
+  el.hidden = !names.length;
+  el.textContent = names.length === 1 ? `${names[0]} 님도 보는 중` : names.length ? `${names[0]} 님 외 ${names.length - 1}명도 보는 중` : '';
+  el.title = names.length ? `지금 이 티켓을 함께 보고 있습니다: ${names.join(', ')}. 댓글이나 이동이 겹치지 않게 확인해 주세요.` : '';
+}
 let top = 20; // z-index of the window in front
 const MAX_WINDOWS = 6;
 
@@ -822,6 +841,7 @@ function draw(w: Win, snap: Snapshot, backend: Backend) {
   fill(w.body, lead, h('div', { class: 'tw-cols' }, read, todo));
   renderActions(w, snap, backend);
   renderDetail(w, backend);
+  paintViewers(w);
   w.body.scrollTop = scroll;
   [read, todo].forEach((c, i) => (c.scrollTop = scrolls[i] ?? 0));
 }
@@ -834,6 +854,7 @@ function pills(b: Box, zone: string | undefined) {
     'div',
     { class: 'tw-pills' },
     h('span', { class: 'pill status', title: zone ? `구역: ${zone}` : undefined }, b.status),
+    h('span', { class: 'pill viewers', hidden: true }),
     zone ? h('span', { class: 'pill' }, zone) : null,
     b.assigneeId ? null : h('span', { class: 'pill loose', title: '담당자가 없는 상자입니다. 처리에서 나에게 배정할 수 있습니다' }, '미배정'),
     b.stale ? h('span', { class: 'pill stale', title: '오래 머문 상자입니다' }, '묵음') : null,

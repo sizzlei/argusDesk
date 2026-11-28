@@ -856,13 +856,19 @@ export class Scene {
       wb.cursor = 'pointer';
       wb.on('pointertap', () => this.hooks.onWeek?.());
       wb.on('pointerover', (e) => this.hooks.onHover(null, e.clientX, e.clientY));
-      // the title, written across the top of the board and slanted with it
-      const t = label('주간 배포 일정판', 8, 0xffffff, '700');
-      t.anchor.set(0.5);
-      t.skew.set(0, Math.atan2(TH, TW));
-      const c = iso(gx + 1.15, gy - 0.04);
-      t.position.set(c.x, c.y - 48);
-      this.signs.addChild(t);
+      // its name above it, as the rooms and the floor have theirs
+      // (the same pill as the floor's name at the front corner)
+      const t = label('주간 배포 일정판', 13, INK, '700');
+      const pill = new Graphics().roundRect(0, 0, t.width + 20, 26, 13).fill(0xffffff).stroke({ width: 1, color: 0xcfd6e2 });
+      t.position.set(10, (26 - t.height) / 2);
+      const tag = new Container();
+      tag.addChild(pill, t);
+      const c = iso(gx + 1.15, gy);
+      tag.position.set(c.x - (t.width + 20) / 2, c.y - 92);
+      this.signs.addChild(tag);
+      tag.eventMode = 'static';
+      tag.cursor = 'pointer';
+      tag.on('pointertap', () => this.hooks.onWeek?.());
     };
     // The ground floor is a tight warehouse; the floors above open around a garden.
     grid.rowGap = snap.spaces.indexOf(space) > 0 && rows > 1 ? ATRIUM_GAP : ROW_GAP;

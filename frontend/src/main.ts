@@ -6,7 +6,7 @@ import { finderOpen, initFinder, openFinder, toggleFinder } from './finder';
 import { initKeys, keyLabel, openKeySettings } from './keys';
 import { renderHud } from './hud';
 import { addNotes, noticeCount, noticesOpen, renderNotices, setServerFeed, toggleNotices } from './notices';
-import { closeFront, closeTickets, onAnswered, openTicket, openTickets, setStrength, syncTickets } from './panel';
+import { setViewers, closeFront, closeTickets, onAnswered, openTicket, openTickets, setStrength, syncTickets } from './panel';
 import { AGE, Scene, TAGS } from './scene';
 import { type ProfileAction, profileOpen, renderProfile, toggleProfile } from './profile';
 import { renderSetup } from './setup';
@@ -730,9 +730,22 @@ async function boot() {
   };
   backend.onFeed(fed);
   // From the tray menu: the notices, or the briefing.
+  /** Who else has each ticket open, by name: for the ticket windows. */
+  const watching = () => {
+    const meId = snap?.members.find((m) => m.me)?.id || state.meId;
+    const names = new Map((snap?.members ?? []).map((m) => [m.id, m.name.trim().split(/\s+/)[0]]));
+    const by = new Map<string, string[]>();
+    if (presence.on)
+      for (const m of presence.members) {
+        if (!m.box || m.id === meId || !names.has(m.id)) continue;
+        by.set(m.box, [...(by.get(m.box) ?? []), names.get(m.id)!]);
+      }
+    setViewers(by);
+  };
   const takePresence = (p: Presence) => {
     presence = p;
     scene.setPresence(p);
+    watching();
     hud();
   };
   backend.onPresence(takePresence);

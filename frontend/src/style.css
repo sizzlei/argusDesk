@@ -4893,3 +4893,35 @@ button.deploy-btn .n {
   opacity: 0.4;
   filter: grayscale(0.6);
 }
+
+/* teammates who have the same ticket open right now */
+.tw-pills .pill.viewers {
+  border-color: #f0b2ad;
+  background: #fff1ef;
+  color: #b3261e;
+  font-weight: 600;
+}
+
+.tw-pills .pill.viewers::before {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 5px;
+  border-radius: 50%;
+  background: currentColor;
+  vertical-align: 1px;
+  animation: viewers-blink 1.6s ease-in-out infinite;
+}
+
+@keyframes viewers-blink {
+  50% {
+    opacity: 0.25;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tw-pills .pill.viewers::before {
+    animation: none;
+  }
+}

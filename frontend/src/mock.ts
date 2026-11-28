@@ -220,7 +220,7 @@ function wander(now: number) {
   const slot = Math.floor(now / 20000);
   return people
     .filter(([id]) => id !== 'u1' && id !== 'u4')
-    .map(([id], i) => ({ id, space: i === 2 && slot % 3 === 0 ? 'internal' : 'requests', zone: rooms[(slot + i * 2) % rooms.length], box: i === 0 ? 'REQ-112' : '', at: new Date(now).toISOString() }));
+    .map(([id], i) => ({ id, space: i === 2 && slot % 3 === 0 ? 'internal' : 'requests', zone: rooms[(slot + i * 2) % rooms.length], box: i === 0 ? 'REQ-112' : i === 1 ? 'REQ-155' : '', at: new Date(now).toISOString() }));
 }
 
 function snapshot(boxes: Box[], now: number): Snapshot {
