@@ -7,7 +7,7 @@
 import 'pixi.js/unsafe-eval';
 import { Application, Container, Graphics, Polygon, Sprite as PixiSprite, type Texture } from 'pixi.js';
 import { lookOf } from './avatars';
-import type { Away, Box, Change, Member, Snapshot, SpaceView, ZoneView } from './types';
+import type { Away, Box, Change, Member, Presence, Snapshot, SpaceView, TeamSpot, ZoneView } from './types';
 import type { Dust } from './dust';
 import { seasonItems, yardSlot } from './growth';
 import { paving, pet, yardThing } from './scene/yard';
@@ -22,6 +22,9 @@ import { drawBuilding, beltTile } from './scene/building';
 import { drawLodge } from './scene/lodge';
 
 export { AGE, TAGS, ageStep, shortName } from './scene/palette';
+
+/** A person on the floor, with what the team server says of them. */
+type Placed = Member & { offline?: boolean; elsewhere?: boolean; box?: string };
 
 type Light = 'day' | 'dusk' | 'night' | 'sleep';
 /** The tint of the room and the colour behind it, for each light. */
@@ -102,6 +105,10 @@ export class Scene {
   me = { id: '', name: '' };
   private myRoom: { space: string; zone: string } | null = null;
   private myLast: { space: string; x: number; y: number } | null = null; // where my avatar stood, to walk from
+  // where teammates stand, from the team server; and where each stood last, to walk from
+  private spots = new Map<string, TeamSpot>();
+  private spotsOn = false;
+  private theirLast = new Map<string, { space: string; x: number; y: number }>();
   // my avatar as drawn now: moved on its own when I pick a box in another room
   private mine: { who: Scene['people'][number]; tag: Container; zone: string; gx: number; gy: number } | null = null;
   lamps: Lamp[] = [];
@@ -259,6 +266,31 @@ export class Scene {
     const mine = snap.boxes.filter((b) => b.space === space.id && b.assigneeId === id);
     const open = new Set(space.zones.filter((z) => z.kind === 'work' || z.kind === 'desk').map((z) => z.id));
     return [...others, { id, name: real?.name || this.me.name, space: space.id, zone, count: mine.filter((b) => open.has(b.zone)).length, me: true }];
+  }
+
+  /**
+   * Teammates where the team server says they are: in the room they stand in
+   * on this floor, gone from it when they are on another floor, see-through
+   * when their app is not running. Their desks stay, with their boxes.
+   */
+  private placeThem(snap: Snapshot, space: SpaceView, rooms: ZoneView[], members: Member[]): Placed[] {
+    if (!this.spotsOn) return members;
+    const isRoom = (zone: string) => rooms.some((z) => z.id === zone);
+    const out: Placed[] = members.map((m) => {
+      if (m.me) return m;
+      const p = this.spots.get(m.id);
+      if (!p) return { ...m, offline: true };
+      if (p.space !== space.id) return { ...m, elsewhere: true };
+      return { ...m, zone: isRoom(p.zone) ? p.zone : m.zone, box: p.box };
+    });
+    // someone on this floor who has no work on it: standing where they are
+    const names = new Map(snap.members.map((m) => [m.id, m.name]));
+    const fallback = rooms.find((z) => z.kind === 'desk')?.id ?? rooms[0]?.id ?? '';
+    this.spots.forEach((p, id) => {
+      if (p.space !== space.id || out.some((m) => m.id === id) || !names.has(id) || snap.members.some((m) => m.me && m.id === id)) return;
+      out.push({ id, name: names.get(id)!, space: space.id, zone: isRoom(p.zone) ? p.zone : fallback, count: 0, me: false, box: p.box });
+    });
+    return out;
   }
 
   /** Sets the weather outside (none in the lodge, underground). */
@@ -445,6 +477,23 @@ export class Scene {
     });
     const p = this.world.toGlobal({ x: at.x, y: at.y - 90 });
     this.float(`먼지 괴물 -${n}`, p.x, p.y, 0x6f6b76, 13);
+  }
+
+  /** Takes where the teammates stand. Off: people are placed by their work, as before. */
+  setPresence(p: Presence) {
+    const next = new Map(p.members.map((m) => [m.id, m]));
+    const same = p.on === this.spotsOn && next.size === this.spots.size && [...next].every(([id, m]) => {
+      const o = this.spots.get(id);
+      return o && o.space === m.space && o.zone === m.zone && o.box === m.box;
+    });
+    this.spots = next;
+    this.spotsOn = p.on;
+    if (!same && this.snap) this.update(this.snap, []);
+  }
+
+  /** The room my avatar stands in on this floor ("" when not on one). */
+  myZone() {
+    return this.mine?.zone ?? '';
   }
 
   /** Takes the dust monsters of the whole centre. */
@@ -782,7 +831,7 @@ export class Scene {
     const sidings = withBelt ? inside.filter((z) => z.kind === 'siding') : [];
     const resting = new Set(this.away.filter((a) => a.active).map((a) => a.id));
     const boxes = snap.boxes.filter((b) => b.space === space.id);
-    const members = this.placeMe(snap, space, rooms);
+    const members = this.placeThem(snap, space, rooms, this.placeMe(snap, space, rooms));
     const added = new Set(changes.filter((c) => c.kind === 'added').map((c) => c.key));
     // An urgent box arriving on this floor, or a box made urgent here, sounds the alarm.
     if (changes.some((c) => (c.kind === 'added' || c.kind === 'urgent') && boxes.some((b) => b.key === c.key && b.urgent))) this.alarm();
@@ -1016,7 +1065,7 @@ export class Scene {
       // people: behind their desk in a desk room, otherwise along the room's right side
       let seated = 0;
       members
-        .filter((m) => m.zone === zone.id && !resting.has(m.id)) // on holiday: down in the lodge
+        .filter((m) => m.zone === zone.id && !resting.has(m.id) && !m.elsewhere) // on holiday: down in the lodge; on another floor: there
         .forEach((m, mi) => {
           const lane = lanes.indexOf(m.id);
           const atDesk = zone.kind === 'desk' && lane >= 0;
@@ -1037,9 +1086,24 @@ export class Scene {
           const g = prop(gx, gy, (pg) => person(pg, lookOf(m.id, this.looks), m.me, rest ? 2 : tired ? 1 : 0), rest ? 120 : 1);
           const py = rest ? p.y - 4 : p.y;
           g.position.set(p.x, py);
-          const name = m.count ? `${shortName(m.name)} ${m.count}` : shortName(m.name);
+          const name = (m.count ? `${shortName(m.name)} ${m.count}` : shortName(m.name)) + (m.box ? ` · ${m.box}` : '');
           const tag = this.tag(name, gx, gy, (m.me ? 78 : 62) + (rest ? 4 : 0), m.me);
+          // a teammate whose app is closed: there, but see-through
+          if (m.offline) {
+            g.alpha = 0.4;
+            tag.alpha = 0.55;
+          }
           const who: Scene['people'][number] = { g, x: p.x, y: py, phase: mi * 1.7 + zi, slow: tired > 0 };
+          // a teammate who moved to another room walks there
+          if (!m.me) {
+            const from = this.theirLast.get(m.id);
+            if (from?.space === space.id && Math.hypot(from.x - p.x, from.y - py) > 4 && !CALM) {
+              who.walk = { fx: from.x, fy: from.y, t: 0, tag };
+              g.position.set(from.x, from.y);
+              tag.alpha = 0;
+            }
+            this.theirLast.set(m.id, { space: space.id, x: p.x, y: py });
+          }
           if (!m.me && !atDesk && !rest) dropRoom.standing++;
           if (m.me) {
             this.mine = { who, tag, zone: zone.id, gx, gy };

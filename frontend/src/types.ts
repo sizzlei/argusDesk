@@ -110,6 +110,21 @@ export interface Member {
   me: boolean;
 }
 
+/** Where a teammate stands now, as the team server last heard it. */
+export interface TeamSpot {
+  id: string; // Jira account id
+  space: string; // floor id ("lodge" = the basement)
+  zone: string; // room id ("" = none in particular)
+  box: string; // the ticket in front of them ("" = none)
+  at: string;
+}
+
+/** The team's whereabouts. `on` is false when the server has no presence: people are placed by their work, as before. */
+export interface Presence {
+  on: boolean;
+  members: TeamSpot[];
+}
+
 export interface Snapshot {
   name: string;
   configVersion: string;

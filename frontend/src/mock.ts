@@ -214,6 +214,15 @@ function seed(now: number): Box[] {
   return boxes;
 }
 
+/** Where the made-up teammates stand: each moves to another room every so often (u4 is away from the app). */
+function wander(now: number) {
+  const rooms = ['review', 'approval', 'work', 'lobby'];
+  const slot = Math.floor(now / 20000);
+  return people
+    .filter(([id]) => id !== 'u1' && id !== 'u4')
+    .map(([id], i) => ({ id, space: i === 2 && slot % 3 === 0 ? 'internal' : 'requests', zone: rooms[(slot + i * 2) % rooms.length], box: i === 0 ? 'REQ-112' : '', at: new Date(now).toISOString() }));
+}
+
 function snapshot(boxes: Box[], now: number): Snapshot {
   boxes.forEach((b) => age(b, now));
   const view = (list: typeof zones): ZoneView[] =>
@@ -464,6 +473,12 @@ export function mockBackend(): Backend {
     }),
     onFeed: () => {},
     onTray: () => {},
+    // presence: teammates wander between rooms now and then; one has the app closed
+    setPresence: () => {},
+    teamPresence: async () => ({ on: true, members: wander(Date.now()) }),
+    onPresence: (cb) => {
+      setInterval(() => cb({ on: true, members: wander(Date.now()) }), 5000);
+    },
     setNotify: async (on) => {
       state.notify = on;
       return state;

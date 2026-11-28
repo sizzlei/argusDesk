@@ -132,6 +132,7 @@ func (a *App) watchServer() {
 		f := time.NewTicker(30 * time.Second)
 		defer t.Stop()
 		defer f.Stop()
+		go a.presenceLoop(ctx)
 		a.readFeed(ctx)
 		for {
 			select {

@@ -7,7 +7,7 @@ import { avatarIcon, lookOf } from './avatars';
 import { gameChip, renderGame } from './game';
 import { icon } from './rail';
 import { offerUpdate, pendingUpdate } from './update';
-import type { AppState, GameStats, Snapshot } from './types';
+import type { AppState, GameStats, Presence, Snapshot } from './types';
 import { clock, fill, h, toast } from './ui';
 import { type Filter, type Scope, extraCount } from './view';
 
@@ -34,6 +34,8 @@ export interface HudHooks {
   game: GameStats | null;
   gameOpen: boolean;
   toggleGame(): void;
+  /** Where teammates stand, from the team server (on = the server shares it). */
+  presence: Presence;
   /** The week's deployments board. */
   week: { open: boolean; toggle(): void };
   /** Opens the waybill; null when no floor writes its own tickets. */
@@ -88,6 +90,15 @@ function gearIcon() {
 
 const TIRED = ['여유', '피곤', '소진'];
 
+/** A floor and room in words: "2F 검토실". */
+function placeName(snap: Snapshot, space: string, zone: string) {
+  if (space === 'lodge') return '지하 숙소';
+  const i = snap.spaces.findIndex((s) => s.id === space);
+  if (i < 0) return '';
+  const room = snap.spaces[i].zones.find((z) => z.id === zone)?.name;
+  return `${i + 1}F${room ? ` ${room}` : ''}`;
+}
+
 /**
  * The team at a glance: one avatar each, ringed by how worn they are. No
  * names: the picture is enough among four people. Mine comes first, with a bar.
@@ -121,9 +132,13 @@ function team(snap: Snapshot | null, game: GameStats | null, hooks: HudHooks) {
       }
       // A teammate's avatar lights up their boxes: the tape on a box has the colour of its holder's clothes.
       const on = hooks.spot === m.id;
+      // where they are now, when the server shares it; their app closed: dimmed
+      const p = hooks.presence.on ? hooks.presence.members.find((x) => x.id === m.id) : undefined;
+      const off = hooks.presence.on && !p;
+      const where = p ? placeName(snap, p.space, p.zone) + (p.box ? ` · ${p.box} 보는 중` : '') : off ? '자리 비움' : '';
       return h(
         'button',
-        { class: `${cls}${on ? ' spot' : ''}`, role: 'listitem', 'aria-pressed': String(on), 'aria-label': `${m.name} (${state}) 상자만 밝게 보기`, title: `${m.name} · ${state} · 눌러서 이 사람의 상자만 밝게 보기`, onclick: () => hooks.setSpot(on ? '' : m.id) },
+        { class: `${cls}${on ? ' spot' : ''}${off ? ' offline' : ''}`, role: 'listitem', 'aria-pressed': String(on), 'aria-label': `${m.name} (${state}${where ? `, ${where}` : ''}) 상자만 밝게 보기`, title: `${m.name} · ${state}${where ? ` · ${where}` : ''} · 눌러서 이 사람의 상자만 밝게 보기`, onclick: () => hooks.setSpot(on ? '' : m.id) },
         icon,
       );
     }),

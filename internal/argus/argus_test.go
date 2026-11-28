@@ -151,6 +151,22 @@ func newFake(t *testing.T) *fake {
 		}
 		ok(w, Me{JiraAccountID: "u1"})
 	})
+	api("/me/presence", func(w http.ResponseWriter, r *http.Request) {
+		var in Spot
+		if r.Method == http.MethodPut && (json.NewDecoder(r.Body).Decode(&in) != nil || in.Space != "dt") {
+			fail(w, http.StatusBadRequest, "invalid_request")
+			return
+		}
+		ok(w, map[string]any{"presence": nil})
+	})
+	api("/team/presence", func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("If-None-Match") == `"presence-1"` {
+			w.WriteHeader(http.StatusNotModified)
+			return
+		}
+		w.Header().Set("ETag", `"presence-1"`)
+		io.WriteString(w, `{"status":"success","data":{"members":[{"jiraAccountId":"u1","space":"dt","zone":"review","box":"REQ-1","updatedAt":"2026-11-28T10:12:03+09:00"}]}}`)
+	})
 	api("/config", func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "https://elsewhere.example/config", http.StatusFound)
 	})
@@ -215,6 +231,20 @@ func TestLoginAndCalls(t *testing.T) {
 	}
 	if _, err := c.Calendar(context.Background()); !errors.Is(err, ErrNotFound) {
 		t.Errorf("no calendar on the server: %v", err)
+	}
+	if err := c.SetPresence(context.Background(), Spot{Space: "dt", Zone: "review", Box: "REQ-1"}); err != nil {
+		t.Fatalf("presence: %v", err)
+	}
+	ptag := ""
+	spots, changed, err := c.TeamPresence(context.Background(), &ptag)
+	if err != nil || !changed || len(spots) != 1 || spots[0].Zone != "review" || spots[0].Box != "REQ-1" || ptag != `"presence-1"` {
+		t.Fatalf("team presence: %+v %v %v %q", spots, changed, err, ptag)
+	}
+	if _, changed, err := c.TeamPresence(context.Background(), &ptag); err != nil || changed {
+		t.Fatalf("unchanged places were read again: %v %v", changed, err)
+	}
+	if err := c.ClearPresence(context.Background()); err != nil {
+		t.Fatalf("leaving: %v", err)
 	}
 
 	// The access token runs out ("token_expired"): the client renews once and carries on.

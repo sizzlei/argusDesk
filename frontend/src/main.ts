@@ -10,7 +10,7 @@ import { closeFront, closeTickets, onAnswered, openTicket, openTickets, setStren
 import { AGE, Scene, TAGS } from './scene';
 import { type ProfileAction, profileOpen, renderProfile, toggleProfile } from './profile';
 import { renderSetup } from './setup';
-import type { AppState, Box, Change, GameStats, Snapshot } from './types';
+import type { Presence, AppState, Box, Change, GameStats, Snapshot } from './types';
 import { checkForUpdates, initUpdates } from './update';
 import { showBriefing, watchPresence } from './briefing';
 import { arrived, seasonYear } from './growth';
@@ -87,7 +87,10 @@ async function boot() {
   const tickets = {
     onFocus: (key: string) => scene.mark(key),
     onClose: (key: string) => {
-      if (selected?.key === key) scene.mark('');
+      if (selected?.key === key) {
+        scene.mark('');
+        selected = null; // nothing in front any more: my place says so
+      }
     },
   };
   /**
@@ -113,6 +116,7 @@ async function boot() {
     onSelect: (box) => {
       selected = box;
       if (box && snap) openTicket(box, snap, backend, tickets);
+      requestAnimationFrame(() => tellPresence());
     },
     onZoom: (scale) => {
       document.getElementById('zoom-pct')!.textContent = `${Math.round(scale * 100)}%`;
@@ -345,6 +349,20 @@ async function boot() {
     hud();
   };
 
+  // Where I stand, for the teammates: told to the backend when it changes (it gathers and sends on).
+  let told = '';
+  let presence: Presence = { on: false, members: [] };
+  const tellPresence = () => {
+    if (!snap) return;
+    const sp = space < 0 ? 'lodge' : snap.spaces[space]?.id;
+    if (!sp) return;
+    const zone = space < 0 ? '' : scene.myZone();
+    const box = selected && selected.space === sp ? selected.key : '';
+    const now = `${sp}|${zone}|${box}`;
+    if (now === told) return;
+    told = now;
+    backend.setPresence(sp, zone, box);
+  };
   const hud = () => {
     // after this draw, when the flag on the rail is where it will be
     requestAnimationFrame(() =>
@@ -355,6 +373,7 @@ async function boot() {
     );
     renderNotices(snap, visit, () => hud(), (url) => backend.openUrl(url));
     drawWeek();
+    requestAnimationFrame(tellPresence); // after the room is drawn: my avatar's room is known
     const shown = view();
     renderFilters(snap, space, filter, shown?.boxes.length ?? 0, snap?.boxes.length ?? 0, setFilter, () => hud());
     renderProfile(
@@ -424,6 +443,7 @@ async function boot() {
       },
       write: snap?.spaces.some((sp) => sp.create) ? write : null,
       week: { open: week.open, toggle: () => toggleWeek() },
+      presence,
       quests: (() => {
         const t = questTally();
         return t
@@ -698,6 +718,13 @@ async function boot() {
   };
   backend.onFeed(fed);
   // From the tray menu: the notices, or the briefing.
+  const takePresence = (p: Presence) => {
+    presence = p;
+    scene.setPresence(p);
+    hud();
+  };
+  backend.onPresence(takePresence);
+  void backend.teamPresence().then(takePresence, () => {});
   backend.onTray((what) => {
     if (what === 'notices') {
       only('notices');

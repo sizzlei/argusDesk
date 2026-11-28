@@ -4887,3 +4887,9 @@ button.deploy-btn .n {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 }
+
+/* a teammate whose app is closed (the server shares where people are) */
+#hud .team .member.offline .avatar {
+  opacity: 0.4;
+  filter: grayscale(0.6);
+}

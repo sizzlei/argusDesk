@@ -4,7 +4,7 @@
 // In mock mode (npm run dev:mock) the same interface is served by mock.ts
 // with made-up data, so the screen runs in a plain browser.
 
-import type { AppState, BoardError, BoardEvent, CreateForm, GameStats, Release, ServerFeed, Snapshot, TicketActions, TicketDetail, UpdateInfo, Vacation } from './types';
+import type { AppState, BoardError, BoardEvent, CreateForm, GameStats, Presence, Release, ServerFeed, Snapshot, TicketActions, TicketDetail, UpdateInfo, Vacation } from './types';
 
 export interface Backend {
   mock: boolean;
@@ -18,6 +18,10 @@ export interface Backend {
   onServer(cb: (state: AppState) => void): void;
   serverFeed(): Promise<ServerFeed | null>;
   onFeed(cb: (feed: ServerFeed) => void): void;
+  /** Where my avatar stands now: the floor ("lodge" below ground), the room, the ticket in front. Sent on within seconds. */
+  setPresence(space: string, zone: string, box: string): void;
+  teamPresence(): Promise<Presence>;
+  onPresence(cb: (p: Presence) => void): void;
   /** The tray menu asks to open something: "notices" or "brief". */
   onTray(cb: (what: string) => void): void;
   setNotify(on: boolean): Promise<AppState>;
@@ -81,6 +85,9 @@ async function real(): Promise<Backend> {
     serverFeed: () => call('ServerFeed'),
     onFeed: (cb) => void Events.On('server:feed', (ev: { data: ServerFeed }) => cb(ev.data)),
     onTray: (cb) => void Events.On('tray:open', (ev: { data: string }) => cb(ev.data)),
+    setPresence: (space, zone, box) => void call('SetPresence', space, zone, box).catch(() => {}),
+    teamPresence: () => call('TeamPresence'),
+    onPresence: (cb) => void Events.On('server:presence', (ev: { data: Presence }) => cb(ev.data)),
     setNotify: (on) => call('SetNotify', on),
     snapshot: () => call('Snapshot'),
     refresh: () => call('Refresh'),

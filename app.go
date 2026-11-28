@@ -55,7 +55,8 @@ type App struct {
 	diary       diary           // what the app did lately (see diary.go)
 	kick        chan struct{}
 
-	srv serverState // the optional team server
+	srv  serverState // the optional team server
+	pres presence    // where the user stands, and the team (through the server)
 
 	notify notifier
 	tray   *tray // the menu bar / notification area icon (nil in tests)
@@ -146,8 +147,9 @@ func (a *App) ServiceStartup(ctx context.Context, options application.ServiceOpt
 	return nil
 }
 
-// ServiceShutdown stops the polling loop.
+// ServiceShutdown stops the polling loop, and tells the server the user left.
 func (a *App) ServiceShutdown() error {
+	a.leave()
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.stopPolling != nil {
