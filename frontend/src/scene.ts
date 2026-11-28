@@ -844,7 +844,26 @@ export class Scene {
     const rows = Math.ceil(rooms.length / COLS);
     // where the week's whiteboard stands: only on a floor whose tickets carry a deployment date
     const dated = boxes.some((b) => b.deploy);
-    const boardRoom = !dated ? -1 : rooms.findIndex((z) => z.kind === 'desk') >= 0 ? rooms.findIndex((z) => z.kind === 'desk') : rooms.findIndex((z) => z.kind === 'work');
+    // the server room (the first empty cell of the grid) has it when the floor has one
+    const serverRoom = rooms.length < rows * COLS && rows > 1;
+    const boardRoom = !dated || serverRoom ? -1 : rooms.findIndex((z) => z.kind === 'desk') >= 0 ? rooms.findIndex((z) => z.kind === 'desk') : rooms.findIndex((z) => z.kind === 'work');
+    /** The week's whiteboard, its title on it; a click opens the week's deployments. */
+    const weekBoard = (gx: number, gy: number, bias: number) => {
+      const days = weekDeploys({ ...snap, boxes: snap.boxes.filter((b) => b.space === space.id) });
+      const counts = days.map((d) => d.slots.filter((x) => !x.done).length);
+      const wb = prop(gx, gy, (g) => whiteboard(g, gx, gy, counts, days.findIndex((d) => d.today)), bias);
+      wb.eventMode = 'static';
+      wb.cursor = 'pointer';
+      wb.on('pointertap', () => this.hooks.onWeek?.());
+      wb.on('pointerover', (e) => this.hooks.onHover(null, e.clientX, e.clientY));
+      // the title, written across the top of the board and slanted with it
+      const t = label('주간 배포 일정판', 8, 0xffffff, '700');
+      t.anchor.set(0.5);
+      t.skew.set(0, Math.atan2(TH, TW));
+      const c = iso(gx + 1.15, gy - 0.04);
+      t.position.set(c.x, c.y - 48);
+      this.signs.addChild(t);
+    };
     // The ground floor is a tight warehouse; the floors above open around a garden.
     grid.rowGap = snap.spaces.indexOf(space) > 0 && rows > 1 ? ATRIUM_GAP : ROW_GAP;
     const cols = Math.min(COLS, rooms.length);
@@ -969,17 +988,8 @@ export class Scene {
       if (space.create && zone.kind === 'wait' && !this.bench) this.packingBench(o.gx, o.gy);
       else if (zone.kind !== 'desk') prop(o.gx + 3, o.gy + 0.8, (g) => furnish(g, zone.kind, o.gx, o.gy), -50);
       decorate((px, py, draw) => prop(px, py, draw), zone.kind, rooms.slice(0, zi).filter((z) => z.kind === zone.kind).length, o.gx, o.gy, o.d);
-      // the first work room (a desk room if there is one) has the week's whiteboard
-      if (zi === boardRoom) {
-        const days = weekDeploys({ ...snap, boxes: snap.boxes.filter((b) => b.space === space.id) });
-        const counts = days.map((d) => d.slots.filter((x) => !x.done).length);
-        // it stands at the back of the room, right in front of the conveyor: drawn after the belt behind it
-        const wb = prop(o.gx + 4.4, o.gy + 0.25, (g) => whiteboard(g, o.gx + 4.4, o.gy + 0.25, counts, days.findIndex((d) => d.today)), 260);
-        wb.eventMode = 'static';
-        wb.cursor = 'pointer';
-        wb.on('pointertap', () => this.hooks.onWeek?.());
-        wb.on('pointerover', (e) => this.hooks.onHover(null, e.clientX, e.clientY));
-      }
+      // no server room on this floor: the week's whiteboard stands in the first work room (a desk room if there is one)
+      if (zi === boardRoom) weekBoard(o.gx + 4.4, o.gy + 0.25, 260); // at the back, in front of the conveyor behind it
       // The truck waits outside the building when the dock is in the front row.
       if (zone.kind === 'done' && o.row === rows - 1 && snap.spaces.indexOf(space) === 0) {
         const tg = prop(o.gx + 4, o.gy + o.d + 2, (g) => truck(g, o.gx + 3.2, o.gy + o.d + PAD + 0.5));
@@ -1145,7 +1155,10 @@ export class Scene {
         prop(o.gx + 6.9, o.gy + 4.4, (g) => dbTank(g, o.gx + 6.9, o.gy + 4.4));
         prop(o.gx + 1.6, o.gy + o.d - 0.9, (g) => desk(g, o.gx + 1.6, o.gy + o.d - 0.9, 'desk'));
         prop(o.gx + 0.45, o.gy + o.d - 0.45, (g) => purifier(g, o.gx + 0.2, o.gy + o.d - 0.7));
-        prop(o.gx + 4.6, o.gy + o.d - 0.3, (g) => hedge(g, o.gx + 3.4, o.gy + o.d - 0.5, 'x', 2.4));
+        if (dated) {
+          prop(o.gx + 4.3, o.gy + o.d - 0.3, (g) => hedge(g, o.gx + 3.2, o.gy + o.d - 0.5, 'x', 2.0));
+          weekBoard(o.gx + 5.6, o.gy + o.d - 0.45, 0); // the week's whiteboard, at the front: nothing stands before it
+        } else prop(o.gx + 4.6, o.gy + o.d - 0.3, (g) => hedge(g, o.gx + 3.4, o.gy + o.d - 0.5, 'x', 2.4));
         this.plate(this.system === 'fail' ? '서버실 · Argus 장애' : this.system === 'warn' ? '서버실 · Argus 주의' : '서버실', o.gx + ZW / 2, o.gy + 0.15);
       } else {
         const rug = new Graphics();

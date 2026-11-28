@@ -508,7 +508,8 @@ export function dustMonster(g: Graphics, size: number, hurt = 0) {
 
 /**
  * The work room's whiteboard: the week's deployments, a column a day (Monday
- * to Sunday), a dot for each still to go out. Today's column is underlined.
+ * to Sunday), a dot for each still to go out (three at most; a red top dot
+ * means more). Today's column is underlined; the title is written on the heading.
  * (gx, gy) is its left foot; it stands along the x axis, facing the viewer.
  */
 export function whiteboard(g: Graphics, gx: number, gy: number, counts: number[], today: number) {
@@ -518,11 +519,11 @@ export function whiteboard(g: Graphics, gx: number, gy: number, counts: number[]
   block(g, gx + W - 0.11, gy, 0.06, 0.06, 18, 0x8a93a6);
   block(g, gx, gy - 0.02, W, 0.1, 40, 0xc9d1de, 16); // frame
   block(g, gx + 0.04, gy - 0.04, W - 0.08, 0.08, 34, 0xffffff, 19); // the board
-  block(g, gx + 0.04, gy - 0.04, W - 0.08, 0.08, 5, 0x7048e8, 48); // its heading
+  block(g, gx + 0.04, gy - 0.04, W - 0.08, 0.08, 10, 0x7048e8, 43); // its heading, where the title is written
   const col = (W - 0.3) / 7;
   for (let i = 0; i < 7; i++) {
     const c = iso(gx + 0.15 + (i + 0.5) * col, gy + 0.04);
-    if (i === today) g.moveTo(c.x - 6, c.y - 21).lineTo(c.x + 6, c.y - 21 + 3).stroke({ width: 2, color: 0x7048e8 });
-    for (let k = 0; k < Math.min(4, counts[i] ?? 0); k++) g.circle(c.x, c.y - 27 - k * 5.5, 2.3).fill(k === 3 && counts[i] > 4 ? 0xe5484d : i >= 5 ? 0x9aa3b5 : 0x4c8df6);
+    if (i === today) g.moveTo(c.x - 6, c.y - 19).lineTo(c.x + 6, c.y - 19 + 3).stroke({ width: 2, color: 0x7048e8 });
+    for (let k = 0; k < Math.min(3, counts[i] ?? 0); k++) g.circle(c.x, c.y - 24 - k * 5.5, 2.3).fill(k === 2 && counts[i] > 3 ? 0xe5484d : i >= 5 ? 0x9aa3b5 : 0x4c8df6);
   }
 }
