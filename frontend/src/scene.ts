@@ -11,10 +11,11 @@ import type { Away, Box, Change, Member, Snapshot, SpaceView, ZoneView } from '.
 import type { Dust } from './dust';
 import { seasonItems, yardSlot } from './growth';
 import { paving, pet, yardThing } from './scene/yard';
+import { weekDeploys } from './week';
 import type { Weather } from './weather';
 import { TW, TH, ZW, ZH, COL_GAP, ROW_GAP, ATRIUM_GAP, grid, COLS, PAD, WALL_H, STOREY, iso, DESK_EXTRA, rowY, roomOrigin } from './scene/grid';
 import { INK, QUIET, ACCENT, FLOOR, AGE, shade, ageStep, shortAge, shortName } from './scene/palette';
-import { hatch, label, block, BOX, BOX_H, drawBox, floorPoly, tree, hedge, purifier, cooler, bench, sofa, dbTank, Lamp, rack, chiller, desk, person, truck, decorate, furnish, packing, dustMonster } from './scene/props';
+import { hatch, label, block, BOX, BOX_H, drawBox, floorPoly, tree, hedge, purifier, cooler, bench, sofa, dbTank, Lamp, rack, chiller, desk, person, truck, decorate, furnish, packing, dustMonster, whiteboard } from './scene/props';
 import { LANE_LEN, LANE_TOP, lanePitch, pallet, palletCols, slots } from './scene/layout';
 import { Sprite, Leg, BeltTile, Belt, BELT_SPEED, BELT_UP, CALM, easeInOut, SQUASH } from './scene/parts';
 import { drawBuilding, beltTile } from './scene/building';
@@ -41,6 +42,8 @@ export function hourLight(now: Date): Light {
 export interface SceneHooks {
   onSelect(box: Box | null): void;
   onHover(box: Box | null, x: number, y: number): void;
+  /** The work room's whiteboard was clicked: the week's deployments. */
+  onWeek?(): void;
   /** The zoom changed: 1 = drawn at its own size. */
   onZoom?(scale: number): void;
   /** The packing bench was clicked: a ticket is to be written on this floor. */
@@ -790,6 +793,9 @@ export class Scene {
     this.things.children.filter((c) => c.label === 'prop').forEach((c) => c.destroy({ children: true }));
 
     const rows = Math.ceil(rooms.length / COLS);
+    // where the week's whiteboard stands: only on a floor whose tickets carry a deployment date
+    const dated = boxes.some((b) => b.deploy);
+    const boardRoom = !dated ? -1 : rooms.findIndex((z) => z.kind === 'desk') >= 0 ? rooms.findIndex((z) => z.kind === 'desk') : rooms.findIndex((z) => z.kind === 'work');
     // The ground floor is a tight warehouse; the floors above open around a garden.
     grid.rowGap = snap.spaces.indexOf(space) > 0 && rows > 1 ? ATRIUM_GAP : ROW_GAP;
     const cols = Math.min(COLS, rooms.length);
@@ -914,6 +920,16 @@ export class Scene {
       if (space.create && zone.kind === 'wait' && !this.bench) this.packingBench(o.gx, o.gy);
       else if (zone.kind !== 'desk') prop(o.gx + 3, o.gy + 0.8, (g) => furnish(g, zone.kind, o.gx, o.gy), -50);
       decorate((px, py, draw) => prop(px, py, draw), zone.kind, rooms.slice(0, zi).filter((z) => z.kind === zone.kind).length, o.gx, o.gy, o.d);
+      // the first work room (a desk room if there is one) has the week's whiteboard
+      if (zi === boardRoom) {
+        const days = weekDeploys({ ...snap, boxes: snap.boxes.filter((b) => b.space === space.id) });
+        const counts = days.map((d) => d.slots.filter((x) => !x.done).length);
+        const wb = prop(o.gx + 4.4, o.gy + 0.25, (g) => whiteboard(g, o.gx + 4.4, o.gy + 0.25, counts, days.findIndex((d) => d.today)));
+        wb.eventMode = 'static';
+        wb.cursor = 'pointer';
+        wb.on('pointertap', () => this.hooks.onWeek?.());
+        wb.on('pointerover', (e) => this.hooks.onHover(null, e.clientX, e.clientY));
+      }
       // The truck waits outside the building when the dock is in the front row.
       if (zone.kind === 'done' && o.row === rows - 1 && snap.spaces.indexOf(space) === 0) {
         const tg = prop(o.gx + 4, o.gy + o.d + 2, (g) => truck(g, o.gx + 3.2, o.gy + o.d + PAD + 0.5));

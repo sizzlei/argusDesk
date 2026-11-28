@@ -269,6 +269,14 @@ export function mockBackend(): Backend {
     const d = new Date(now);
     b.deploy = i % 3 === 2 ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` : new Date(new Date(now).setHours(14 + i, 0, 0, 0)).toISOString();
   });
+  // and more across the week, for the whiteboard
+  boxes.filter((b) => (b.zone === 'review' || b.zone === 'work' || b.zone === 'approval') && !b.deploy).filter((_, i) => i % 3 === 0).forEach((b, i) => {
+    const d = new Date(now);
+    d.setDate(d.getDate() + [1, 2, 3, -1, 4, 1, 2, 5, 3][i % 9]);
+    d.setHours([10, 14, 14, 16, 11, 19, 10, 15, 14][i % 9], 0, 0, 0);
+    b.deploy = d.toISOString();
+    if (i % 4 === 2) b.note = '일정 미정';
+  });
   // a few requesters who answered and wait for the team to reply
   boxes.filter((b) => b.zone === 'review' || b.zone === 'work').filter((_, i) => i % 5 === 1).forEach((b) => (b.reply = new Date(now - 50 * 60000).toISOString()));
   let listeners: ((ev: BoardEvent) => void)[] = [];

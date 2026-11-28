@@ -34,6 +34,8 @@ export interface HudHooks {
   game: GameStats | null;
   gameOpen: boolean;
   toggleGame(): void;
+  /** The week's deployments board. */
+  week: { open: boolean; toggle(): void };
   /** Opens the waybill; null when no floor writes its own tickets. */
   write: (() => void) | null;
   /** The day's quests and their card beside the right rail (null = none today). */
@@ -304,6 +306,9 @@ function renderRails(snap: Snapshot | null, hooks: HudHooks) {
             h('b', {}, String(hooks.deploys.all)),
           ),
         )
+      : null,
+    snap?.boxes.some((b) => b.deploy)
+      ? railButton('calendar', '주간 배포 일정판 · 작업장 화이트보드', { class: `ib week-btn${hooks.week.open ? ' on' : ''}`, 'aria-expanded': String(hooks.week.open), 'aria-controls': 'week', onclick: hooks.week.toggle })
       : null,
     hooks.write ? h('hr', {}) : null,
     hooks.write ? railButton('pen', tipKey('송장 쓰기', 'write'), { class: 'ib write', onclick: hooks.write }) : null,

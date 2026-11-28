@@ -41,7 +41,7 @@ interface Step {
 
 const STORE = 'argusdesk.tour';
 /** Raise when steps are added (and mark them with `since`), so they are shown to those who saw the tour before. */
-const VERSION = 4;
+const VERSION = 5;
 const key = (a: Parameters<typeof keyLabel>[0]) => keyLabel(a) || '단축키 없음';
 
 const steps = (): Step[] => [
@@ -107,6 +107,12 @@ const steps = (): Step[] => [
     text: '운영 배포일이 오늘인 티켓이 있으면 왼쪽 레일에 트럭이 나타납니다. 트럭은 내가 맡은 것, 그 아래 "전체"는 팀 전체를 한 번에 엽니다. 내 배포가 있는 날은 처음 센터를 열 때 아침 카드로도 알려 드려요.',
     at: '#rail-left .deploy',
     since: 3,
+  },
+  {
+    title: '주간 배포 일정판',
+    text: '작업장의 화이트보드(또는 왼쪽 레일의 달력)를 누르면 이번 주 운영 배포가 요일별로 펼쳐집니다. 같은 시간대에 겹치거나 일정이 미정인 건은 따로 표시되고, 카드를 누르면 그 티켓이 열립니다.',
+    at: '#rail-left .week-btn',
+    since: 5,
   },
   {
     title: '출근 브리핑',

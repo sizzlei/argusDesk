@@ -6,15 +6,23 @@ import type { Box, Snapshot } from './types';
 
 const dayOf = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
-/** When a box goes out today: "14:00", "" for a date without an hour, null when not today. */
-export function deployToday(b: Box, now = new Date()): string | null {
+/** When a box goes out, in local time: its day ("2026-11-30") and hour ("14:00", "" for a date alone). */
+export function deployWhen(b: Box): { day: string; time: string } | null {
   const v = b.deploy?.trim();
   if (!v) return null;
-  if (/^\d{4}-\d{2}-\d{2}$/.test(v)) return v === dayOf(now) ? '' : null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(v)) return { day: v, time: '' };
   const t = new Date(v.replace(/([+-]\d{2})(\d{2})$/, '$1:$2'));
-  if (Number.isNaN(t.getTime()) || dayOf(t) !== dayOf(now)) return null;
-  return `${String(t.getHours()).padStart(2, '0')}:${String(t.getMinutes()).padStart(2, '0')}`;
+  if (Number.isNaN(t.getTime())) return null;
+  return { day: dayOf(t), time: `${String(t.getHours()).padStart(2, '0')}:${String(t.getMinutes()).padStart(2, '0')}` };
 }
+
+/** When a box goes out today: "14:00", "" for a date without an hour, null when not today. */
+export function deployToday(b: Box, now = new Date()): string | null {
+  const w = deployWhen(b);
+  return w && w.day === dayOf(now) ? w.time : null;
+}
+
+export { dayOf };
 
 /**
  * Today's deployments still to be done, earliest first (those without an hour

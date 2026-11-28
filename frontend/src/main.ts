@@ -14,6 +14,7 @@ import type { AppState, Box, Change, GameStats, Snapshot } from './types';
 import { checkForUpdates, initUpdates } from './update';
 import { showBriefing, watchPresence } from './briefing';
 import { arrived, seasonYear } from './growth';
+import { renderWeek } from './week';
 import { questTally, questsOpen, renderQuests, toggleQuests, updateQuests } from './quests';
 import { icon, initRailTips } from './rail';
 import { readDust } from './dust';
@@ -49,6 +50,8 @@ async function boot() {
   let selected: Box | null = null;
   let game: GameStats | null = null;
   let gameOpen = false;
+  // the week's deployments board, opened from the work room's whiteboard
+  const week = { open: false, offset: 0, mine: false };
   let spot = ''; // the teammate whose boxes are lit
   let awaited = ''; // a ticket I just made: its window opens when the box arrives
   // The filter narrows what the room and the counters show.
@@ -105,6 +108,7 @@ async function boot() {
   };
   const scene = new Scene(document.getElementById('scene')!, {
     onWrite: () => write(),
+    onWeek: () => toggleWeek(true),
     onDrop: (box, zone, to) => void dropBox(box, zone, to),
     onSelect: (box) => {
       selected = box;
@@ -218,6 +222,7 @@ async function boot() {
   };
   // The panels on the right (notifications, filters, my state) take the same place: one at a time.
   const only = (which: 'notices' | 'filters' | 'profile' | 'settings' | '') => {
+    if (which) week.open = false; // another panel takes its place
     if (which !== 'settings') toggleSettings(false);
     if (which !== 'notices') toggleNotices(false);
     if (which !== 'filters') toggleFilters(false);
@@ -297,6 +302,30 @@ async function boot() {
     ];
   };
   /** Opens a window for every ticket that goes to production today. */
+  const drawWeek = () =>
+    renderWeek(document.getElementById('week')!, snap, week, {
+      close: () => toggleWeek(false),
+      redraw: () => drawWeek(),
+      open: (box) => {
+        if (!snap) return;
+        const i = snap.spaces.findIndex((sp) => sp.id === box.space);
+        if (i >= 0 && i !== space) {
+          space = i;
+          scene.setSpace(i);
+        }
+        openTicket(box, snap, backend, tickets);
+        hud();
+      },
+    });
+  function toggleWeek(on = !week.open) {
+    week.open = on;
+    if (on) {
+      week.offset = 0;
+      only('');
+      gameOpen = false;
+    }
+    hud();
+  }
   const openDeploys = (mine: boolean) => {
     if (!snap) return;
     const list = deploysToday(snap, mine);
@@ -325,6 +354,7 @@ async function boot() {
       }),
     );
     renderNotices(snap, visit, () => hud(), (url) => backend.openUrl(url));
+    drawWeek();
     const shown = view();
     renderFilters(snap, space, filter, shown?.boxes.length ?? 0, snap?.boxes.length ?? 0, setFilter, () => hud());
     renderProfile(
@@ -393,6 +423,7 @@ async function boot() {
         hud();
       },
       write: snap?.spaces.some((sp) => sp.create) ? write : null,
+      week: { open: week.open, toggle: () => toggleWeek() },
       quests: (() => {
         const t = questTally();
         return t
@@ -487,6 +518,8 @@ async function boot() {
     if (noticesOpen() || filtersOpen() || profileOpen() || settingsOpen()) {
       only('');
       hud();
+    } else if (week.open) {
+      toggleWeek(false);
     } else if (questsOpen()) {
       toggleQuests(false);
       hud();

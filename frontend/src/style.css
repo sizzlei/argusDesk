@@ -4640,3 +4640,250 @@ button.deploy-btn .n {
   z-index: 100000;
   max-width: 360px;
 }
+
+/* ---- the week's deployments board, opened from the work room's whiteboard ---- */
+
+#week {
+  position: absolute;
+  top: 74px;
+  left: 82px;
+  right: 82px;
+  z-index: 9; /* under the ticket windows: a card opens its ticket on top */
+  max-height: calc(100% - 150px);
+  padding: 14px 16px 16px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: 0 12px 32px rgb(31 42 68 / 16%);
+}
+
+#week .panel-head {
+  gap: 10px;
+}
+
+#week .panel-head .quiet {
+  margin-right: auto;
+  font-size: 12px;
+}
+
+.wk-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin: 10px 0 12px;
+  font-size: 12px;
+}
+
+.wk-nav {
+  display: inline-flex;
+}
+
+.wk-nav button {
+  padding: 3px 10px;
+  border-radius: 0;
+  font-size: 12px;
+}
+
+.wk-nav button:first-child {
+  border-radius: 8px 0 0 8px;
+}
+
+.wk-nav button:last-child {
+  border-radius: 0 8px 8px 0;
+}
+
+.wk-nav button + button {
+  margin-left: -1px;
+}
+
+.wk-nav button.on {
+  border-color: var(--ink);
+  font-weight: 600;
+}
+
+.wk-mine {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.wk-sum {
+  margin-left: auto;
+  color: var(--quiet);
+}
+
+.wk-sum em {
+  font-style: normal;
+  font-weight: 600;
+}
+
+.wk-sum em.unsure {
+  color: #8a5300;
+}
+
+.wk-sum em.clash {
+  color: var(--old);
+}
+
+.wk-note {
+  margin: -4px 0 10px;
+  font-size: 12px;
+}
+
+.wk-days {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr)) repeat(2, minmax(0, 0.7fr));
+  gap: 8px;
+}
+
+.wk-day {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  min-height: 120px;
+  padding: 8px;
+  border-radius: 10px;
+  background: var(--paper);
+}
+
+.wk-day.weekend {
+  background: color-mix(in srgb, var(--paper) 55%, var(--surface));
+}
+
+.wk-day.today {
+  outline: 2px solid #7048e8;
+  outline-offset: -2px;
+  background: #f3effc;
+}
+
+.wk-day h4 {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: 0 0 2px;
+  font-size: 12px;
+}
+
+.wk-day h4 .n {
+  min-width: 18px;
+  padding: 0 6px;
+  border-radius: 9px;
+  background: #4c8df6;
+  color: #fff;
+  font-size: 11px;
+  text-align: center;
+}
+
+.wk-warn {
+  margin: 0;
+  padding: 3px 6px;
+  border-radius: 6px;
+  background: #fff4e3;
+  color: #8a5300;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.wk-empty {
+  margin: 0;
+  text-align: center;
+}
+
+.wk-card {
+  display: grid;
+  gap: 2px;
+  width: 100%;
+  padding: 7px 8px;
+  border: 1px solid var(--line);
+  border-left: 3px solid #4c8df6;
+  border-radius: 8px;
+  background: var(--surface);
+  font-size: 12px;
+  text-align: left;
+}
+
+.wk-card:hover {
+  border-color: #aab6d3;
+  border-left-color: #4c8df6;
+  box-shadow: 0 3px 10px rgb(31 42 68 / 10%);
+}
+
+.wk-card.mine {
+  border-left-color: #7048e8;
+}
+
+.wk-card.unsure {
+  border-left-color: #e8a33a;
+  border-style: dashed;
+  border-left-style: solid;
+}
+
+.wk-card.done {
+  border-left-color: #9aa3b5;
+  opacity: 0.62;
+}
+
+.wk-card.clash {
+  border-color: #f0b2ad;
+  border-left-color: var(--old);
+}
+
+.wk-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
+.wk-top b {
+  margin-right: auto;
+  font-variant-numeric: tabular-nums;
+}
+
+.wk-top .chip {
+  padding: 0 6px;
+  font-size: 10.5px;
+}
+
+.wk-top .chip.ok {
+  background: #e8f6ef;
+  color: #1d6b48;
+}
+
+.wk-top .chip.unsure {
+  background: #fff4e3;
+  color: #8a5300;
+}
+
+.wk-top .chip.clash {
+  background: #fdecea;
+  color: #b3261e;
+}
+
+.wk-key {
+  color: var(--quiet);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.wk-sumline {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-height: 1.35;
+}
+
+.wk-who {
+  color: var(--quiet);
+  font-size: 11px;
+}
+
+@media (max-width: 1100px) {
+  .wk-days {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
