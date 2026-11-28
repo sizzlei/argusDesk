@@ -209,6 +209,10 @@ func (a *App) ConnectServer(addr string) (*AppState, error) {
 	keep(tok)
 	a.syncServer(true)
 	a.watchServer()
+	// back to the app: the browser tab closes itself (or is closed by hand)
+	if a.tray != nil {
+		a.tray.show("")
+	}
 	return a.State(), nil
 }
 

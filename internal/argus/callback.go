@@ -1,13 +1,17 @@
 package argus
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"html"
 	"net/http"
 	"strings"
 )
 
 // The page the browser lands on after the sign-in. It is served from this
-// computer and stands alone: no script, nothing loaded from anywhere.
+// computer and stands alone: nothing loaded from anywhere. A signed-in page
+// carries one small inline script (allowed by a one-time nonce) that closes
+// the tab after three seconds.
 
 const callbackCSS = `
 *{box-sizing:border-box}
@@ -64,7 +68,10 @@ func callbackPage(w http.ResponseWriter, why string) {
 	h.Set("Cache-Control", "no-store")
 	h.Set("Referrer-Policy", "no-referrer") // the address holds the one-time code
 	h.Set("X-Content-Type-Options", "nosniff")
-	h.Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'")
+	nonce := make([]byte, 16)
+	_, _ = rand.Read(nonce)
+	n := hex.EncodeToString(nonce)
+	h.Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-"+n+"'; frame-ancestors 'none'")
 
 	var b strings.Builder
 	b.WriteString(`<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><title>Argus Desk</title><style>`)
@@ -72,7 +79,10 @@ func callbackPage(w http.ResponseWriter, why string) {
 	b.WriteString(`</style></head><body><main>`)
 	if why == "" {
 		b.WriteString(callbackOK)
-		b.WriteString(`<p class="brand">ARGUS DESK</p><h1>로그인했습니다</h1><p>송장을 확인했습니다. 센터 문이 열렸어요.</p><p class="next">이 창은 닫아도 됩니다. Argus Desk로 돌아가세요.</p>`)
+		b.WriteString(`<p class="brand">ARGUS DESK</p><h1>로그인했습니다</h1><p>송장을 확인했습니다. 센터 문이 열렸어요.</p><p class="next" id="next"><span id="left">3</span>초 뒤 이 창이 저절로 닫힙니다.</p>`)
+		// Count down, then close. A browser only lets a page close a tab it opened
+		// itself, so when the tab stays the page says to close it by hand.
+		b.WriteString(`<script nonce="` + n + `">(function(){var n=3,l=document.getElementById('left');var t=setInterval(function(){n--;if(n>0){l.textContent=n;return}clearInterval(t);window.close();setTimeout(function(){document.getElementById('next').textContent='브라우저가 창을 저절로 닫지 못하게 막았습니다. 이 창을 닫고 Argus Desk로 돌아가세요.'},400)},1000)})();</script>`)
 	} else {
 		b.WriteString(callbackFail)
 		b.WriteString(`<p class="brand">ARGUS DESK</p><h1>로그인하지 못했습니다</h1><p class="why">`)
