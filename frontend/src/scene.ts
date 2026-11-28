@@ -924,7 +924,8 @@ export class Scene {
       if (zi === boardRoom) {
         const days = weekDeploys({ ...snap, boxes: snap.boxes.filter((b) => b.space === space.id) });
         const counts = days.map((d) => d.slots.filter((x) => !x.done).length);
-        const wb = prop(o.gx + 4.4, o.gy + 0.25, (g) => whiteboard(g, o.gx + 4.4, o.gy + 0.25, counts, days.findIndex((d) => d.today)));
+        // it stands at the back of the room, right in front of the conveyor: drawn after the belt behind it
+        const wb = prop(o.gx + 4.4, o.gy + 0.25, (g) => whiteboard(g, o.gx + 4.4, o.gy + 0.25, counts, days.findIndex((d) => d.today)), 260);
         wb.eventMode = 'static';
         wb.cursor = 'pointer';
         wb.on('pointertap', () => this.hooks.onWeek?.());
